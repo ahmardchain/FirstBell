@@ -1,6 +1,6 @@
 # FirstBell
 
-FirstBell is a card-to-tokenized-equity product concept for the BNB Hack: Tokenized Stocks Edition. This repository currently contains a responsive React hero preview, not a connected purchase flow.
+FirstBell is a card-to-tokenized-equity product concept for the BNB Hack: Tokenized Stocks Edition. This repository contains a responsive landing page, not a connected purchase flow.
 
 ## Run locally
 
@@ -15,7 +15,7 @@ npm run dev
 
 - `components/ui/floating-icons-hero-section.tsx`: reusable floating hero with cursor repulsion, reduced-motion support, and a shadcn-style button.
 - `components/ui/button.tsx`: local shadcn button primitive.
-- `src/demo.tsx`: FirstBell copy, layout, and 12 token tile positions (8 on mobile).
+- `src/demo.tsx`: landing page with the floating hero, purchase journey, interactive token explorer, receipt preview, and issuer/market-hours/fee explanation. The hero has 12 token tiles (8 on mobile).
 - `src/styles.css`: Tailwind theme and responsive art direction.
 - `public/assets`: bundled token icons and FirstBell SVG mark.
 - `asset-sources.json`: official Ondo token-list image URLs and BSC contracts.

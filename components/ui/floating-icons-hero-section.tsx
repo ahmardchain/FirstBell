@@ -15,6 +15,7 @@ export interface FloatingIconsHeroProps extends React.HTMLAttributes<HTMLElement
   ctaText: string
   ctaHref: string
   icons: IconProps[]
+  note?: string
 }
 
 function FloatingIcon({
@@ -76,7 +77,7 @@ function FloatingIcon({
 }
 
 const FloatingIconsHero = React.forwardRef<HTMLElement, FloatingIconsHeroProps>(
-  ({ className, title, subtitle, ctaText, ctaHref, icons, onPointerMove, onPointerLeave, ...props }, ref) => {
+  ({ className, title, subtitle, ctaText, ctaHref, icons, note, onPointerMove, onPointerLeave, ...props }, ref) => {
     const pointer = React.useRef({ x: -1000, y: -1000 })
 
     return (
@@ -107,6 +108,7 @@ const FloatingIconsHero = React.forwardRef<HTMLElement, FloatingIconsHeroProps>(
               <a href={ctaHref}>{ctaText}<span className="ml-4" aria-hidden="true">↗</span></a>
             </Button>
           </div>
+          {note && <p className="mx-auto mt-5 text-xs text-muted-foreground">{note}</p>}
         </div>
       </section>
     )
