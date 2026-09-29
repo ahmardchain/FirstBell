@@ -4,6 +4,7 @@ import { ArrowRight, ArrowUpRight, Bookmark, ChevronDown, ExternalLink, Globe2, 
 import manifest from '@/asset-sources.json'
 import { AIChatCard } from '@/components/spectrumui/ai-chat-card'
 import { TradeWorkspace } from './trade'
+import { PortfolioWorkspace } from './portfolio'
 import './app.css'
 import './agent.css'
 
@@ -162,7 +163,7 @@ export default function FirstBellApp() {
       </div>
     </header>
     {mobileMenu && <div className="app-mobile-popover"><a href="/">{t.back}<ArrowUpRight size={16} /></a><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={16} /></a></div>}
-    <main className="app-main">
+    <main className={`app-main ${tab === 'portfolio' ? 'app-main--portfolio' : ''}`}>
       {tab === 'home' && <>
         <div className="app-ticker"><span><i className="app-status-dot" />{t.live}</span><span>{t.ticker}</span><span>FB / 001</span></div>
         <section className="app-home-intro"><p className="app-label">{t.kicker}</p><h1>{t.title}</h1></section>
@@ -181,7 +182,7 @@ export default function FirstBellApp() {
           note={t.agentNote} sourceHref={manifest.sourceTokenList} sourceLabel={t.tokenList}
           icon={<img src="/assets/firstbell-mark.svg" alt="" />} onSend={answer} onReset={() => setMessages([])} />
       </section>}
-      {tab === 'portfolio' && <section className="app-workspace"><div className="workspace-lead"><p className="app-label">{t.portfolioKicker}</p><h1>{t.portfolioTitle}</h1><p>{t.portfolioIntro}</p></div><div className="portfolio-bar"><h2>{t.savedHeading} <span>0{saved.length}</span></h2><span>{t.local}</span></div>{saved.length ? <div className="asset-grid">{assets.filter(asset => saved.includes(asset.symbol)).map(assetCard)}</div> : <div className="portfolio-empty"><Bookmark size={31} strokeWidth={1.25} /><h2>{t.emptyTitle}</h2><p>{t.emptyBody}</p><button type="button" onClick={() => switchTab('home')}>{t.goHome}<ArrowUpRight size={18} /></button></div>}</section>}
+      {tab === 'portfolio' && <PortfolioWorkspace assets={assets} saved={saved} language={language} onExplore={() => switchTab('home')} onInspect={setSelected} onToggleSaved={toggleSaved} />}
     </main>
     <footer className="app-footer"><div><a href="/" className="app-brand"><img src="/assets/firstbell-mark.svg" alt="" />FirstBell<span>.</span></a><p>{t.footer}</p></div><div><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={14} /></a><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github}<ArrowUpRight size={14} /></a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x}<ArrowUpRight size={14} /></a></div><small>© 2026 FIRSTBELL / BNB SMART CHAIN</small></footer>
     <nav className="app-bottom-nav" aria-label="App navigation">{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} onClick={() => switchTab(id)} className={tab === id ? 'active' : ''} aria-current={tab === id ? 'page' : undefined}><Icon size={22} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
