@@ -1,0 +1,194 @@
+.app-shell { --app-ink:var(--foreground); min-height:100svh; background:var(--background); color:var(--foreground); }
+.app-shell button { color:inherit; }
+.app-label,.app-ticker,.app-index-caption,.app-result-count,.asset-art-index,.asset-card-meta small,.trade-notice,.agent-conversation-header small,.agent-message>span,.agent-compose>small,.app-footer small,.dialog-top,.dialog-title p,.dialog-caution,.portfolio-bar>span { font:500 11px/1.45 'IBM Plex Mono',monospace; letter-spacing:.045em; text-transform:uppercase; }
+.app-header { position:sticky; top:0; z-index:30; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; height:74px; padding:0 clamp(24px,4.4vw,72px); border-bottom:1px solid var(--line); background:var(--background); }
+.app-brand { display:inline-flex; align-items:center; gap:8px; width:max-content; font-size:25px; font-weight:700; letter-spacing:-.07em; text-decoration:none; white-space:nowrap; }
+.app-brand img { width:27px; height:27px; }
+.app-brand span { margin-left:-8px; }
+[data-theme=light] .app-brand img { filter:invert(1); }
+.app-desktop-nav { display:flex; height:100%; gap:2px; }
+.app-desktop-nav button { display:inline-flex; align-items:center; gap:8px; padding:0 20px; border:0; border-bottom:2px solid transparent; background:none; color:var(--muted); font-size:13px; font-weight:600; transition:color .18s,background .18s,border-color .18s; }
+.app-desktop-nav button:hover { color:var(--foreground); background:var(--hover); }
+.app-desktop-nav button.active { color:var(--foreground); border-bottom-color:var(--foreground); }
+.app-header-actions { display:flex; justify-content:flex-end; align-items:center; gap:4px; }
+.app-header-tool { display:inline-flex; min-width:42px; height:42px; align-items:center; justify-content:center; gap:5px; padding:0 8px; background:transparent; border:0; font-size:12px; font-weight:600; }
+.app-header-tool:hover { background:var(--hover); }
+.app-website { display:inline-flex; align-items:center; gap:14px; height:39px; margin-left:12px; padding:0 13px; background:var(--foreground); color:var(--background); font-size:12px; font-weight:700; text-decoration:none; }
+.app-website:hover { opacity:.8; }
+.app-mobile-menu,.app-mobile-popover { display:none; }
+.app-main { width:min(100%,1512px); margin:auto; min-height:calc(100svh - 74px); padding:0 clamp(24px,4.4vw,72px) 120px; background-image:radial-gradient(circle at center, color-mix(in srgb,var(--foreground) 11%,transparent) 1px,transparent 1.5px); background-size:26px 26px; }
+.app-ticker { display:flex; align-items:center; gap:26px; min-height:47px; color:var(--muted); border-bottom:1px solid var(--line); white-space:nowrap; overflow:hidden; }
+.app-ticker>span:first-child { flex:none; display:inline-flex; align-items:center; gap:9px; padding-right:26px; color:var(--foreground); border-right:1px solid var(--line); }
+.app-ticker>span:nth-child(2) { overflow:hidden; text-overflow:ellipsis; }
+.app-ticker>span:last-child { margin-left:auto; }
+.app-status-dot { display:block; width:6px; height:6px; background:var(--foreground); border-radius:50%; }
+.app-home-intro { padding:72px 0 38px; }
+.app-home-intro .app-label,.workspace-lead .app-label { color:var(--muted); margin:0 0 20px; }
+.app-home-intro h1,.workspace-lead h1 { margin:0; font-size:clamp(49px,6vw,90px); font-weight:600; letter-spacing:-.075em; line-height:1.02; text-wrap:balance; }
+.app-feature { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(310px,.9fr); min-height:505px; background:#080808; color:#fff; overflow:hidden; }
+.app-feature-copy { z-index:1; display:flex; flex-direction:column; align-items:flex-start; padding:clamp(34px,4.5vw,72px); }
+.app-feature-copy>.app-label { color:#aaa; }
+.app-feature h2 { max-width:710px; margin:32px 0 20px; white-space:pre-line; font-size:clamp(48px,5vw,77px); font-weight:600; line-height:1.02; letter-spacing:-.075em; }
+.app-feature-copy p { max-width:430px; margin:0; color:#b4b4b4; line-height:1.52; font-size:16px; }
+.app-feature-copy button { display:inline-flex; align-items:center; justify-content:space-between; gap:32px; min-height:52px; padding:0 19px; margin-top:auto; border:1px solid #fff; background:#fff; color:#080808; font-size:14px; font-weight:650; transition:transform .18s,background .18s; }
+.app-feature-copy button:hover { transform:translateY(-3px); background:#e6e6e6; }
+.app-feature-art { position:relative; display:flex; align-items:center; justify-content:center; min-height:100%; border-left:1px solid #2a2a2a; background:radial-gradient(circle at center,rgba(255,255,255,.08),transparent 58%); }
+.app-feature-art::before,.app-feature-art::after { position:absolute; content:''; width:min(31vw,440px); aspect-ratio:1; border:1px solid #292929; border-radius:50%; }
+.app-feature-art::after { width:min(23vw,315px); border-color:#373737; }
+.feature-frame { position:relative; z-index:1; display:grid; place-items:center; width:min(20vw,260px); aspect-ratio:1; transform:rotate(-9deg); border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.055); box-shadow:0 30px 50px rgba(0,0,0,.35); backdrop-filter:blur(14px); animation:feature-float 7s ease-in-out infinite; }
+.feature-frame .app-asset-mark { width:70%; height:70%; }
+.feature-cross { position:absolute; top:31px; right:37px; color:#666; font-size:22px; }
+.feature-caption { position:absolute; right:35px; bottom:30px; color:#aaa; font:11px 'IBM Plex Mono',monospace; }
+@keyframes feature-float { 50% { transform:translateY(-9px) rotate(-6deg); } }
+.app-browser { padding-top:100px; }
+.app-section-heading { display:flex; justify-content:space-between; align-items:end; gap:32px; margin-bottom:37px; }
+.app-section-heading .app-label { margin:0 0 18px; color:var(--muted); }
+.app-section-heading h2,.portfolio-bar h2 { margin:0; font-size:clamp(39px,4vw,60px); font-weight:600; letter-spacing:-.065em; }
+.app-section-heading h2 .count,.portfolio-bar h2 span { margin-left:12px; vertical-align:top; color:var(--muted); font:500 12px/2 'IBM Plex Mono',monospace; letter-spacing:0; }
+.app-section-heading p:not(.app-label) { margin:11px 0 0; color:var(--muted); font-size:15px; line-height:1.5; }
+.app-index-caption { color:var(--muted); text-align:right; }
+.app-browser-controls { display:flex; justify-content:space-between; align-items:center; gap:18px; padding:18px 0; border-block:1px solid var(--line); background:var(--background); }
+.app-filter { display:flex; gap:7px; }
+.app-filter button { min-height:42px; padding:0 14px; border:1px solid var(--line); background:var(--background); font-size:13px; font-weight:600; transition:background .18s,color .18s; }
+.app-filter button:hover { background:var(--hover); }
+.app-filter button.active { background:var(--foreground); border-color:var(--foreground); color:var(--background); }
+.app-filter sup { margin-left:7px; font:10px 'IBM Plex Mono',monospace; }
+.app-search { display:flex; align-items:center; gap:10px; width:min(100%,330px); height:42px; padding:0 12px; border:1px solid var(--line); background:var(--background); color:var(--muted); }
+.app-search:focus-within { border-color:var(--foreground); color:var(--foreground); }
+.app-search input { width:100%; border:0; outline:0; color:var(--foreground); background:transparent; font-size:13px; }
+.app-search input::placeholder { color:var(--muted); }
+.app-result-count { margin:25px 0 15px; color:var(--muted); }
+.asset-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.asset-card { min-width:0; border:1px solid var(--line); background:var(--background); transition:border-color .2s,transform .2s; }
+.asset-card:hover { border-color:var(--foreground); transform:translateY(-3px); }
+.asset-art { position:relative; height:clamp(210px,24vw,320px); display:grid; place-items:center; overflow:hidden; background:var(--background); border-bottom:1px solid var(--line); }
+.asset-art--nvidia { background:color-mix(in srgb,#76b900 11%,var(--background)); }
+.asset-art--amazon { background:color-mix(in srgb,#ff9900 8%,var(--background)); }
+.asset-art--tesla { background:color-mix(in srgb,#e82127 6%,var(--background)); }
+.asset-art--microsoft { background:color-mix(in srgb,#0078d4 5%,var(--background)); }
+.asset-art-index { position:absolute; top:17px; left:17px; color:var(--muted); }
+.asset-bookmark { position:absolute; z-index:2; top:10px; right:10px; display:grid; place-items:center; width:38px; height:38px; border:1px solid transparent; background:transparent; }
+.asset-bookmark:hover,.asset-bookmark.is-saved { border-color:var(--line); background:var(--background); }
+.asset-art-open { width:100%; height:100%; display:grid; place-items:center; border:0; background:none; }
+.asset-art-open .app-asset-mark { width:46%; height:48%; object-fit:contain; transition:transform .3s; }
+.asset-card:hover .asset-art-open .app-asset-mark { transform:scale(1.06); }
+.asset-art--amazon .app-asset-mark { width:55%; }
+.asset-art--tesla .app-asset-mark { width:43%; }
+.asset-card-info { width:100%; display:block; padding:22px 19px 21px; border:0; background:transparent; text-align:left; }
+.asset-card-title { display:flex; align-items:baseline; gap:8px; }
+.asset-card-title strong { font-size:17px; letter-spacing:-.03em; }
+.asset-card-title>span { color:var(--muted); font-size:13px; }
+.asset-card-title svg { margin-left:auto; flex:none; align-self:center; }
+.asset-card-rule { display:block; height:1px; margin:20px 0 15px; background:var(--line); }
+.asset-card-meta { display:flex; justify-content:space-between; gap:12px; font-size:12px; font-weight:550; }
+.asset-card-meta>span:last-child { text-align:right; }
+.asset-card-meta small { display:block; margin-bottom:5px; color:var(--muted); font-size:10px; }
+.app-empty,.portfolio-empty { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; min-height:330px; padding:40px; border:1px solid var(--line); background:var(--background); }
+.app-empty h3,.portfolio-empty h2 { margin:22px 0 5px; font-size:31px; letter-spacing:-.055em; font-weight:600; }
+.app-empty p,.portfolio-empty p { margin:0 0 25px; color:var(--muted); }
+.app-empty button,.portfolio-empty button,.text-link { display:inline-flex; align-items:center; gap:25px; padding:10px 0; border:0; border-bottom:1px solid var(--foreground); background:transparent; font-size:14px; font-weight:650; }
+.app-workspace { padding-top:76px; }
+.workspace-lead { max-width:940px; margin-bottom:64px; }
+.workspace-lead h1 { max-width:880px; }
+.workspace-lead>p:last-child { max-width:610px; margin:23px 0 0; color:var(--muted); font-size:18px; line-height:1.55; }
+.trade-layout { display:grid; grid-template-columns:minmax(280px,.8fr) minmax(0,1.2fr); gap:18px; }
+.trade-select,.trade-route,.agent-assets,.agent-conversation { border:1px solid var(--line); background:var(--background); }
+.trade-select { padding:27px; align-self:start; }
+.trade-select>.app-label,.agent-assets>.app-label { display:block; margin:0 0 25px; color:var(--muted); }
+.trade-options { border-top:1px solid var(--line); }
+.trade-options button,.agent-assets button { display:flex; align-items:center; width:100%; min-height:82px; gap:17px; padding:12px 2px; border:0; border-bottom:1px solid var(--line); background:transparent; text-align:left; }
+.trade-options button:hover,.trade-options button.selected,.agent-assets button:hover,.agent-assets button.selected { background:var(--hover); }
+.trade-options img,.agent-assets img { width:46px; height:46px; object-fit:contain; padding:5px; }
+.trade-options button>span,.agent-assets button>span { display:flex; flex:1; flex-direction:column; gap:2px; font-weight:650; }
+.trade-options small,.agent-assets small { color:var(--muted); font-size:12px; font-weight:400; }
+.trade-options svg,.agent-assets svg { margin-right:10px; }
+.trade-route { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0 32px; padding:clamp(26px,3.5vw,52px); }
+.trade-route-heading { grid-column:1/-1; display:flex; justify-content:space-between; align-items:start; }
+.trade-route-heading .app-label { color:var(--muted); }
+.trade-route-heading strong { font:500 13px 'IBM Plex Mono',monospace; }
+.trade-large-mark { display:grid; place-items:center; align-self:start; min-height:285px; margin:24px 0; border:1px solid var(--line); background:var(--hover); }
+.trade-large-mark img { max-width:70%; max-height:170px; object-fit:contain; }
+.route-steps { margin-top:24px; border-top:1px solid var(--line); }
+.route-steps>div { display:flex; align-items:center; gap:16px; min-height:91px; border-bottom:1px solid var(--line); }
+.route-steps>div>span:first-child { color:var(--muted); font:12px 'IBM Plex Mono',monospace; }
+.route-steps p { flex:1; display:flex; flex-direction:column; gap:5px; margin:0; }
+.route-steps strong { font-size:14px; }
+.route-steps small { color:var(--muted); font-size:12px; }
+.route-pending { color:var(--muted); }
+.trade-disabled { grid-column:1/-1; min-height:53px; border:0; background:var(--foreground); color:var(--background)!important; opacity:.55; cursor:not-allowed; }
+.trade-notice { grid-column:1/-1; margin:15px 0 3px; color:var(--muted); text-transform:none; letter-spacing:0; }
+.trade-route .text-link { grid-column:1/-1; width:max-content; margin-top:12px; }
+.agent-layout { display:grid; grid-template-columns:310px minmax(0,1fr); gap:18px; min-height:660px; }
+.agent-assets { padding:27px; align-self:start; }
+.agent-assets button { min-height:76px; }
+.agent-conversation { display:flex; flex-direction:column; min-height:660px; }
+.agent-conversation-header { display:flex; align-items:center; gap:14px; min-height:75px; padding:13px 24px; border-bottom:1px solid var(--line); }
+.agent-conversation-header img { width:42px; height:42px; object-fit:contain; }
+.agent-conversation-header>div { display:flex; flex-direction:column; gap:3px; }
+.agent-conversation-header small { color:var(--muted); font-size:10px; }
+.agent-messages { flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:17px; max-height:480px; overflow:auto; padding:32px; }
+.agent-message { max-width:min(100%,580px); padding:19px; border:1px solid var(--line); background:var(--background); }
+.agent-message.user { align-self:flex-end; background:var(--foreground); color:var(--background); }
+.agent-message>span { color:var(--muted); }
+.agent-message.user>span { color:color-mix(in srgb,var(--background) 70%,transparent); }
+.agent-message p { margin:12px 0 0; font-size:15px; line-height:1.55; overflow-wrap:anywhere; }
+.agent-message a { display:inline-flex; align-items:center; gap:6px; margin-top:16px; font-size:12px; }
+.agent-compose { margin-top:auto; padding:18px 24px 23px; border-top:1px solid var(--line); }
+.agent-quick { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:13px; }
+.agent-quick button { display:inline-flex; align-items:center; gap:9px; min-height:37px; padding:0 11px; border:1px solid var(--line); background:transparent; font-size:12px; }
+.agent-quick button:hover { background:var(--hover); }
+.agent-compose form { display:flex; align-items:center; border:1px solid var(--foreground); }
+.agent-compose input { flex:1; min-width:0; height:51px; padding:0 14px; border:0; outline:0; background:transparent; color:var(--foreground); font-size:14px; }
+.agent-compose form button { display:grid; place-items:center; width:47px; height:47px; margin-right:2px; border:0; background:var(--foreground); color:var(--background); }
+.agent-compose form button:disabled { opacity:.35; cursor:not-allowed; }
+.agent-compose>small { display:block; margin-top:10px; color:var(--muted); text-transform:none; letter-spacing:0; }
+.portfolio-bar { display:flex; justify-content:space-between; align-items:end; gap:16px; padding:0 0 20px; margin-bottom:20px; border-bottom:1px solid var(--line); }
+.portfolio-bar h2 { font-size:clamp(32px,3vw,48px); }
+.portfolio-bar>span { color:var(--muted); }
+.portfolio-empty { min-height:400px; }
+.app-footer { display:flex; justify-content:space-between; gap:40px; align-items:end; padding:53px clamp(24px,4.4vw,72px); border-top:1px solid var(--line); background:var(--background); }
+.app-footer .app-brand { font-size:23px; }
+.app-footer p { max-width:280px; color:var(--muted); font-size:13px; }
+.app-footer>div:nth-child(2) { display:flex; gap:25px; }
+.app-footer>div:nth-child(2) a { display:inline-flex; gap:5px; align-items:center; color:var(--muted); text-decoration:none; font-size:13px; }
+.app-footer>div:nth-child(2) a:hover { color:var(--foreground); }
+.app-footer small { color:var(--muted); }
+.app-bottom-nav { display:none; }
+.asset-dialog-layer { position:fixed; z-index:60; inset:0; }
+.asset-dialog-backdrop { position:absolute; inset:0; width:100%; height:100%; border:0; background:rgba(0,0,0,.5); }
+.asset-dialog { position:absolute; top:0; right:0; bottom:0; width:min(100%,560px); overflow-y:auto; background:var(--background); box-shadow:-20px 0 60px rgba(0,0,0,.16); }
+.dialog-top { display:flex; align-items:center; justify-content:space-between; height:68px; padding:0 28px; border-bottom:1px solid var(--line); }
+.dialog-top button,.dialog-title button { display:grid; place-items:center; width:39px; height:39px; border:1px solid var(--line); background:transparent; }
+.dialog-mark { display:grid; place-items:center; height:290px; border-bottom:1px solid var(--line); }
+.dialog-mark img { width:37%; height:60%; object-fit:contain; }
+.dialog-body { padding:32px 28px 45px; }
+.dialog-title { display:flex; align-items:start; justify-content:space-between; gap:15px; }
+.dialog-title h2 { margin:0; font-size:45px; font-weight:600; letter-spacing:-.07em; }
+.dialog-title p { margin:5px 0 0; color:var(--muted); }
+.dialog-intro { max-width:420px; margin:29px 0; color:var(--muted); line-height:1.55; }
+.dialog-body dl { margin:0; border-top:1px solid var(--line); }
+.dialog-body dl>div { display:flex; justify-content:space-between; gap:20px; padding:17px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.dialog-body dt { color:var(--muted); }
+.dialog-body dd { max-width:68%; margin:0; text-align:right; }
+.contract-value { overflow-wrap:anywhere; font:11px/1.5 'IBM Plex Mono',monospace; }
+.dialog-caution { margin:20px 0 29px; color:var(--muted); text-transform:none; letter-spacing:0; }
+.dialog-primary,.dialog-secondary { display:flex; align-items:center; justify-content:space-between; min-height:52px; padding:0 16px; border:1px solid var(--foreground); text-decoration:none; font-size:13px; font-weight:650; }
+.dialog-primary { background:var(--foreground); color:var(--background); }
+.dialog-secondary { margin-top:9px; }
+.dialog-primary:hover,.dialog-secondary:hover { opacity:.75; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+@media(max-width:1100px) { .app-header { grid-template-columns:auto 1fr auto; } .app-desktop-nav { justify-content:center; } .app-desktop-nav button { padding-inline:13px; } .app-website { display:none; } .app-feature { grid-template-columns:1.15fr .85fr; } .app-feature h2 { font-size:clamp(43px,5vw,66px); } .asset-grid { gap:11px; } .asset-card-info { padding:17px 13px; } .asset-card-meta { font-size:11px; } .trade-route { gap:0 20px; } }
+@media(max-width:760px) {
+  .app-header { height:68px; padding-inline:22px; grid-template-columns:1fr auto; } .app-brand { font-size:24px; } .app-desktop-nav { display:none; } .app-header-actions { gap:0; } .app-mobile-menu { display:inline-flex; } .app-mobile-popover { position:fixed; top:68px; left:0; right:0; z-index:29; display:flex; flex-direction:column; padding:12px 22px; border-bottom:1px solid var(--line); background:var(--background); } .app-mobile-popover a { display:flex; justify-content:space-between; padding:14px 0; text-decoration:none; font-size:14px; }
+  .app-main { min-height:calc(100svh - 68px); padding-inline:22px; padding-bottom:100px; background-size:23px 23px; } .app-ticker { gap:13px; } .app-ticker>span:first-child { padding-right:13px; } .app-ticker>span:last-child { display:none; }
+  .app-home-intro { padding:54px 0 31px; } .app-home-intro h1,.workspace-lead h1 { font-size:clamp(43px,8.8vw,68px); } .app-feature { display:flex; flex-direction:column; min-height:0; } .app-feature-copy { min-height:435px; padding:32px; } .app-feature h2 { font-size:clamp(43px,8.5vw,64px); margin-top:28px; } .app-feature-copy button { margin-top:30px; } .app-feature-art { min-height:240px; border-left:0; border-top:1px solid #2a2a2a; } .app-feature-art::before { width:260px; } .app-feature-art::after { width:190px; } .feature-frame { width:140px; } .feature-caption { bottom:17px; right:18px; }
+  .app-browser { padding-top:73px; } .app-section-heading { align-items:start; } .app-index-caption { display:none; } .asset-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .asset-art { height:230px; }
+  .app-workspace { padding-top:55px; } .workspace-lead { margin-bottom:38px; } .workspace-lead>p:last-child { font-size:16px; } .trade-layout,.agent-layout { grid-template-columns:1fr; } .trade-select { padding:20px; } .trade-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 14px; } .trade-options button { min-height:72px; } .agent-assets { padding:17px; display:flex; align-items:center; gap:8px; overflow-x:auto; } .agent-assets .app-label { display:none; } .agent-assets button { flex:none; width:auto; min-height:58px; padding:7px; border:1px solid var(--line); gap:6px; } .agent-assets img { width:35px; height:35px; } .agent-assets button>span small,.agent-assets button>svg { display:none; } .agent-conversation { min-height:580px; }
+  .app-footer { padding:50px 22px 120px; flex-wrap:wrap; gap:22px; } .app-footer small { flex-basis:100%; } .app-bottom-nav { position:fixed; left:0; right:0; bottom:0; z-index:40; display:grid; grid-template-columns:repeat(4,1fr); height:calc(72px + env(safe-area-inset-bottom)); padding:5px 9px env(safe-area-inset-bottom); border-top:1px solid var(--line); background:color-mix(in srgb,var(--background) 96%,transparent); backdrop-filter:blur(15px); } .app-bottom-nav button { display:flex; flex-direction:column; justify-content:center; align-items:center; gap:4px; border:0; border-top:2px solid transparent; background:transparent; color:var(--muted); font-size:11px; font-weight:600; } .app-bottom-nav button.active { border-top-color:var(--foreground); color:var(--foreground); }
+}
+@media(max-width:540px) {
+  .app-header { padding-inline:18px; } .app-header-tool { min-width:39px; } .app-main { padding-inline:18px; } .app-ticker { font-size:10px; } .app-ticker>span:nth-child(2) { max-width:170px; } .app-home-intro { padding-top:52px; } .app-home-intro h1 { font-size:clamp(43px,10vw,56px); max-width:370px; } .app-feature-copy { padding:28px; min-height:455px; } .app-feature h2 { font-size:clamp(43px,10vw,58px); } .app-feature-copy p { font-size:15px; } .app-feature-art { min-height:210px; }
+  .app-section-heading h2 { font-size:40px; } .app-browser-controls { align-items:stretch; flex-direction:column; } .app-search { width:100%; } .asset-grid { grid-template-columns:1fr; gap:12px; } .asset-art { height:245px; } .asset-card-info { padding:19px; } .asset-card-meta { font-size:12px; }
+  .trade-options { grid-template-columns:1fr; } .trade-route { display:block; padding:22px; } .trade-large-mark { min-height:210px; } .trade-large-mark img { max-height:130px; } .trade-disabled { width:100%; margin-top:22px; } .agent-messages { padding:22px; } .agent-compose { padding:15px; } .agent-quick button { font-size:11px; } .portfolio-bar>span { display:none; } .app-footer>div:nth-child(2) { gap:15px; } .asset-dialog { padding-bottom:75px; } .dialog-mark { height:230px; } .dialog-title h2 { font-size:37px; }
+}
+@media(prefers-reduced-motion:reduce) { .feature-frame { animation:none; } .asset-card:hover,.app-feature-copy button:hover { transform:none; } }

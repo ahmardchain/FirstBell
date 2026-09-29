@@ -122,7 +122,7 @@ export default function FirstBellLanding() {
     <header className="site-nav">
       <a className="brand" href="#top" aria-label="FirstBell home" onClick={() => setMenuOpen(false)}><img src="/assets/firstbell-mark.svg" width="27" height="27" alt="" />FirstBell<span className="brand-dot">.</span></a>
       <nav aria-label="Main navigation" className={`nav-links ${menuOpen ? 'nav-open' : ''}`}>
-        {nav.map(item => <a key={item.id} href={`#${item.id}`} className={active === item.id ? 'active' : ''} onClick={() => setMenuOpen(false)}>{item.text}</a>)}
+        {nav.map(item => <a key={item.id} href={item.id === 'app' ? '/app/' : `#${item.id}`} className={active === item.id ? 'active' : ''} onClick={() => setMenuOpen(false)}>{item.text}</a>)}
       </nav>
       <div className="nav-actions">
         <div className="language-control">
@@ -130,13 +130,13 @@ export default function FirstBellLanding() {
           {languageOpen && <div className="language-menu"><button type="button" aria-pressed={language === 'en'} onClick={() => { setLanguage('en'); setLanguageOpen(false) }}>English {language === 'en' ? '✓' : ''}</button><button type="button" aria-pressed={language === 'zh'} onClick={() => { setLanguage('zh'); setLanguageOpen(false) }}>中文 {language === 'zh' ? '✓' : ''}</button></div>}
         </div>
         <button className="nav-tool theme-button" type="button" aria-label={t.theme} onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
-        <a className="nav-app" href="#app" onClick={() => setMenuOpen(false)}>{t.navigation[1]} <ArrowUpRight size={16} /></a>
+        <a className="nav-app" href="/app/" onClick={() => setMenuOpen(false)}>{t.navigation[1]} <ArrowUpRight size={16} /></a>
         <button className="nav-tool menu-button" type="button" aria-label={t.menu} aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>{menuOpen ? <X size={20} /> : <Menu size={20} />}</button>
       </div>
     </header>
     <main id="top">
       <div className="hero-frame">
-        <FloatingIconsHero title={t.hero} subtitle={t.heroSub} ctaText={t.heroCta} ctaHref="#app" icons={icons} className="landing-hero" />
+        <FloatingIconsHero title={t.hero} subtitle={t.heroSub} ctaText={t.heroCta} ctaHref="/app/" icons={icons} className="landing-hero" />
         <span className="hero-eyebrow">{t.eyebrow}</span>
         <span className="hero-index" aria-hidden="true">FB / 001</span>
       </div>
@@ -159,8 +159,8 @@ export default function FirstBellLanding() {
         </div>
       </section>
       <section id="about" className="editorial-section about-section" aria-labelledby="about-title"><div className="content-width about-grid"><div><SectionMarker>{t.aboutKicker}</SectionMarker><ScrollFloat id="about-title">{t.aboutTitle}</ScrollFloat><p className="section-intro">{t.aboutText}</p></div><div className="about-facts">{t.aboutFacts.map(([title, body], index) => <div key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></div>)}</div></div></section>
-      <section className="end-section"><div className="content-width"><SectionMarker>{t.endKicker}</SectionMarker><ScrollFloat>{t.endTitle}</ScrollFloat><a href="#app">{t.endCta}<ArrowUpRight size={19} /></a></div></section>
+      <section className="end-section"><div className="content-width"><SectionMarker>{t.endKicker}</SectionMarker><ScrollFloat>{t.endTitle}</ScrollFloat><a href="/app/">{t.endCta}<ArrowUpRight size={19} /></a></div></section>
     </main>
-    <footer className="site-footer"><div className="content-width"><ScrollFloat className="footer-statement" scrollStart="top 98%" scrollEnd="top 70%">{t.footerText}</ScrollFloat><div className="footer-grid"><div className="footer-brand"><a className="brand" href="#top"><img src="/assets/firstbell-mark.svg" width="27" height="27" alt="" />FirstBell<span className="brand-dot">.</span></a><small>© 2026 FirstBell. {t.footerNote}</small></div><div className="footer-col"><strong>{t.product}</strong><a href="#top">{t.navigation[0]}</a><a href="#app">{t.navigation[1]}</a><a href="#about">{t.navigation[2]}</a></div><div className="footer-col"><strong>{t.resources}</strong><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs} ↗</a><a href="https://docs.bnbchain.org/" target="_blank" rel="noreferrer">{t.bnbDocs} ↗</a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer">{t.tokenList} ↗</a></div><div className="footer-col"><strong>{t.community}</strong><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github} ↗</a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x} ↗</a><a href="#top">{t.top} ↑</a></div></div></div></footer>
+    <footer className="site-footer"><div className="content-width"><ScrollFloat className="footer-statement" scrollStart="top 98%" scrollEnd="top 70%">{t.footerText}</ScrollFloat><div className="footer-grid"><div className="footer-brand"><a className="brand" href="#top"><img src="/assets/firstbell-mark.svg" width="27" height="27" alt="" />FirstBell<span className="brand-dot">.</span></a><small>© 2026 FirstBell. {t.footerNote}</small></div><div className="footer-col"><strong>{t.product}</strong><a href="#top">{t.navigation[0]}</a><a href="/app/">{t.navigation[1]}</a><a href="#about">{t.navigation[2]}</a></div><div className="footer-col"><strong>{t.resources}</strong><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs} ↗</a><a href="https://docs.bnbchain.org/" target="_blank" rel="noreferrer">{t.bnbDocs} ↗</a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer">{t.tokenList} ↗</a></div><div className="footer-col"><strong>{t.community}</strong><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github} ↗</a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x} ↗</a><a href="#top">{t.top} ↑</a></div></div></div></footer>
   </>
 }
