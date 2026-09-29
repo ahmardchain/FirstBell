@@ -1,39 +1,25 @@
 # FirstBell UI sources
 
-Before building a new interface component, review the relevant examples from this catalog. Use an existing component when its interaction, accessibility, and license fit FirstBell; adapt its visual language to the product rather than copying an unrelated demo wholesale. Preserve attribution or license notices when required.
+Before building a new component, review a suitable source in this catalog and adapt its interaction to the product. Preserve required license notices.
 
-## Component libraries to check
-
-| Source | URL | Useful for |
+| Source | URL | Use |
 | --- | --- | --- |
-| Spectrum UI | https://ui.spectrumhq.in | Premium component treatments |
-| 21st.dev | https://21st.dev | Community React components and layouts |
-| shadcnblocks | https://shadcnblocks.com | shadcn page sections and blocks |
-| React Bits | https://reactbits.dev | Animated React components |
-| 8bitcn | https://8bitcn.com | Retro pixel style, only when the brief calls for it |
-| Evil Charts | https://evilcharts.com | Animated SVG charts |
-| Coss UI | https://coss.com/ui | Modern UI primitives |
-| Rare UI | https://rareui.com | Distinctive component patterns |
-| BeUI | https://beui.dev | Animated components |
+| 21st.dev | https://21st.dev | Floating icon hero source pattern |
+| React Bits | https://reactbits.dev/animations/logo-loop | Token asset logo loop |
+| shadcn/ui | https://ui.shadcn.com | Shared accessible primitives |
+| Spectrum UI | https://ui.spectrumhq.in | Premium treatments |
+| shadcnblocks | https://shadcnblocks.com | Page sections |
+| Rare UI | https://rareui.com | Distinctive components |
+| Coss UI | https://coss.com/ui | Modern primitives |
+| BeUI | https://beui.dev | Animated patterns |
+| Evil Charts | https://evilcharts.com | SVG data charts |
+| 8bitcn | https://8bitcn.com | Retro style only when requested |
 
-## Existing design references
+## System
 
-| Source | URL |
-| --- | --- |
-| UI Skills | https://ui-skills.com |
-| Design System Checklist | https://designsystemchecklist.com |
-| ReUI | https://reui.io/components |
-| Kinetics | https://kinetics.colorion.co |
-| Icon Creator | https://iconcreator.dev |
-| Vibe Prompts | https://vibeprompts.dev |
-| Animated Buttons | https://animatedbuttons.colorion.co |
-
-## FirstBell application
-
-1. Start with the screen's purpose, state changes, and mobile layout. Check the catalog for matching components and interactions before implementing one.
-2. Prefer source components that work with the existing React, TypeScript, Tailwind, and shadcn structure. Put shared primitives in `components/ui`.
-3. Keep the FirstBell system: dark ink surfaces, warm white type, restrained cobalt accents, authentic token artwork, clear hierarchy, and quiet motion. Avoid gradients, glow, generic AI icons, and decorative charts.
-4. Verify keyboard use, reduced motion, responsive composition, performance, and component licensing before shipping.
-5. Keep transaction states truthful: the interface must distinguish card payment, wallet funding, swap, and confirmed token delivery.
-
-The current floating hero was adapted from the user-supplied 21st.dev component prompt. Its tiles use Ondo token images bundled in `public/assets`.
+- Monochrome ink and warm white. Theme control switches light and dark surfaces; no ungrounded accent colors.
+- A translucent, blurred navigation bar and asset panel provide restrained glass treatment. Token images float directly, without surrounding icon tiles.
+- Motion clarifies a transition or adds quiet atmosphere. Respect reduced motion, keyboard focus, and mobile layouts.
+- English and Simplified Chinese copy are kept together in `src/demo.tsx`; switching languages persists locally and updates the document language.
+- The `components/ui/floating-icons-hero-section.tsx` component adapts the user-provided 21st.dev pattern for real Ondo token artwork. `components/ui/logo-loop.tsx` is adapted from React Bits; see `third_party/REACT_BITS_LICENSE.md`.
+- Card payments, wallet creation, quotes, and on-chain purchases are not connected. The amount panel and purchase preview must never imply a completed order or show fabricated quote data.

@@ -66,11 +66,11 @@ function FloatingIcon({
       aria-hidden="true"
     >
       <motion.div
-        className="flex size-14 items-center justify-center rounded-[18px] border border-border bg-card shadow-[0_14px_36px_rgba(0,0,0,.22)] md:size-[76px] md:rounded-[22px]"
+        className="flex size-14 items-center justify-center md:size-[76px]"
         animate={reducedMotion ? undefined : { y: [0, -7, 0, 7, 0], x: [0, 5, 0, -5, 0], rotate: [0, 4, 0, -4, 0] }}
         transition={{ duration: 6 + (index % 4) * 0.85, repeat: Infinity, ease: 'easeInOut' }}
       >
-        <iconData.icon className="size-9 md:size-12" />
+        <iconData.icon className="size-14 drop-shadow-[0_15px_20px_rgba(0,0,0,.4)] md:size-[76px]" />
       </motion.div>
     </motion.div>
   )
@@ -100,7 +100,6 @@ const FloatingIconsHero = React.forwardRef<HTMLElement, FloatingIconsHeroProps>(
           ))}
         </div>
         <div className="relative z-10 mx-auto max-w-[790px] text-center">
-          <p className="mb-5 text-[11px] font-semibold uppercase tracking-[.21em] text-accent">A clearer first step on-chain</p>
           <h1 className="text-balance text-[clamp(3rem,9vw,6.6rem)] font-semibold leading-[.98] tracking-[-.075em] text-foreground">{title}</h1>
           <p className="mx-auto mt-7 max-w-[510px] text-pretty text-base leading-relaxed text-muted-foreground md:text-lg">{subtitle}</p>
           <div className="mt-9">

@@ -25,3 +25,9 @@ Components use the default `/components/ui` path configured in `components.json`
 The five Ondo token icons are from [Ondo's official token list](https://github.com/ondoprotocol/ondo-global-markets-token-list/blob/main/tokenlist.json). The floating tiles repeat these five assets for visual composition. The demo does not imply purchase availability in every jurisdiction.
 
 Card checkout, wallet creation, quotes, simulation, swaps, and token delivery are not connected yet. Do not represent this preview as a working purchase flow.
+
+## Current interface
+
+The landing UI includes a floating token hero, the React Bits Logo Loop, active responsive navigation, English and Simplified Chinese, a dark/light monochrome theme, selectable Ondo asset contracts, an amount field, a transparent purchase preview, and direct BscScan links. Preferences persist in local storage. The UI does not collect payment details or execute trades; a checkout provider, wallet service, live quote source, and transaction tracking must be connected and verified before purchase can go live.
+
+Shared UI primitives live in `components/ui`, and site styles live in `src/styles.css`. The React Bits adaptation and its notice are in `components/ui/logo-loop.tsx` and `third_party/REACT_BITS_LICENSE.md`.
