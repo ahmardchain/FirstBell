@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FirstBell — Your first tokenized equity</title>
+<style>
+  :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f6f5f1;background:#0b0d10}
+  *{box-sizing:border-box}body{margin:0}.hero{min-height:100svh;position:relative;isolation:isolate;overflow:hidden;display:grid;place-items:center;padding:7rem 1.5rem;background:#0b0d10}
+  .hero:after{content:"";position:absolute;inset:1.25rem;border:1px solid #242830;border-radius:24px;z-index:-1;pointer-events:none}
+  .brand{position:absolute;top:2.6rem;left:max(2.8rem,5vw);display:flex;align-items:center;gap:.65rem;font-size:1.1rem;font-weight:750;letter-spacing:-.045em;z-index:2}.brand-mark{width:27px;height:27px}
+  .content{text-align:center;max-width:780px;z-index:1;margin-top:1.5rem}.eyebrow{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:#a9b4cf;margin-bottom:1.5rem}
+  h1{font-size:clamp(3rem,7vw,6.6rem);line-height:.99;letter-spacing:-.075em;margin:0;font-weight:700;text-wrap:balance}.sub{max-width:490px;margin:1.8rem auto 2.2rem;color:#a8abb3;font-size:clamp(1rem,1.6vw,1.17rem);line-height:1.55}
+  .cta{display:inline-flex;align-items:center;gap:1.3rem;padding:1rem 1.25rem;border-radius:10px;background:#f6f5f1;color:#171b20;text-decoration:none;font-size:.9rem;font-weight:750;transition:transform .2s,background .2s}.cta:hover{transform:translateY(-3px);background:white}.footnote{margin-top:1.2rem;font-size:.7rem;color:#777e88}
+  .tile{position:absolute;width:clamp(58px,6vw,84px);aspect-ratio:1;border-radius:20px;background:#181b20;border:1px solid #272b31;display:grid;place-items:center;box-shadow:0 14px 30px #0006;animation:drift 7s ease-in-out infinite alternate;z-index:0}.tile img{width:61%;height:61%;object-fit:contain}.tile span{position:absolute;bottom:-1.6rem;color:#858a94;font-size:.65rem;font-weight:650;letter-spacing:.06em}
+  .a{left:11%;top:19%}.b{left:32%;top:11%;animation-delay:-2s}.c{right:15%;top:20%;animation-delay:-4s}.d{left:14%;bottom:17%;animation-delay:-3s}.e{right:18%;bottom:14%;animation-delay:-1s}
+  @keyframes drift{from{transform:translate3d(0,-9px,0) rotate(-4deg)}to{transform:translate3d(7px,10px,0) rotate(5deg)}}
+  @media(max-width:650px){.hero{padding:7rem 1.25rem}.hero:after{inset:.65rem;border-radius:20px}.brand{left:2rem;top:2rem}.content{margin-top:0}h1{font-size:clamp(2.8rem,11vw,4.1rem)}.sub{max-width:330px}.tile{width:55px;border-radius:15px}.tile span{display:none}.a{left:9%;top:17%}.b{left:46%;top:11%}.c{right:7%;top:23%}.d{left:10%;bottom:15%}.e{right:11%;bottom:14%}}
+  .explore{padding:5rem max(1.5rem,7vw) 7rem;background:#111419}.explore h2{font-size:clamp(2rem,4vw,3.5rem);letter-spacing:-.055em;margin:0 0 .7rem}.explore p{color:#a8abb3;line-height:1.5;margin:0 0 2rem}.assets{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.asset{padding:1.5rem;background:#1b1f25;border:1px solid #2b3038;border-radius:18px}.asset img{width:42px;height:42px;object-fit:contain}.asset strong{display:block;margin-top:1.4rem;font-size:.95rem}.asset small{display:block;margin-top:.3rem;color:#989da7;font-size:.75rem;line-height:1.4}
+  @media(max-width:800px){.assets{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:420px){.assets{grid-template-columns:1fr}}
+  @media(prefers-reduced-motion:reduce){.tile{animation:none}.cta{transition:none}}
+</style>
+<main class="hero">
+  <div class="brand"><img class="brand-mark" src="assets/firstbell-mark.svg" alt="">FirstBell</div>
+  <div class="tile a"><img src="assets/aaplon.png" alt=""><span>AAPLon</span></div>
+  <div class="tile b"><img src="assets/nvdaon.png" alt=""><span>NVDAon</span></div>
+  <div class="tile c"><img src="assets/tslaon.png" alt=""><span>TSLAon</span></div>
+  <div class="tile d"><img src="assets/msfton.png" alt=""><span>MSFTon</span></div>
+  <div class="tile e"><img src="assets/amznon.png" alt=""><span>AMZNon</span></div>
+  <section class="content">
+    <div class="eyebrow">A clearer first step on-chain</div>
+    <h1>Your first tokenized equity starts here.</h1>
+    <p class="sub">Choose an asset, pay by card, and follow every step until the token arrives in your wallet. No seed phrase setup.</p>
+    <a class="cta" href="#explore" aria-label="Explore tokenized equities">Explore equities <span aria-hidden="true">↗</span></a>
+    <div class="footnote">Concept hero · Card checkout and purchase flow are not connected in this preview.</div>
+  </section>
+</main>
+<section class="explore" id="explore" aria-labelledby="explore-title">
+  <h2 id="explore-title">A familiar name. A new way in.</h2>
+  <p>Five Ondo tokenized equities on BNB Smart Chain, shown here as a visual preview. Availability and purchase eligibility must be checked before checkout.</p>
+  <div class="assets">
+    <div class="asset"><img src="assets/aaplon.png" alt=""><strong>AAPLon</strong><small>Apple · Ondo tokenized</small></div>
+    <div class="asset"><img src="assets/nvdaon.png" alt=""><strong>NVDAon</strong><small>NVIDIA · Ondo tokenized</small></div>
+    <div class="asset"><img src="assets/tslaon.png" alt=""><strong>TSLAon</strong><small>Tesla · Ondo tokenized</small></div>
+    <div class="asset"><img src="assets/msfton.png" alt=""><strong>MSFTon</strong><small>Microsoft · Ondo tokenized</small></div>
+    <div class="asset"><img src="assets/amznon.png" alt=""><strong>AMZNon</strong><small>Amazon · Ondo tokenized</small></div>
+  </div>
+</section>
+</html>

@@ -1,0 +1,45 @@
+{
+  "sourceTokenList": "https://github.com/ondoprotocol/ondo-global-markets-token-list/blob/main/tokenlist.json",
+  "assets": [
+    {
+      "symbol": "AAPLon",
+      "name": "Apple (Ondo Tokenized)",
+      "chainId": 56,
+      "address": "0x390a684EF9cADE28A7AD0DFa61AB1Eb3842618c4",
+      "source": "https://cdn.ondo.finance/tokens/logos/aaplon_160x160.png",
+      "file": "assets/aaplon.png"
+    },
+    {
+      "symbol": "TSLAon",
+      "name": "Tesla (Ondo Tokenized)",
+      "chainId": 56,
+      "address": "0x2494b603319d4D9F9715c9f4496d9E0364B59d93",
+      "source": "https://cdn.ondo.finance/tokens/logos/tslaon_160x160.png",
+      "file": "assets/tslaon.png"
+    },
+    {
+      "symbol": "NVDAon",
+      "name": "NVIDIA (Ondo Tokenized)",
+      "chainId": 56,
+      "address": "0xA9eE28C80f960B889dFbd1902055218cBa016F75",
+      "source": "https://cdn.ondo.finance/tokens/logos/nvdaon_160x160.png",
+      "file": "assets/nvdaon.png"
+    },
+    {
+      "symbol": "MSFTon",
+      "name": "Microsoft (Ondo Tokenized)",
+      "chainId": 56,
+      "address": "0x6Bfe75D1ad432050eA973C3A3DcD88F02e2444C3",
+      "source": "https://cdn.ondo.finance/tokens/logos/msfton_160x160.png",
+      "file": "assets/msfton.png"
+    },
+    {
+      "symbol": "AMZNon",
+      "name": "Amazon (Ondo Tokenized)",
+      "chainId": 56,
+      "address": "0x4553cFe1C09f37f38b12dC509F676964e392F8Fc",
+      "source": "https://cdn.ondo.finance/tokens/logos/amznon_160x160.png",
+      "file": "assets/amznon.png"
+    }
+  ]
+}
