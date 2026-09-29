@@ -27,7 +27,7 @@ const copy = {
     account: 'Your account', signOut: 'Log out', address: 'Wallet address', viewWallet: 'View on BscScan',
     linkEmail: 'Add email login', linkGoogle: 'Add Google login', linkNote: 'Link both sign-in methods here to use the same account and wallet.',
     balance: 'BNB balance', positionsValue: 'Token positions', refresh: 'Refresh balances', walletLoading: 'Preparing your wallet',
-    loading: 'Reading BNB Smart Chain', error: 'Balances could not be read. Try again.',
+    loading: 'Reading BNB Smart Chain', error: 'Balances could not be read. Try again.', loadingValue: 'Loading', unavailableValue: 'Unavailable',
     source: 'Live on-chain quantities. No USD valuation or market price is shown.',
     deposit: 'Deposit', withdraw: 'Withdraw', transferNote: 'Transfers are unavailable until deposit and withdrawal services are connected.',
     positions: 'Positions', activity: 'Activity', search: 'Search',
@@ -44,7 +44,7 @@ const copy = {
     account: '你的账户', signOut: '退出登录', address: '钱包地址', viewWallet: '在 BscScan 查看',
     linkEmail: '添加邮箱登录', linkGoogle: '添加 Google 登录', linkNote: '在此绑定两种登录方式，即可使用同一个账户和钱包。',
     balance: 'BNB 余额', positionsValue: '代币持仓', refresh: '刷新余额', walletLoading: '正在准备钱包',
-    loading: '正在读取 BNB 智能链', error: '无法读取余额，请重试。',
+    loading: '正在读取 BNB 智能链', error: '无法读取余额，请重试。', loadingValue: '读取中', unavailableValue: '暂不可用',
     source: '链上实时数量。此处不显示美元估值或市场价格。',
     deposit: '充值', withdraw: '提现', transferNote: '充值与提现服务接入后，才能进行转账。',
     positions: '持仓', activity: '活动', search: '搜索',
@@ -105,6 +105,7 @@ function PortfolioView({ assets, saved, language, onExplore, onInspect, onToggle
   const [section, setSection] = React.useState<Section>('positions')
   const [search, setSearch] = React.useState('')
   const [hidden, setHidden] = React.useState(false)
+  const balancePlaceholder = account.error ? t.unavailableValue : t.loadingValue
   const savedAssets = assets.filter(asset => saved.includes(asset.symbol))
   const visibleSaved = savedAssets.filter(asset => `${asset.company} ${asset.symbol}`.toLowerCase().includes(search.trim().toLowerCase()))
   const positions = (account.balances?.tokens ?? []).filter(token => token.raw > 0n)
@@ -137,7 +138,7 @@ function PortfolioView({ assets, saved, language, onExplore, onInspect, onToggle
       </motion.div> : <motion.div key="account" initial={reduceMotion ? false : { opacity: 0, x: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
         <div className="portfolio-preview-bar"><span className="app-label">FIRSTBELL / BNB SMART CHAIN</span><button type="button" onClick={account.logout}>{t.signOut}</button></div>
         <div className="portfolio-account-head"><span className="portfolio-avatar"><UserRound size={22} strokeWidth={1.6} /></span><div><span className="app-label">{account.email || 'FIRSTBELL'}</span><h1 id="portfolio-title">{t.account}</h1></div></div>
-        <div className="portfolio-balance"><div className="portfolio-balance-label"><span>{t.balance}</span><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(value => !value)}>{hidden ? <EyeOff size={20} /> : <Eye size={20} />}</button><button type="button" aria-label={t.refresh} disabled={!account.address || account.loading} onClick={account.refresh}><RefreshCw size={17} /></button></div><div className="portfolio-balance-value" aria-live="polite">{hidden ? '••••••' : account.balances ? `${displayQuantity(account.balances.bnb)} BNB` : '—'}</div><p>{t.positionsValue} <strong>{account.balances ? account.balances.tokens.filter(token => token.raw > 0n).length : '—'}</strong></p><small>{!account.walletReady || !account.address ? t.walletLoading : account.loading ? t.loading : account.error ? t.error : t.source}</small></div>
+        <div className="portfolio-balance"><div className="portfolio-balance-label"><span>{t.balance}</span><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(value => !value)}>{hidden ? <EyeOff size={20} /> : <Eye size={20} />}</button><button type="button" aria-label={t.refresh} disabled={!account.address || account.loading} onClick={account.refresh}><RefreshCw size={17} /></button></div><div className="portfolio-balance-value" aria-live="polite">{hidden ? '••••••' : account.balances ? `${displayQuantity(account.balances.bnb)} BNB` : balancePlaceholder}</div><p>{t.positionsValue} <strong>{account.balances ? account.balances.tokens.filter(token => token.raw > 0n).length : balancePlaceholder}</strong></p><small>{!account.walletReady || !account.address ? t.walletLoading : account.loading ? t.loading : account.error ? t.error : t.source}</small></div>
         {account.address && <div className="portfolio-wallet-address"><span>{t.address}</span><a href={`https://bscscan.com/address/${account.address}`} target="_blank" rel="noreferrer" title={account.address}>{account.address.slice(0, 8)}…{account.address.slice(-6)} <ArrowUpRight size={14} /><span className="sr-only">{t.viewWallet}</span></a></div>}
         <div className="portfolio-action-row"><button type="button" disabled>{t.deposit}</button><button type="button" disabled>{t.withdraw}</button></div>
         <p className="portfolio-action-note">{t.transferNote}</p>

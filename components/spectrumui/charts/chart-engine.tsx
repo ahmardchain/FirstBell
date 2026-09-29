@@ -1032,11 +1032,11 @@ export function ChartDataTable({
   );
 }
 
-export function Stat({ ready, children }: { ready: boolean; children: React.ReactNode }) {
+export function Stat({ ready, children, fallback = 'Unavailable' }: { ready: boolean; children: React.ReactNode; fallback?: string }) {
   if (ready) return <>{children}</>;
   return (
-    <span aria-hidden className="text-neutral-300 dark:text-neutral-600">
-      —
+    <span role="status" className="text-neutral-500 dark:text-neutral-400">
+      {fallback}
     </span>
   );
 }

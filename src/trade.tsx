@@ -27,7 +27,7 @@ const words = {
     source: 'ASSET RECORD', issuer: 'Issuer', network: 'Network', contract: 'Contract',
     inspect: 'Inspect asset file', scan: 'View contract on BscScan',
     buy: 'Buy', sell: 'Sell', sheetTitle: 'Trade', buyAmount: 'Quantity', sellAmount: 'Quantity',
-    receive: 'Estimated receive', unavailable: 'Quote unavailable', balance: 'Wallet balance unavailable',
+    receive: 'Estimated receive', unavailable: 'Quote unavailable', balance: 'Wallet balance unavailable', balanceLabel: 'Wallet balance', noPrice: 'No quote', noChange: 'No data', noBalance: 'Not connected',
     sheetNote: 'Live quotes and order execution are not connected. No payment or trade will be submitted.',
     close: 'Close trade sheet', choose: 'Choose a tokenized equity',
   },
@@ -39,7 +39,7 @@ const words = {
     source: '资产记录', issuer: '发行方', network: '网络', contract: '合约',
     inspect: '查看资产资料', scan: '在 BscScan 查看合约',
     buy: '买入', sell: '卖出', sheetTitle: '交易', buyAmount: '数量', sellAmount: '数量',
-    receive: '预计收到', unavailable: '暂无报价', balance: '暂无钱包余额',
+    receive: '预计收到', unavailable: '暂无报价', balance: '暂无钱包余额', balanceLabel: '钱包余额', noPrice: '暂无报价', noChange: '暂无数据', noBalance: '未连接',
     sheetNote: '实时报价与订单执行尚未接入。这里不会收款或提交交易。',
     close: '关闭交易面板', choose: '选择代币化股票',
   },
@@ -108,7 +108,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
           {assets.map(candidate => <button type="button" role="option" aria-selected={asset.symbol === candidate.symbol} key={candidate.symbol} onClick={() => { onAssetChange(candidate); setSelectorOpen(false) }}><TokenMark asset={candidate} /><span><strong>{candidate.symbol}</strong><small>{candidate.company}</small></span>{candidate.symbol === asset.symbol && <Check size={17} />}</button>)}
         </motion.div>}</AnimatePresence>
       </div>
-      <div className="trade-header-right"><span className="trade-network"><i /> BNB SMART CHAIN</span><div className="trade-price-pair"><span><small>{t.lastPrice}</small><strong>—</strong></span><span><small>{t.change}</small><strong>—</strong></span></div></div>
+      <div className="trade-header-right"><span className="trade-network"><i /> BNB SMART CHAIN</span><div className="trade-price-pair"><span><small>{t.lastPrice}</small><strong className="trade-unavailable-value">{t.noPrice}</strong></span><span><small>{t.change}</small><strong className="trade-unavailable-value">{t.noChange}</strong></span></div></div>
     </div>
 
     <div className="trade-body">
@@ -138,7 +138,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
       <div className="trade-ticket-head"><span>{t.sheetTitle} / {asset.symbol}</span><span>{t.quote}</span></div>
       <div className="trade-ticket-fields"><div className="trade-ticket-market"><small>{t.orderType}</small><strong>{t.orderMarket}</strong></div><label className="trade-ticket-quantity"><small>{t.quantity}</small><span><input id="trade-ticket-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><strong>{asset.symbol}</strong></span></label></div>
       <div className="trade-ticket-slider"><input type="range" min="0" max="100" value="0" disabled aria-label={t.allocation} /><span>{t.balance}</span></div>
-      <div className="trade-dock-buttons"><button type="button" onClick={event => openSheet('buy', event)}>{t.buy}</button><button type="button" onClick={event => openSheet('sell', event)}>{t.sell}</button></div>
+      <div className="trade-dock-buttons"><button type="button" className="trade-buy" onClick={event => openSheet('buy', event)}>{t.buy}</button><button type="button" className="trade-sell" onClick={event => openSheet('sell', event)}>{t.sell}</button></div>
     </section>
 
     <AnimatePresence>{side && <div className="trade-sheet-layer">
@@ -146,13 +146,13 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
       <motion.section ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="trade-sheet-heading" className="trade-sheet" initial={reduceMotion ? false : { y: 100, opacity: 0, filter: 'blur(2px)' }} animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 0 } : { y: 100, opacity: 0, filter: 'blur(2px)' }} transition={{ duration: reduceMotion ? 0 : .4, ease: [.22, 1, .36, 1] }}>
         <div className="trade-sheet-handle" aria-hidden="true" />
         <div className="trade-sheet-header"><div><span>{t.sheetTitle} / {asset.symbol}</span><h2 id="trade-sheet-heading">{side === 'buy' ? t.buy : t.sell} {asset.symbol}</h2></div><button type="button" onClick={() => setSide(null)} aria-label={t.close}><X size={22} /></button></div>
-        <div className="trade-sheet-tabs" role="tablist" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" role="tab" key={value} aria-selected={side === value} className={`motion-tab ${side === value ? 'active' : ''}`} onClick={() => setSide(value)}>{side === value && <motion.span className="motion-tab-indicator" layoutId="trade-side-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[value]}</span></button>)}</div>
+        <div className="trade-sheet-tabs" role="tablist" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" role="tab" key={value} aria-selected={side === value} className={`motion-tab trade-${value} ${side === value ? 'active' : ''}`} onClick={() => setSide(value)}>{side === value && <motion.span className="motion-tab-indicator" layoutId="trade-side-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[value]}</span></button>)}</div>
         <label className="trade-amount-label" htmlFor="trade-amount">{side === 'buy' ? t.buyAmount : t.sellAmount}</label>
         <div className="trade-amount-field"><input id="trade-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><span>{asset.symbol}</span></div>
-        <div className="trade-sheet-row"><span>{t.receive}</span><strong>— {side === 'buy' ? asset.symbol : 'USD'}</strong></div>
-        {side === 'sell' && <div className="trade-sheet-row"><span>{t.balance}</span><strong>—</strong></div>}
+        <div className="trade-sheet-row"><span>{t.receive}</span><strong>{t.noPrice}</strong></div>
+        {side === 'sell' && <div className="trade-sheet-row"><span>{t.balanceLabel}</span><strong>{t.noBalance}</strong></div>}
         <div className="trade-sheet-status"><span>{t.unavailable}</span><span>BNB SMART CHAIN</span></div>
-        <button type="button" className="trade-submit" disabled>{t.unavailable}</button>
+        <button type="button" className={`trade-submit trade-${side}`} disabled>{t.unavailable}</button>
         <p className="trade-sheet-note">{t.sheetNote}</p>
       </motion.section>
     </div>}</AnimatePresence>
