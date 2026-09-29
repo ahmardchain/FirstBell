@@ -1,13 +1,13 @@
 import * as React from 'react'
 import { createRoot } from 'react-dom/client'
-import FloatingIconsHeroDemo from './demo'
-import FirstBellApp from './app'
 import './styles.css'
 
 const isApp = window.location.pathname.replace(/\/+$/, '') === '/app'
+const FirstBellApp = React.lazy(() => import('./app-entry'))
+const FloatingIconsHeroDemo = React.lazy(() => import('./demo'))
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isApp ? <FirstBellApp /> : <FloatingIconsHeroDemo />}
+    <React.Suspense fallback={null}>{isApp ? <FirstBellApp /> : <FloatingIconsHeroDemo />}</React.Suspense>
   </React.StrictMode>,
 )
