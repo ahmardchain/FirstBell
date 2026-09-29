@@ -29,7 +29,7 @@ Read `AGENTS.md` before making interface changes. Review matching components fro
 - Typography: Inter variable for display/body, IBM Plex Mono for labels and technical identifiers. Chinese uses the platform CJK sans fallback.
 - Spacing: generous section padding, tight technical rows, compact navigation. Borders carry section separation; the floating hero tiles are the single elevated surface.
 - Motion: floating hero tiles, a restrained logo loop, and React Bits Scroll Float on editorial headings and the footer statement. No scroll prompts, ornamental parallax, or forced smooth scrolling. Respect reduced motion.
-- Product contract: the App link opens `/app`. Home provides a searchable, saveable index and asset files; Trade shows the proposed path without accepting payments; Agent answers fixed source questions; Portfolio shows locally saved assets, not wallet holdings. No invented prices or execution claims.
+- Product contract: the App link opens `/app`. Home provides a searchable, saveable index and asset files; Trade has a Spectrum UI market chart empty state, asset selector, and Buy/Sell sheet with no payment method. It accepts no order while a verified quote and execution integration are absent. Agent answers fixed source questions; Portfolio shows locally saved assets, not wallet holdings. No invented prices or execution claims.
 
 ## App direction
 

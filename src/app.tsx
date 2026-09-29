@@ -1,7 +1,8 @@
 import * as React from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, ExternalLink, Globe2, House, Menu, Moon, Search, Send, Sparkles, Sun, X, ChartNoAxesCombined, Wallet } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Bookmark, ChevronDown, ExternalLink, Globe2, House, Menu, Moon, Search, Send, Sparkles, Sun, X, ChartNoAxesCombined, Wallet } from 'lucide-react'
 import manifest from '@/asset-sources.json'
+import { TradeWorkspace } from './trade'
 import './app.css'
 
 type Language = 'en' | 'zh'
@@ -32,13 +33,7 @@ const copy = {
     open: 'Open asset file', save: 'Save asset', unsave: 'Remove saved asset',
     detailKicker: 'ASSET FILE', detailIntro: 'A tokenized equity has its own issuer, contract and terms. Verify each one before making a decision.',
     exploreContract: 'View on BscScan', tokenList: 'View token list', caution: 'Availability and rights depend on the issuer terms and your location.',
-    tradeKicker: 'FIRSTBELL / TRADE', tradeTitle: 'A clearer path from card to chain.',
-    tradeIntro: 'Choose an asset and review its on-chain identity. Live quotes and execution are not connected yet.',
-    choose: 'Choose an asset', route: 'THE ROUTE', card: 'Card funding', cardText: 'On-ramp integration planned',
-    verify: 'Verify the asset', verifyText: 'Issuer and BSC contract available now',
-    receive: 'Receive token', receiveText: 'Execution integration pending',
-    unavailable: 'Trading is not live yet', tradeNotice: 'No payment will be collected here. Use the asset file to review the verified contract and issuer source.',
-    inspect: 'Inspect asset',
+    choose: 'Choose an asset',
     agentKicker: 'FIRSTBELL / AGENT', agentTitle: 'Ask about the asset.',
     agentIntro: 'A source-based research guide for the five assets in this index.',
     agentPrompt: 'Ask about issuer, contract, or network', agentSend: 'Send question',
@@ -69,11 +64,7 @@ const copy = {
     open: '打开资产资料', save: '收藏资产', unsave: '取消收藏',
     detailKicker: '资产资料', detailIntro: '代币化股票有自己的发行方、合约和条款。请核实这些信息后再作决定。',
     exploreContract: '在 BscScan 查看', tokenList: '查看代币列表', caution: '可用地区和所代表的权益取决于发行方条款。',
-    tradeKicker: 'FIRSTBELL / 交易', tradeTitle: '从银行卡到链上，路径更清晰。',
-    tradeIntro: '选择资产，查看其链上身份。实时报价与交易执行尚未接入。',
-    choose: '选择资产', route: '交易路径', card: '银行卡入金', cardText: '入金服务计划接入',
-    verify: '核实资产', verifyText: '现可查看发行方与 BSC 合约', receive: '接收代币', receiveText: '交易执行尚未接入',
-    unavailable: '交易尚未开放', tradeNotice: '这里不会收取任何款项。请在资产资料中核实合约和发行方来源。', inspect: '查看资产',
+    choose: '选择资产',
     agentKicker: 'FIRSTBELL / 助手', agentTitle: '了解这项资产。',
     agentIntro: '根据目录中五项资产的公开来源回答研究问题。',
     agentPrompt: '询问发行方、合约或网络', agentSend: '发送问题',
@@ -104,7 +95,7 @@ export default function FirstBellApp() {
   const [filter, setFilter] = React.useState<'all' | 'saved'>('all')
   const [saved, setSaved] = React.useState<string[]>(() => { try { const value = JSON.parse(localStorage.getItem('firstbell-saved') ?? '[]'); return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [] } catch { return [] } })
   const [selected, setSelected] = React.useState<Asset | null>(null)
-  const [workingAsset, setWorkingAsset] = React.useState<Asset>(assets[0])
+  const [workingAsset, setWorkingAsset] = React.useState<Asset>(assets.find(a => a.symbol === 'NVDAon')!)
   const [agentAsset, setAgentAsset] = React.useState<Asset>(assets[0])
   const [question, setQuestion] = React.useState('')
   const [messages, setMessages] = React.useState<{ id: number; role: 'user' | 'guide'; text: string }[]>([])
@@ -183,7 +174,7 @@ export default function FirstBellApp() {
           {visible.length ? <div className="asset-grid">{visible.map(assetCard)}</div> : <div className="app-empty"><Search size={26} strokeWidth={1.2} /><h3>{t.noResults}</h3><p>{filter === 'saved' && saved.length === 0 ? t.emptyBody : t.emptySearch}</p><button type="button" onClick={() => { setFilter('all'); setQuery('') }}>{t.clear}<ArrowRight size={16} /></button></div>}
         </section>
       </>}
-      {tab === 'trade' && <section className="app-workspace"><div className="workspace-lead"><p className="app-label">{t.tradeKicker}</p><h1>{t.tradeTitle}</h1><p>{t.tradeIntro}</p></div><div className="trade-layout"><div className="trade-select"><span className="app-label">01 / {t.choose}</span><div className="trade-options">{assets.map(asset => <button type="button" key={asset.symbol} onClick={() => setWorkingAsset(asset)} className={workingAsset.symbol === asset.symbol ? 'selected' : ''} aria-pressed={workingAsset.symbol === asset.symbol}><AssetMark asset={asset} /><span><strong>{asset.symbol}</strong><small>{asset.company}</small></span>{workingAsset.symbol === asset.symbol ? <Check size={18} /> : <ArrowRight size={18} />}</button>)}</div></div><div className="trade-route"><div className="trade-route-heading"><span className="app-label">02 / {t.route}</span><strong>{workingAsset.symbol}</strong></div><div className="trade-large-mark"><AssetMark asset={workingAsset} /></div><div className="route-steps"><div><span>01</span><p><strong>{t.card}</strong><small>{t.cardText}</small></p><span className="route-pending">—</span></div><div><span>02</span><p><strong>{t.verify}</strong><small>{t.verifyText}</small></p><Check size={16} /></div><div><span>03</span><p><strong>{t.receive}</strong><small>{t.receiveText}</small></p><span className="route-pending">—</span></div></div><button className="trade-disabled" type="button" disabled>{t.unavailable}</button><p className="trade-notice">{t.tradeNotice}</p><button type="button" className="text-link" onClick={() => setSelected(workingAsset)}>{t.inspect}<ArrowUpRight size={17} /></button></div></div></section>}
+      {tab === 'trade' && <TradeWorkspace assets={assets} asset={workingAsset} onAssetChange={setWorkingAsset} onInspect={setSelected} language={language} />}
       {tab === 'agent' && <section className="app-workspace"><div className="workspace-lead"><p className="app-label">{t.agentKicker}</p><h1>{t.agentTitle}</h1><p>{t.agentIntro}</p></div><div className="agent-layout"><aside className="agent-assets"><p className="app-label">01 / {t.choose}</p>{assets.map(asset => <button type="button" key={asset.symbol} className={agentAsset.symbol === asset.symbol ? 'selected' : ''} onClick={() => { setAgentAsset(asset); setMessages([]) }}><AssetMark asset={asset} /><span>{asset.symbol}<small>{asset.company}</small></span><ArrowRight size={16} /></button>)}</aside><div className="agent-conversation"><div className="agent-conversation-header"><AssetMark asset={agentAsset} /><div><strong>{agentAsset.symbol}</strong><small>{t.source}</small></div></div><div className="agent-messages" aria-live="polite"><div className="agent-message guide"><span>FIRSTBELL / 01</span><p>{t.guideHello}</p></div>{messages.map(m => <motion.div initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }} key={m.id} className={`agent-message ${m.role}`}><span>{m.role === 'user' ? 'YOU' : 'FIRSTBELL / SOURCE'}</span><p>{m.text}</p>{m.role === 'guide' && <a href={manifest.sourceTokenList} target="_blank" rel="noreferrer">{t.tokenList}<ArrowUpRight size={14} /></a>}</motion.div>)}</div><div className="agent-compose"><div className="agent-quick">{t.quick.map(prompt => <button key={prompt} type="button" onClick={() => answer(prompt)}>{prompt}<ArrowUpRight size={14} /></button>)}</div><form onSubmit={event => { event.preventDefault(); answer(question) }}><label className="sr-only" htmlFor="agent-question">{t.agentPrompt}</label><input id="agent-question" value={question} onChange={event => setQuestion(event.target.value)} placeholder={t.agentPrompt} /><button type="submit" disabled={!question.trim()} aria-label={t.agentSend}><Send size={18} /></button></form><small>{t.agentNote}</small></div></div></div></section>}
       {tab === 'portfolio' && <section className="app-workspace"><div className="workspace-lead"><p className="app-label">{t.portfolioKicker}</p><h1>{t.portfolioTitle}</h1><p>{t.portfolioIntro}</p></div><div className="portfolio-bar"><h2>{t.savedHeading} <span>0{saved.length}</span></h2><span>{t.local}</span></div>{saved.length ? <div className="asset-grid">{assets.filter(asset => saved.includes(asset.symbol)).map(assetCard)}</div> : <div className="portfolio-empty"><Bookmark size={31} strokeWidth={1.25} /><h2>{t.emptyTitle}</h2><p>{t.emptyBody}</p><button type="button" onClick={() => switchTab('home')}>{t.goHome}<ArrowUpRight size={18} /></button></div>}</section>}
     </main>
