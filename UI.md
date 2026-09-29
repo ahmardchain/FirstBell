@@ -34,7 +34,7 @@ Read `AGENTS.md` before making interface changes. Review matching components fro
 ## App direction
 
 - Reference: Daybreak's catalog hierarchy and mobile navigation supplied by the user. FirstBell uses its own black/white editorial system, original mark and source-backed Ondo assets.
-- Home: dotted true-white default canvas, large monochrome feature, compact rounded asset rows with transparent company marks. Inter is the display/body face and IBM Plex Mono identifies contracts, labels, and chain records.
+- Home: plain true-white default canvas, large monochrome feature, compact rounded asset rows with transparent company marks. Inter is the display/body face and IBM Plex Mono identifies contracts, labels, and chain records.
 - Desktop: compact top navigation. Mobile: four-item persistent bottom navigation, exactly Home, Trade, Agent, Portfolio in English; responsive Chinese labels.
 - Motion: brief card entrances and a floating feature mark; reduced-motion users get static presentation. Sharp borders carry structure; no fabricated chart or price.
 - Trade: compact asset and unavailable quote header, 15m / 1h / 4h / 1D timeframe pills, verified-feed chart empty state, and a bottom Market/quantity ticket. The balance slider stays unavailable until a wallet balance is connected. Equal Buy and Sell pills open the existing disclosure sheet; execution remains disabled.
