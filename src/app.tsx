@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, ArrowUpRight, Bookmark, ChevronDown, ExternalLink, Globe2, House, Menu, Moon, Search, Sparkles, Sun, X, ChartNoAxesCombined, Wallet } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Bookmark, ChevronDown, ExternalLink, Globe2, House, Menu, Moon, Search, Sparkles, Sun, X, ChartNoAxesCombined, ChartPie } from 'lucide-react'
 import manifest from '@/asset-sources.json'
 import { AIChatCard } from '@/components/spectrumui/ai-chat-card'
 import { TradeWorkspace } from './trade'
@@ -17,7 +17,7 @@ type Asset = (typeof assets)[number]
 const scan = (asset: Asset) => `https://bscscan.com/token/${asset.address}`
 const NAV: { id: Tab; icon: typeof House }[] = [
   { id: 'home', icon: House }, { id: 'trade', icon: ChartNoAxesCombined },
-  { id: 'agent', icon: Sparkles }, { id: 'portfolio', icon: Wallet },
+  { id: 'agent', icon: Sparkles }, { id: 'portfolio', icon: ChartPie },
 ]
 
 const copy = {
@@ -46,10 +46,7 @@ const copy = {
     answerSelect: 'Include a company or token symbol such as NVDAon, TSLAon, or AAPLon so I can look up its record.',
     answerOther: 'I can check this asset’s issuer, contract address, or network. Ask one of those questions.',
     agentNote: 'This guide uses fixed source records. It is not a live AI model or investment advice.',
-    portfolioKicker: 'FIRSTBELL / PORTFOLIO', portfolioTitle: 'Keep the assets you follow close.',
-    portfolioIntro: 'Your saved assets stay in this browser. Wallet holdings are not connected.',
-    savedHeading: 'Saved assets', emptyTitle: 'Nothing saved yet.', emptyBody: 'Bookmark an asset on Home to add it here.',
-    goHome: 'Explore assets', local: 'Saved locally on this device',
+    emptyBody: 'Bookmark an asset on Home to add it here.',
     footer: 'Research the token, not just the ticker.', docs: 'Documentation', github: 'GitHub', x: 'BNB Chain on X', site: 'Website',
   },
   zh: {
@@ -76,10 +73,7 @@ const copy = {
     answerSelect: '请注明公司或代币代码，例如 NVDAon、TSLAon 或 AAPLon，以便我查询对应记录。',
     answerOther: '我可以核实这项资产的发行方、合约地址或网络。请问其中一个问题。',
     agentNote: '本指南基于固定的公开记录，不是实时 AI 模型或投资建议。',
-    portfolioKicker: 'FIRSTBELL / 资产', portfolioTitle: '随时查看你关注的资产。',
-    portfolioIntro: '收藏保存在当前浏览器中。钱包持仓尚未连接。',
-    savedHeading: '已收藏资产', emptyTitle: '还没有收藏。', emptyBody: '在首页收藏一项资产，即可在这里看到。',
-    goHome: '探索资产', local: '保存在此设备上',
+    emptyBody: '在首页收藏一项资产，即可在这里看到。',
     footer: '研究代币，不止看股票代码。', docs: '项目文档', github: 'GitHub', x: 'BNB Chain 的 X', site: '网站',
   },
 }
@@ -91,7 +85,10 @@ function AssetMark({ asset, className = '' }: { asset: Asset; className?: string
 export default function FirstBellApp() {
   const [language, setLanguage] = React.useState<Language>(() => localStorage.getItem('firstbell-language') === 'zh' ? 'zh' : 'en')
   const [theme, setTheme] = React.useState<Theme>(() => localStorage.getItem('firstbell-theme') === 'dark' ? 'dark' : 'light')
-  const [tab, setTab] = React.useState<Tab>('home')
+  const [tab, setTab] = React.useState<Tab>(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab')
+    return NAV.some(item => item.id === requested) ? requested as Tab : 'home'
+  })
   const [query, setQuery] = React.useState('')
   const [filter, setFilter] = React.useState<'all' | 'saved'>('all')
   const [saved, setSaved] = React.useState<string[]>(() => { try { const value = JSON.parse(localStorage.getItem('firstbell-saved') ?? '[]'); return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [] } catch { return [] } })
@@ -124,7 +121,11 @@ export default function FirstBellApp() {
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = previous; previousFocus?.focus() }
   }, [selected])
 
-  const switchTab = (id: Tab) => { setTab(id); setMobileMenu(false); window.scrollTo({ top: 0, behavior: 'instant' }) }
+  const switchTab = (id: Tab) => {
+    setTab(id); setMobileMenu(false)
+    window.history.replaceState(null, '', id === 'home' ? '/app/' : `/app/?tab=${id}`)
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }
   const toggleSaved = (symbol: string) => setSaved(list => list.includes(symbol) ? list.filter(s => s !== symbol) : [...list, symbol])
   const answer = (prompt: string) => {
     const q = prompt.trim()
