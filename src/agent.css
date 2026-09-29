@@ -39,3 +39,8 @@
 @media(max-width:760px) { .agent-workspace { min-height:calc(100svh - 68px); padding:20px 0 12px; } .ai-chat-card { min-height:calc(100svh - 176px); } }
 @media(max-width:540px) { .ai-chat-header { padding:20px; } .ai-chat-body { min-height:260px; } .ai-chat-transcript { padding:20px; max-height:calc(100svh - 410px); } .ai-chat-composer-wrap { padding:0 14px 17px; } .ai-chat-composer-actions>span { font-size:9px; } }
 @media(prefers-reduced-motion:reduce) { .ai-chat-caret { animation:none; } }
+
+.ai-chat-card { border-radius:16px; overflow:hidden; }
+.ai-chat-composer,.ai-chat-message,.ai-chat-icon { border-radius:16px; }
+.ai-chat-reset,.ai-chat-send { border-radius:999px; }
+@media(max-width:760px) { .ai-chat-card { min-height:calc(100svh - 175px); } }

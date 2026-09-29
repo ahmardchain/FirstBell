@@ -21,22 +21,24 @@ type Language = 'en' | 'zh'
 const words = {
   en: {
     label: 'FIRSTBELL / TRADE', chart: 'Chart', market: 'MARKET / BNB SMART CHAIN',
+    lastPrice: 'Last price', change: '24h change', orderType: 'Order type', orderMarket: 'Market', quantity: 'Quantity', allocation: 'Available balance', timeframe: 'Chart timeframe',
     select: 'Select asset', quote: 'Live quote unavailable', noData: 'No token price history yet',
     noDataBody: 'A verified market feed is needed before candles and prices can be shown.',
     source: 'ASSET RECORD', issuer: 'Issuer', network: 'Network', contract: 'Contract',
     inspect: 'Inspect asset file', scan: 'View contract on BscScan',
-    buy: 'Buy', sell: 'Sell', sheetTitle: 'Trade', buyAmount: 'Amount to spend', sellAmount: 'Amount to sell',
+    buy: 'Buy', sell: 'Sell', sheetTitle: 'Trade', buyAmount: 'Quantity', sellAmount: 'Quantity',
     receive: 'Estimated receive', unavailable: 'Quote unavailable', balance: 'Wallet balance unavailable',
     sheetNote: 'Live quotes and order execution are not connected. No payment or trade will be submitted.',
     close: 'Close trade sheet', choose: 'Choose a tokenized equity',
   },
   zh: {
     label: 'FIRSTBELL / 交易', chart: '图表', market: '市场 / BNB 智能链',
+    lastPrice: '最新价格', change: '24小时涨跌', orderType: '订单类型', orderMarket: '市价', quantity: '数量', allocation: '可用余额', timeframe: '图表周期',
     select: '选择资产', quote: '暂无实时报价', noData: '暂无代币价格历史',
     noDataBody: '接入经过核实的行情数据后，才能显示 K 线和价格。',
     source: '资产记录', issuer: '发行方', network: '网络', contract: '合约',
     inspect: '查看资产资料', scan: '在 BscScan 查看合约',
-    buy: '买入', sell: '卖出', sheetTitle: '交易', buyAmount: '计划花费', sellAmount: '计划卖出',
+    buy: '买入', sell: '卖出', sheetTitle: '交易', buyAmount: '数量', sellAmount: '数量',
     receive: '预计收到', unavailable: '暂无报价', balance: '暂无钱包余额',
     sheetNote: '实时报价与订单执行尚未接入。这里不会收款或提交交易。',
     close: '关闭交易面板', choose: '选择代币化股票',
@@ -60,12 +62,12 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const [selectorOpen, setSelectorOpen] = React.useState(false)
   const [side, setSide] = React.useState<Side | null>(null)
   const [amount, setAmount] = React.useState('')
+  const [timeframe, setTimeframe] = React.useState<'15m' | '1h' | '4h' | '1D'>('15m')
   const sheetRef = React.useRef<HTMLElement>(null)
   const triggerRef = React.useRef<HTMLButtonElement | null>(null)
 
   const openSheet = (nextSide: Side, event: React.MouseEvent<HTMLButtonElement>) => {
     triggerRef.current = event.currentTarget
-    setAmount('')
     setSelectorOpen(false)
     setSide(nextSide)
   }
@@ -105,17 +107,17 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
           {assets.map(candidate => <button type="button" role="option" aria-selected={asset.symbol === candidate.symbol} key={candidate.symbol} onClick={() => { onAssetChange(candidate); setSelectorOpen(false) }}><TokenMark asset={candidate} /><span><strong>{candidate.symbol}</strong><small>{candidate.company}</small></span>{candidate.symbol === asset.symbol && <Check size={17} />}</button>)}
         </motion.div>}</AnimatePresence>
       </div>
-      <span className="trade-network"><i /> BNB SMART CHAIN</span>
+      <div className="trade-header-right"><span className="trade-network"><i /> BNB SMART CHAIN</span><div className="trade-price-pair"><span><small>{t.lastPrice}</small><strong>—</strong></span><span><small>{t.change}</small><strong>—</strong></span></div></div>
     </div>
 
     <div className="trade-body">
       <div className="trade-market-panel">
         <div className="trade-tabs"><span className="active"><ChartCandlestick size={17} />{t.chart}</span><span>{t.market}</span></div>
-        <div className="trade-quote"><span>{t.quote}</span><strong>—</strong></div>
+        <div className="trade-timeframes" role="group" aria-label={t.timeframe}>{(['15m', '1h', '4h', '1D'] as const).map(value => <button type="button" key={value} aria-pressed={timeframe === value} onClick={() => setTimeframe(value)}>{value}</button>)}</div>
         <div className="trade-chart" key={asset.symbol}>
-          <MarketChart data={[]} symbol={asset.symbol} name={asset.company} status="empty" showRangeSelector={false} height={420} emptyTitle={t.noData} emptyDescription={t.noDataBody} />
+          <MarketChart data={[]} symbol={asset.symbol} name={asset.company} status="empty" showRangeSelector={false} height={320} emptyTitle={t.noData} emptyDescription={t.noDataBody} />
         </div>
-        <div className="trade-chart-foot"><span>OHLC / {asset.symbol}</span><span>DATA SOURCE / PENDING</span></div>
+        <div className="trade-chart-foot"><span>OHLC / {timeframe} / {asset.symbol}</span><span>{t.quote}</span></div>
       </div>
 
       <aside className="trade-asset-record" aria-label={t.source}>
@@ -131,19 +133,21 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
       </aside>
     </div>
 
-    <div className="trade-action-dock" aria-label={t.sheetTitle}>
-      <div className="trade-dock-asset"><TokenMark asset={asset} /><span>{asset.symbol}<small>{t.quote}</small></span></div>
+    <section className="trade-ticket" aria-label={t.sheetTitle}>
+      <div className="trade-ticket-head"><span>{t.sheetTitle} / {asset.symbol}</span><span>{t.quote}</span></div>
+      <div className="trade-ticket-fields"><div className="trade-ticket-market"><small>{t.orderType}</small><strong>{t.orderMarket}</strong></div><label className="trade-ticket-quantity"><small>{t.quantity}</small><span><input id="trade-ticket-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><strong>{asset.symbol}</strong></span></label></div>
+      <div className="trade-ticket-slider"><input type="range" min="0" max="100" value="0" disabled aria-label={t.allocation} /><span>{t.balance}</span></div>
       <div className="trade-dock-buttons"><button type="button" onClick={event => openSheet('buy', event)}>{t.buy}</button><button type="button" onClick={event => openSheet('sell', event)}>{t.sell}</button></div>
-    </div>
+    </section>
 
     <AnimatePresence>{side && <div className="trade-sheet-layer">
       <motion.button className="trade-sheet-scrim" type="button" aria-label={t.close} onClick={() => setSide(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
       <motion.section ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="trade-sheet-heading" className="trade-sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', stiffness: 330, damping: 34 }}>
         <div className="trade-sheet-handle" aria-hidden="true" />
         <div className="trade-sheet-header"><div><span>{t.sheetTitle} / {asset.symbol}</span><h2 id="trade-sheet-heading">{side === 'buy' ? t.buy : t.sell} {asset.symbol}</h2></div><button type="button" onClick={() => setSide(null)} aria-label={t.close}><X size={22} /></button></div>
-        <div className="trade-sheet-tabs" role="tablist" aria-label={t.sheetTitle}><button type="button" role="tab" aria-selected={side === 'buy'} className={side === 'buy' ? 'active' : ''} onClick={() => { setSide('buy'); setAmount('') }}>{t.buy}</button><button type="button" role="tab" aria-selected={side === 'sell'} className={side === 'sell' ? 'active' : ''} onClick={() => { setSide('sell'); setAmount('') }}>{t.sell}</button></div>
+        <div className="trade-sheet-tabs" role="tablist" aria-label={t.sheetTitle}><button type="button" role="tab" aria-selected={side === 'buy'} className={side === 'buy' ? 'active' : ''} onClick={() => setSide('buy')}>{t.buy}</button><button type="button" role="tab" aria-selected={side === 'sell'} className={side === 'sell' ? 'active' : ''} onClick={() => setSide('sell')}>{t.sell}</button></div>
         <label className="trade-amount-label" htmlFor="trade-amount">{side === 'buy' ? t.buyAmount : t.sellAmount}</label>
-        <div className="trade-amount-field"><input id="trade-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><span>{side === 'buy' ? 'USD' : asset.symbol}</span></div>
+        <div className="trade-amount-field"><input id="trade-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><span>{asset.symbol}</span></div>
         <div className="trade-sheet-row"><span>{t.receive}</span><strong>— {side === 'buy' ? asset.symbol : 'USD'}</strong></div>
         {side === 'sell' && <div className="trade-sheet-row"><span>{t.balance}</span><strong>—</strong></div>}
         <div className="trade-sheet-status"><span>{t.unavailable}</span><span>BNB SMART CHAIN</span></div>
