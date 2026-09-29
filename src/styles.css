@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0b0d10;
+  --foreground: #f6f5f1;
+  --card: #1a1e24;
+  --muted-foreground: #a5aab4;
+  --primary: #f6f5f1;
+  --primary-foreground: #171b20;
+  --accent: #9fb2ff;
+  --border: #292e36;
+  --ring: #3158d6;
+  --radius: .625rem;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--foreground);
+  background: var(--background);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --radius-md: var(--radius);
+}
+
+html { scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; }
+::selection { background: #3158d6; color: #fff; }
+
+/* Exact art-directed positions keep the center clear at each breakpoint. */
+.tile-1 { top: 18%; left: 9%; }
+.tile-2 { top: 10%; left: 30%; }
+.tile-3 { top: 16%; right: 26%; }
+.tile-4 { top: 27%; right: 8%; }
+.tile-5 { top: 48%; left: 6%; }
+.tile-6 { top: 53%; right: 5%; }
+.tile-7 { bottom: 15%; left: 11%; }
+.tile-8 { bottom: 9%; left: 31%; }
+.tile-9 { bottom: 11%; right: 31%; }
+.tile-10 { bottom: 18%; right: 11%; }
+.tile-11 { top: 34%; left: 22%; }
+.tile-12 { bottom: 31%; right: 20%; }
+
+@media (max-width: 767px) {
+  .tile-1 { top: 15%; left: 9%; }
+  .tile-2 { top: 9%; left: 43%; }
+  .tile-3 { top: 18%; right: 8%; }
+  .tile-4 { top: 30%; right: 5%; }
+  .tile-5 { top: 42%; left: -22px; }
+  .tile-6 { top: 64%; right: -18px; }
+  .tile-7 { bottom: 11%; left: 12%; }
+  .tile-8 { bottom: 8%; right: 14%; left: auto; }
+  .tile-9, .tile-10, .tile-11, .tile-12 { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}

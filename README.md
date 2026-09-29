@@ -1,7 +1,27 @@
 # FirstBell
 
-A responsive hero concept for a card-to-tokenized-equity experience. Open `index.html` locally to view it. The floating token images are bundled in `assets/`, so the preview does not require image requests to third-party sites.
+FirstBell is a card-to-tokenized-equity product concept for the BNB Hack: Tokenized Stocks Edition. This repository currently contains a responsive React hero preview, not a connected purchase flow.
 
-The five Ondo token icons and their BSC contract addresses are documented in `asset-sources.json`, sourced from [Ondo's official token list](https://github.com/ondoprotocol/ondo-global-markets-token-list/blob/main/tokenlist.json). The FirstBell SVG mark is an original local asset.
+## Run locally
 
-This is a visual concept. There is no card checkout, wallet, quote, swap, or token purchase integration yet. Displayed assets do not imply availability in every jurisdiction.
+```bash
+npm install
+npm run dev
+```
+
+`npm run build` runs TypeScript checks and creates the production bundle.
+
+## Structure
+
+- `components/ui/floating-icons-hero-section.tsx`: reusable floating hero with cursor repulsion, reduced-motion support, and a shadcn-style button.
+- `components/ui/button.tsx`: local shadcn button primitive.
+- `src/demo.tsx`: FirstBell copy, layout, and 12 token tile positions (8 on mobile).
+- `src/styles.css`: Tailwind theme and responsive art direction.
+- `public/assets`: bundled token icons and FirstBell SVG mark.
+- `asset-sources.json`: official Ondo token-list image URLs and BSC contracts.
+
+Components use the default `/components/ui` path configured in `components.json`; styles live in `src/styles.css`. The project uses Vite, TypeScript, Tailwind CSS, and shadcn-compatible aliases. The shadcn CLI template endpoint was unavailable in the build environment, so the equivalent project structure and button component were added directly.
+
+The five Ondo token icons are from [Ondo's official token list](https://github.com/ondoprotocol/ondo-global-markets-token-list/blob/main/tokenlist.json). The floating tiles repeat these five assets for visual composition. The demo does not imply purchase availability in every jurisdiction.
+
+Card checkout, wallet creation, quotes, simulation, swaps, and token delivery are not connected yet. Do not represent this preview as a working purchase flow.
