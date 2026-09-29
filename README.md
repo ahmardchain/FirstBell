@@ -14,7 +14,7 @@ Build with `npm run build`.
 ## Interface
 
 - The hero adapts the user-supplied floating-icons component in `components/ui/floating-icons-hero-section.tsx` and uses transparent company SVG marks listed in `brand-mark-sources.json`. The asset symbols and contract data are from the [Ondo token list](https://github.com/ondoprotocol/ondo-global-markets-token-list/blob/main/tokenlist.json).
-- The [React Bits Logo Loop](https://reactbits.dev/animations/logo-loop) adaptation is in `components/ui/logo-loop.tsx`. Its license notice is in `third_party/REACT_BITS_LICENSE.md`.
+- The [React Bits Logo Loop](https://reactbits.dev/animations/logo-loop) and [Scroll Float](https://reactbits.dev/text-animations/scroll-float) adaptations live in `components/ui/`. Scroll Float uses GSAP ScrollTrigger for the section headings and footer statement, and shows plain text when reduced motion is requested. Their license notice is in `third_party/REACT_BITS_LICENSE.md`.
 - `src/demo.tsx` contains the landing, searchable asset index, English/Simplified Chinese copy, and theme control.
 - `src/styles.css` defines a sharp monochrome system. Light mode uses white surfaces. Inter and IBM Plex Mono are self-hosted through Fontsource packages.
 - `AGENTS.md` contains the project design workflow and `UI.md` records the FirstBell-specific visual contract.
