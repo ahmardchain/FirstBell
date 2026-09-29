@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { motion, useMotionValue, useReducedMotion, useSpring } from 'framer-motion'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 
 interface IconProps {
   id: number
@@ -70,7 +69,7 @@ function FloatingIcon({
         animate={reducedMotion ? undefined : { y: [0, -7, 0, 7, 0], x: [0, 5, 0, -5, 0], rotate: [0, 4, 0, -4, 0] }}
         transition={{ duration: 6 + (index % 4) * 0.85, repeat: Infinity, ease: 'easeInOut' }}
       >
-        <iconData.icon className="size-14 drop-shadow-[0_15px_20px_rgba(0,0,0,.4)] md:size-[76px]" />
+        <iconData.icon className="size-14 md:size-[76px]" />
       </motion.div>
     </motion.div>
   )
@@ -103,9 +102,7 @@ const FloatingIconsHero = React.forwardRef<HTMLElement, FloatingIconsHeroProps>(
           <h1 className="text-balance text-[clamp(3rem,9vw,6.6rem)] font-semibold leading-[.98] tracking-[-.075em] text-foreground">{title}</h1>
           <p className="mx-auto mt-7 max-w-[510px] text-pretty text-base leading-relaxed text-muted-foreground md:text-lg">{subtitle}</p>
           <div className="mt-9">
-            <Button asChild size="lg" className="rounded-none px-7 font-semibold shadow-none">
-              <a href={ctaHref}>{ctaText}<span className="ml-4" aria-hidden="true">↗</span></a>
-            </Button>
+            <a className="hero-cta" href={ctaHref}>{ctaText}<span aria-hidden="true">↗</span></a>
           </div>
           {note && <p className="mx-auto mt-5 text-xs text-muted-foreground">{note}</p>}
         </div>

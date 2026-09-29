@@ -5,16 +5,18 @@ import LogoLoop from '@/components/ui/logo-loop'
 import manifest from '@/asset-sources.json'
 
 
-const makeTokenIcon = (src: string): React.FC<React.SVGProps<SVGSVGElement>> =>
-  function TokenIcon(props) {
-    return <svg viewBox="0 0 64 64" role="presentation" {...props}><image href={src} width="64" height="64" /></svg>
+const makeTokenIcon = (mark: string): React.FC<React.SVGProps<SVGSVGElement>> =>
+  function TokenIcon({ className, ...props }) {
+    return <svg viewBox="0 0 64 64" role="presentation" {...props} className={`${className ?? ''} brand-mark brand-mark--${mark}`}><image href={`/assets/marks/${mark}.svg`} width="64" height="64" /></svg>
   }
 
-const symbols = ['aaplon', 'nvdaon', 'tslaon', 'msfton', 'amznon']
+const marks = ['apple', 'nvidia', 'tesla', 'microsoft', 'amazon']
+const markBySymbol: Record<string, string> = { aaplon: 'apple', nvdaon: 'nvidia', tslaon: 'tesla', msfton: 'microsoft', amznon: 'amazon' }
+const markFor = (symbol: string) => markBySymbol[symbol.toLowerCase()]
 const positions = ['tile-1', 'tile-2', 'tile-3', 'tile-4', 'tile-5', 'tile-6', 'tile-7', 'tile-8', 'tile-9', 'tile-10']
 const icons: FloatingIconsHeroProps['icons'] = positions.map((className, index) => ({
   id: index + 1,
-  icon: makeTokenIcon(`/assets/${symbols[index % symbols.length]}.png`),
+  icon: makeTokenIcon(marks[index % marks.length]),
   className,
 }))
 const assets = manifest.assets.map(asset => ({ ...asset, company: asset.name.split(' (Ondo')[0] }))
@@ -100,7 +102,7 @@ export default function FirstBellLanding() {
   const current = filtered.find(asset => asset.symbol === selected.symbol) ?? filtered[0]
   const nav = [{ id: 'top', text: t.navigation[0] }, { id: 'app', text: t.navigation[1] }, { id: 'about', text: t.navigation[2] }]
   const tokenLogos = assets.map(asset => ({
-    node: <span className="loop-token"><img src={`/assets/${asset.symbol.toLowerCase()}.png`} alt="" /><b>{asset.symbol}</b></span>,
+    node: <span className="loop-token"><img className={`brand-mark brand-mark--${markFor(asset.symbol)}`} src={`/assets/marks/${markFor(asset.symbol)}.svg`} alt="" /><b>{asset.symbol}</b></span>,
     href: `https://bscscan.com/token/${asset.address}`,
     ariaLabel: `${asset.company} ${asset.symbol} on BscScan`,
   }))
@@ -149,8 +151,8 @@ export default function FirstBellLanding() {
           <div className="section-head"><div><SectionMarker>{t.appKicker}</SectionMarker><h2 id="app-title">{t.appTitle}</h2></div><p className="section-intro">{t.appText}</p></div>
           <div className="browser-shell">
             <div className="browser-toolbar"><span>FIRSTBELL / ASSET INDEX</span><label className="search-field"><Search size={18} aria-hidden="true" /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t.search} aria-label={t.search} /></label><span>BNB SMART CHAIN</span></div>
-            <div className="browser-grid"><div className="asset-list" role="group" aria-label={t.listLabel}>{filtered.length ? filtered.map((asset, index) => <button key={asset.symbol} type="button" className={`asset-row ${current.symbol === asset.symbol ? 'is-selected' : ''}`} aria-pressed={current.symbol === asset.symbol} onClick={() => setSelected(asset)}><span className="asset-index">{String(index + 1).padStart(2, '0')}</span><img src={`/assets/${asset.symbol.toLowerCase()}.png`} alt="" /><span><strong>{asset.company}</strong><small>{asset.symbol}</small></span><ArrowRight size={17} /></button>) : <div className="empty-state"><p>{t.noResults}</p><button type="button" onClick={() => setQuery('')}>{t.clear} ↗</button></div>}</div>
-              {current ? <div className="asset-profile" key={current.symbol}><div className="profile-kicker"><span>{t.assetProfile}</span><span>0{assets.indexOf(current) + 1} / 0{assets.length}</span></div><div className="profile-name"><img src={`/assets/${current.symbol.toLowerCase()}.png`} alt="" /><div><h3>{current.company}</h3><p>{current.symbol}</p></div></div><dl className="profile-facts"><div><dt>{t.issuer}</dt><dd>Ondo Global Markets</dd></div><div><dt>{t.chain}</dt><dd>BNB Smart Chain</dd></div><div><dt>{t.symbol}</dt><dd>{current.symbol}</dd></div><div><dt>{t.address}</dt><dd className="address"><code>{current.address}</code></dd></div></dl><p className="profile-note">{t.aboutToken}</p><div className="profile-links"><a href={`https://bscscan.com/token/${current.address}`} target="_blank" rel="noreferrer">{t.explorer}<ExternalLink size={17} /></a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer">{t.source}<ArrowUpRight size={17} /></a></div></div> : <div className="asset-profile empty-profile" aria-hidden="true">—</div>}
+            <div className="browser-grid"><div className="asset-list" role="group" aria-label={t.listLabel}>{filtered.length ? filtered.map((asset, index) => <button key={asset.symbol} type="button" className={`asset-row ${current.symbol === asset.symbol ? 'is-selected' : ''}`} aria-pressed={current.symbol === asset.symbol} onClick={() => setSelected(asset)}><span className="asset-index">{String(index + 1).padStart(2, '0')}</span><img className={`brand-mark brand-mark--${markFor(asset.symbol)}`} src={`/assets/marks/${markFor(asset.symbol)}.svg`} alt="" /><span><strong>{asset.company}</strong><small>{asset.symbol}</small></span><ArrowRight size={17} /></button>) : <div className="empty-state"><p>{t.noResults}</p><button type="button" onClick={() => setQuery('')}>{t.clear} ↗</button></div>}</div>
+              {current ? <div className="asset-profile" key={current.symbol}><div className="profile-kicker"><span>{t.assetProfile}</span><span>0{assets.indexOf(current) + 1} / 0{assets.length}</span></div><div className="profile-name"><img className={`brand-mark brand-mark--${markFor(current.symbol)}`} src={`/assets/marks/${markFor(current.symbol)}.svg`} alt="" /><div><h3>{current.company}</h3><p>{current.symbol}</p></div></div><dl className="profile-facts"><div><dt>{t.issuer}</dt><dd>Ondo Global Markets</dd></div><div><dt>{t.chain}</dt><dd>BNB Smart Chain</dd></div><div><dt>{t.symbol}</dt><dd>{current.symbol}</dd></div><div><dt>{t.address}</dt><dd className="address"><code>{current.address}</code></dd></div></dl><p className="profile-note">{t.aboutToken}</p><div className="profile-links"><a href={`https://bscscan.com/token/${current.address}`} target="_blank" rel="noreferrer">{t.explorer}<ExternalLink size={17} /></a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer">{t.source}<ArrowUpRight size={17} /></a></div></div> : <div className="asset-profile empty-profile" aria-hidden="true">—</div>}
             </div>
           </div>
         </div>

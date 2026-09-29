@@ -22,3 +22,9 @@
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
 
 @media(min-width:801px) { .nav-links a[href="#app"] { display:none; } }
+
+/* Company marks are bare transparent vectors; the Ondo asset symbols remain in the index. */
+.brand-mark { object-fit:contain; background:none!important; border:0!important; box-shadow:none!important; filter:none; }
+[data-theme=dark] .brand-mark--apple, [data-theme=dark] .brand-mark--amazon { filter:brightness(0) invert(1); }
+.hero-cta { display:inline-flex; align-items:center; justify-content:center; gap:18px; min-height:52px; padding:0 22px; border:1px solid var(--primary); background:var(--primary); color:var(--primary-foreground)!important; font-size:14px; font-weight:650; text-decoration:none; }
+.hero-cta:hover { opacity:.78; }

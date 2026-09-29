@@ -1,0 +1,10 @@
+{
+  "purpose": "Transparent company marks for visual navigation; asset details and contract addresses come from asset-sources.json.",
+  "marks": [
+    { "company": "Apple", "file": "public/assets/marks/apple.svg", "source": "https://github.com/simple-icons/simple-icons/blob/develop/icons/apple.svg" },
+    { "company": "NVIDIA", "file": "public/assets/marks/nvidia.svg", "source": "https://cdn.simpleicons.org/nvidia/76B900" },
+    { "company": "Tesla", "file": "public/assets/marks/tesla.svg", "source": "https://cdn.simpleicons.org/tesla/E31937" },
+    { "company": "Microsoft", "file": "public/assets/marks/microsoft.svg", "source": "https://commons.wikimedia.org/wiki/File:Microsoft_icon.svg" },
+    { "company": "Amazon", "file": "public/assets/marks/amazon.svg", "source": "https://commons.wikimedia.org/wiki/File:Amazon_icon.svg" }
+  ]
+}
