@@ -1,25 +1,34 @@
-# FirstBell UI sources
+# FirstBell visual contract
 
-Before building a new component, review a suitable source in this catalog and adapt its interaction to the product. Preserve required license notices.
+Read `AGENTS.md` before making interface changes. Review matching components from the catalog below and adapt a licensed source when it fits.
 
-| Source | URL | Use |
+| Source | URL | FirstBell use |
 | --- | --- | --- |
-| 21st.dev | https://21st.dev | Floating icon hero source pattern |
-| React Bits | https://reactbits.dev/animations/logo-loop | Token asset logo loop |
-| shadcn/ui | https://ui.shadcn.com | Shared accessible primitives |
-| Spectrum UI | https://ui.spectrumhq.in | Premium treatments |
-| shadcnblocks | https://shadcnblocks.com | Page sections |
-| Rare UI | https://rareui.com | Distinctive components |
-| Coss UI | https://coss.com/ui | Modern primitives |
-| BeUI | https://beui.dev | Animated patterns |
-| Evil Charts | https://evilcharts.com | SVG data charts |
-| 8bitcn | https://8bitcn.com | Retro style only when requested |
+| 21st.dev | https://21st.dev | Floating token hero pattern supplied by the user |
+| React Bits | https://reactbits.dev/animations/logo-loop | Token asset loop |
+| shadcn/ui | https://ui.shadcn.com | Shared primitives |
+| Spectrum UI | https://ui.spectrumhq.in | Type and layout reference |
+| Coss UI | https://coss.com/ui | Interface reference |
+| shadcnblocks | https://shadcnblocks.com | Section reference |
+| Rare UI | https://rareui.com | Interaction reference |
+| BeUI | https://beui.dev | Motion reference |
+| Evil Charts | https://evilcharts.com | Chart reference when data needs one |
+| 8bitcn | https://8bitcn.com | Retro reference only if requested |
 
-## System
+## Design Read
 
-- Monochrome ink and warm white. Theme control switches light and dark surfaces; no ungrounded accent colors.
-- A translucent, blurred navigation bar and asset panel provide restrained glass treatment. Token images float directly, without surrounding icon tiles.
-- Motion clarifies a transition or adds quiet atmosphere. Respect reduced motion, keyboard focus, and mobile layouts.
-- English and Simplified Chinese copy are kept together in `src/demo.tsx`; switching languages persists locally and updates the document language.
-- The `components/ui/floating-icons-hero-section.tsx` component adapts the user-provided 21st.dev pattern for real Ondo token artwork. `components/ui/logo-loop.tsx` is adapted from React Bits; see `third_party/REACT_BITS_LICENSE.md`.
-- Card payments, wallet creation, quotes, and on-chain purchases are not connected. The amount panel and purchase preview must never imply a completed order or show fabricated quote data.
+- Artifact: responsive landing and research index.
+- Audience: newcomers exploring tokenized equities.
+- Mode: preserve the product name and real token assets; overhaul the marketing composition.
+- Visual variance: 5/10; motion: 2/10; density: 5/10; asset dependence: 7/10; brand fidelity: 8/10.
+
+## Design decisions
+
+- Material: digital ink and white paper. Composition: editorial with asymmetric explanatory sections and one dense asset directory. Structure: Swiss grid with sharp rules and zero radius. Feeling: precise, candid, confident.
+- Palette: near-black `#080808`, true white `#fff`, gray rules and type. Light surfaces are white, without cream or milk tones. Token artwork may keep its authentic color.
+- Typography: Instrument Sans variable for display/body, IBM Plex Mono for labels and technical identifiers. Chinese uses the platform CJK sans fallback.
+- Spacing: generous section padding, tight technical rows, compact navigation. Borders carry the separation; no card shadows or glass.
+- Motion: floating token icons and a restrained logo loop. No scroll prompts, scroll reveals, ornamental parallax, or forced smooth scrolling. Respect reduced motion.
+- Product contract: the App link opens a searchable on-page asset index. It shows source-backed identifiers and links; no transactional controls or invented prices.
+
+The floating icon component lives at `components/ui/floating-icons-hero-section.tsx`. The React Bits adaptation lives at `components/ui/logo-loop.tsx` with a license notice in `third_party/REACT_BITS_LICENSE.md`.

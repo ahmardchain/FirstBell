@@ -1,6 +1,6 @@
 # FirstBell
 
-FirstBell is a card-to-tokenized-equity product concept for the BNB Hack: Tokenized Stocks Edition. This repository contains a responsive landing page, not a connected purchase flow.
+FirstBell is an independent landing page and asset index for exploring tokenized equities on BNB Smart Chain. It presents issuer, network, token symbol, contract address, and public source links for five example Ondo Global Markets assets. This site is for discovery and research; it does not offer trading or account services.
 
 ## Run locally
 
@@ -9,25 +9,14 @@ npm install
 npm run dev
 ```
 
-`npm run build` runs TypeScript checks and creates the production bundle.
+Build with `npm run build`.
 
-## Structure
+## Interface
 
-- `components/ui/floating-icons-hero-section.tsx`: reusable floating hero with cursor repulsion, reduced-motion support, and a shadcn-style button.
-- `components/ui/button.tsx`: local shadcn button primitive.
-- `src/demo.tsx`: landing page with the floating hero, purchase journey, interactive token explorer, receipt preview, and issuer/market-hours/fee explanation. The hero has 12 token tiles (8 on mobile).
-- `src/styles.css`: Tailwind theme and responsive art direction.
-- `public/assets`: bundled token icons and FirstBell SVG mark.
-- `asset-sources.json`: official Ondo token-list image URLs and BSC contracts.
+- The hero adapts the user-supplied floating-icons component in `components/ui/floating-icons-hero-section.tsx` and uses real token images from the [Ondo token list](https://github.com/ondoprotocol/ondo-global-markets-token-list/blob/main/tokenlist.json).
+- The [React Bits Logo Loop](https://reactbits.dev/animations/logo-loop) adaptation is in `components/ui/logo-loop.tsx`. Its license notice is in `third_party/REACT_BITS_LICENSE.md`.
+- `src/demo.tsx` contains the landing, searchable asset index, English/Simplified Chinese copy, and theme control.
+- `src/styles.css` defines a sharp monochrome system. Light mode uses white surfaces. Instrument Sans and IBM Plex Mono are self-hosted through Fontsource packages.
+- `AGENTS.md` contains the project design workflow and `UI.md` records the FirstBell-specific visual contract.
 
-Components use the default `/components/ui` path configured in `components.json`; styles live in `src/styles.css`. The project uses Vite, TypeScript, Tailwind CSS, and shadcn-compatible aliases. The shadcn CLI template endpoint was unavailable in the build environment, so the equivalent project structure and button component were added directly.
-
-The five Ondo token icons are from [Ondo's official token list](https://github.com/ondoprotocol/ondo-global-markets-token-list/blob/main/tokenlist.json). The floating tiles repeat these five assets for visual composition. The demo does not imply purchase availability in every jurisdiction.
-
-Card checkout, wallet creation, quotes, simulation, swaps, and token delivery are not connected yet. Do not represent this preview as a working purchase flow.
-
-## Current interface
-
-The landing UI includes a floating token hero, the React Bits Logo Loop, active responsive navigation, English and Simplified Chinese, a dark/light monochrome theme, selectable Ondo asset contracts, an amount field, a transparent purchase preview, and direct BscScan links. Preferences persist in local storage. The UI does not collect payment details or execute trades; a checkout provider, wallet service, live quote source, and transaction tracking must be connected and verified before purchase can go live.
-
-Shared UI primitives live in `components/ui`, and site styles live in `src/styles.css`. The React Bits adaptation and its notice are in `components/ui/logo-loop.tsx` and `third_party/REACT_BITS_LICENSE.md`.
+The `App` navigation item opens the on-page asset browser. The issuer and contract details are derived from `asset-sources.json`; the external contract links open BscScan. No price, entitlement, or availability is inferred from the ticker alone.

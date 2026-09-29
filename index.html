@@ -1,12 +1,18 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b0d10" />
-    <meta name="description" content="FirstBell makes your first tokenized equity purchase clear from card to wallet." />
+    <meta name="theme-color" content="#080808" />
+    <meta name="description" content="FirstBell brings tokenized equity issuers, contracts, and sources into one clear asset index." />
+    <script>
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem('firstbell-theme') === 'light' ? 'light' : 'dark';
+        document.documentElement.lang = localStorage.getItem('firstbell-language') === 'zh' ? 'zh-CN' : 'en';
+      } catch (_) {}
+    </script>
     <link rel="icon" type="image/svg+xml" href="/assets/firstbell-mark.svg" />
-    <title>FirstBell — Your first tokenized equity</title>
+    <title>FirstBell — Tokenized equities, made clear</title>
   </head>
   <body>
     <div id="root"></div>
