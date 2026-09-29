@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
+import './motion.css'
 
 const isApp = window.location.pathname.replace(/\/+$/, '') === '/app'
 const FirstBellApp = React.lazy(() => import('./app-entry'))

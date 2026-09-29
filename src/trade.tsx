@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, X } from 'lucide-react'
 import { MarketChart } from '@/components/spectrumui/charts/market-chart'
 import './trade.css'
@@ -60,6 +60,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
 }) {
   const t = words[language]
   const [selectorOpen, setSelectorOpen] = React.useState(false)
+  const reduceMotion = useReducedMotion()
   const [side, setSide] = React.useState<Side | null>(null)
   const [amount, setAmount] = React.useState('')
   const [timeframe, setTimeframe] = React.useState<'15m' | '1h' | '4h' | '1D'>('15m')
@@ -103,7 +104,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <button type="button" className="trade-asset-trigger" onClick={() => setSelectorOpen(value => !value)} aria-expanded={selectorOpen} aria-controls="trade-asset-menu" aria-label={t.select}>
           <TokenMark asset={asset} /><span><strong id="trade-heading">{asset.symbol}</strong><small>{asset.company} · Ondo</small></span><ChevronDown size={20} aria-hidden="true" />
         </button>
-        <AnimatePresence>{selectorOpen && <motion.div id="trade-asset-menu" role="listbox" aria-label={t.choose} className="trade-asset-menu" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: .16 }}>
+        <AnimatePresence>{selectorOpen && <motion.div id="trade-asset-menu" role="listbox" aria-label={t.choose} className="trade-asset-menu" initial={reduceMotion ? false : { opacity: 0, scale: .97, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .99, y: -4 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
           {assets.map(candidate => <button type="button" role="option" aria-selected={asset.symbol === candidate.symbol} key={candidate.symbol} onClick={() => { onAssetChange(candidate); setSelectorOpen(false) }}><TokenMark asset={candidate} /><span><strong>{candidate.symbol}</strong><small>{candidate.company}</small></span>{candidate.symbol === asset.symbol && <Check size={17} />}</button>)}
         </motion.div>}</AnimatePresence>
       </div>
@@ -113,7 +114,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     <div className="trade-body">
       <div className="trade-market-panel">
         <div className="trade-tabs"><span className="active"><ChartCandlestick size={17} />{t.chart}</span><span>{t.market}</span></div>
-        <div className="trade-timeframes" role="group" aria-label={t.timeframe}>{(['15m', '1h', '4h', '1D'] as const).map(value => <button type="button" key={value} aria-pressed={timeframe === value} onClick={() => setTimeframe(value)}>{value}</button>)}</div>
+        <div className="trade-timeframes" role="group" aria-label={t.timeframe}>{(['15m', '1h', '4h', '1D'] as const).map(value => <button type="button" className="motion-tab" key={value} aria-pressed={timeframe === value} onClick={() => setTimeframe(value)}>{timeframe === value && <motion.span className="motion-tab-indicator" layoutId="trade-timeframe-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{value}</span></button>)}</div>
         <div className="trade-chart" key={asset.symbol}>
           <MarketChart data={[]} symbol={asset.symbol} name={asset.company} status="empty" showRangeSelector={false} height={320} emptyTitle={t.noData} emptyDescription={t.noDataBody} />
         </div>
@@ -142,10 +143,10 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
 
     <AnimatePresence>{side && <div className="trade-sheet-layer">
       <motion.button className="trade-sheet-scrim" type="button" aria-label={t.close} onClick={() => setSide(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
-      <motion.section ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="trade-sheet-heading" className="trade-sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', stiffness: 330, damping: 34 }}>
+      <motion.section ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="trade-sheet-heading" className="trade-sheet" initial={reduceMotion ? false : { y: 100, opacity: 0, filter: 'blur(2px)' }} animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 0 } : { y: 100, opacity: 0, filter: 'blur(2px)' }} transition={{ duration: reduceMotion ? 0 : .4, ease: [.22, 1, .36, 1] }}>
         <div className="trade-sheet-handle" aria-hidden="true" />
         <div className="trade-sheet-header"><div><span>{t.sheetTitle} / {asset.symbol}</span><h2 id="trade-sheet-heading">{side === 'buy' ? t.buy : t.sell} {asset.symbol}</h2></div><button type="button" onClick={() => setSide(null)} aria-label={t.close}><X size={22} /></button></div>
-        <div className="trade-sheet-tabs" role="tablist" aria-label={t.sheetTitle}><button type="button" role="tab" aria-selected={side === 'buy'} className={side === 'buy' ? 'active' : ''} onClick={() => setSide('buy')}>{t.buy}</button><button type="button" role="tab" aria-selected={side === 'sell'} className={side === 'sell' ? 'active' : ''} onClick={() => setSide('sell')}>{t.sell}</button></div>
+        <div className="trade-sheet-tabs" role="tablist" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" role="tab" key={value} aria-selected={side === value} className={`motion-tab ${side === value ? 'active' : ''}`} onClick={() => setSide(value)}>{side === value && <motion.span className="motion-tab-indicator" layoutId="trade-side-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[value]}</span></button>)}</div>
         <label className="trade-amount-label" htmlFor="trade-amount">{side === 'buy' ? t.buyAmount : t.sellAmount}</label>
         <div className="trade-amount-field"><input id="trade-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><span>{asset.symbol}</span></div>
         <div className="trade-sheet-row"><span>{t.receive}</span><strong>— {side === 'buy' ? asset.symbol : 'USD'}</strong></div>

@@ -85,11 +85,11 @@ export function AIChatCard({
         <motion.div className="ai-chat-icon" animate={reduce ? undefined : { y: [0, -3, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
           {icon ?? <MessageCircleDashed size={22} strokeWidth={1.7} />}
         </motion.div>
-        <motion.h2 initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .35 }}>{greeting}</motion.h2>
+        <motion.h2 initial={reduce ? false : { opacity: 0, y: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: reduce ? 0 : .25, ease: [.22, 1, .36, 1] }}>{greeting}</motion.h2>
         <p>{prompt}</p>
       </div> : <div ref={transcriptRef} className="ai-chat-transcript" role="log" aria-live="polite" aria-label={title}>
         {messages.map(message => <motion.div key={message.id} className={`ai-chat-message ${message.role}`}
-          initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .22 }}>
+          initial={reduce ? false : { opacity: 0, y: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: reduce ? 0 : .25, ease: [.22, 1, .36, 1] }}>
           <span>{message.role === 'user' ? 'YOU' : 'FIRSTBELL / SOURCE'}</span><p>{message.text}</p>
           {message.role === 'guide' && <a href={sourceHref} target="_blank" rel="noreferrer">{sourceLabel}</a>}
         </motion.div>)}

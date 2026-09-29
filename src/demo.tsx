@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, ArrowUpRight, ChevronDown, ExternalLink, Globe2, Menu, Moon, Search, Sun, X } from 'lucide-react'
 import { FloatingIconsHero, type FloatingIconsHeroProps } from '@/components/ui/floating-icons-hero-section'
 import LogoLoop from '@/components/ui/logo-loop'
@@ -91,6 +92,7 @@ function SectionMarker({ children }: { children: React.ReactNode }) {
 }
 
 export default function FirstBellLanding() {
+  const reduceMotion = useReducedMotion()
   const [language, setLanguage] = React.useState<Language>(() => localStorage.getItem('firstbell-language') === 'zh' ? 'zh' : 'en')
   const [theme, setTheme] = React.useState<Theme>(() => localStorage.getItem('firstbell-theme') === 'light' ? 'light' : 'dark')
   const [menuOpen, setMenuOpen] = React.useState(false)
@@ -127,11 +129,11 @@ export default function FirstBellLanding() {
       <div className="nav-actions">
         <div className="language-control">
           <button className="nav-tool" type="button" aria-label={t.language} aria-expanded={languageOpen} onClick={() => setLanguageOpen(open => !open)}><Globe2 size={16} /><span>{language === 'en' ? 'EN' : '中文'}</span><ChevronDown size={12} /></button>
-          {languageOpen && <div className="language-menu"><button type="button" aria-pressed={language === 'en'} onClick={() => { setLanguage('en'); setLanguageOpen(false) }}>English {language === 'en' ? '✓' : ''}</button><button type="button" aria-pressed={language === 'zh'} onClick={() => { setLanguage('zh'); setLanguageOpen(false) }}>中文 {language === 'zh' ? '✓' : ''}</button></div>}
+          <AnimatePresence>{languageOpen && <motion.div className="language-menu" initial={reduceMotion ? false : { opacity: 0, scale: .97, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .99, y: -4 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}><button type="button" aria-pressed={language === 'en'} onClick={() => { setLanguage('en'); setLanguageOpen(false) }}>English {language === 'en' ? '✓' : ''}</button><button type="button" aria-pressed={language === 'zh'} onClick={() => { setLanguage('zh'); setLanguageOpen(false) }}>中文 {language === 'zh' ? '✓' : ''}</button></motion.div>}</AnimatePresence>
         </div>
-        <button className="nav-tool theme-button" type="button" aria-label={t.theme} onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
+        <button className="nav-tool theme-button" type="button" aria-label={t.theme} onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}><span className="motion-icon-swap" data-state={theme === 'dark' ? 'a' : 'b'}><Sun size={17} /><Moon size={17} /></span></button>
         <a className="nav-app" href="/app/" onClick={() => setMenuOpen(false)}>{t.navigation[1]} <ArrowUpRight size={16} /></a>
-        <button className="nav-tool menu-button" type="button" aria-label={t.menu} aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>{menuOpen ? <X size={20} /> : <Menu size={20} />}</button>
+        <button className="nav-tool menu-button" type="button" aria-label={t.menu} aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}><span className="motion-icon-swap" data-state={menuOpen ? 'b' : 'a'}><Menu size={20} /><X size={20} /></span></button>
       </div>
     </header>
     <main id="top">
@@ -153,7 +155,7 @@ export default function FirstBellLanding() {
           <div className="browser-shell">
             <div className="browser-toolbar"><span>FIRSTBELL / ASSET INDEX</span><label className="search-field"><Search size={18} aria-hidden="true" /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t.search} aria-label={t.search} /></label><span>BNB SMART CHAIN</span></div>
             <div className="browser-grid"><div className="asset-list" role="group" aria-label={t.listLabel}>{filtered.length ? filtered.map((asset, index) => <button key={asset.symbol} type="button" className={`asset-row ${current.symbol === asset.symbol ? 'is-selected' : ''}`} aria-pressed={current.symbol === asset.symbol} onClick={() => setSelected(asset)}><span className="asset-index">{String(index + 1).padStart(2, '0')}</span><img className={`brand-mark brand-mark--${markFor(asset.symbol)}`} src={`/assets/marks/${markFor(asset.symbol)}.svg`} alt="" /><span><strong>{asset.company}</strong><small>{asset.symbol}</small></span><ArrowRight size={17} /></button>) : <div className="empty-state"><p>{t.noResults}</p><button type="button" onClick={() => setQuery('')}>{t.clear} ↗</button></div>}</div>
-              {current ? <div className="asset-profile" key={current.symbol}><div className="profile-kicker"><span>{t.assetProfile}</span><span>0{assets.indexOf(current) + 1} / 0{assets.length}</span></div><div className="profile-name"><img className={`brand-mark brand-mark--${markFor(current.symbol)}`} src={`/assets/marks/${markFor(current.symbol)}.svg`} alt="" /><div><h3>{current.company}</h3><p>{current.symbol}</p></div></div><dl className="profile-facts"><div><dt>{t.issuer}</dt><dd>Ondo Global Markets</dd></div><div><dt>{t.chain}</dt><dd>BNB Smart Chain</dd></div><div><dt>{t.symbol}</dt><dd>{current.symbol}</dd></div><div><dt>{t.address}</dt><dd className="address"><code>{current.address}</code></dd></div></dl><p className="profile-note">{t.aboutToken}</p><div className="profile-links"><a href={`https://bscscan.com/token/${current.address}`} target="_blank" rel="noreferrer">{t.explorer}<ExternalLink size={17} /></a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer">{t.source}<ArrowUpRight size={17} /></a></div></div> : <div className="asset-profile empty-profile" aria-hidden="true">—</div>}
+              <AnimatePresence mode="wait" initial={false}>{current ? <motion.div className="asset-profile" key={current.symbol} initial={reduceMotion ? false : { opacity: 0, x: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 1 } : { opacity: 0, x: -8, filter: 'blur(3px)' }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}><div className="profile-kicker"><span>{t.assetProfile}</span><span>0{assets.indexOf(current) + 1} / 0{assets.length}</span></div><div className="profile-name"><img className={`brand-mark brand-mark--${markFor(current.symbol)}`} src={`/assets/marks/${markFor(current.symbol)}.svg`} alt="" /><div><h3>{current.company}</h3><p>{current.symbol}</p></div></div><dl className="profile-facts"><div><dt>{t.issuer}</dt><dd>Ondo Global Markets</dd></div><div><dt>{t.chain}</dt><dd>BNB Smart Chain</dd></div><div><dt>{t.symbol}</dt><dd>{current.symbol}</dd></div><div><dt>{t.address}</dt><dd className="address"><code>{current.address}</code></dd></div></dl><p className="profile-note">{t.aboutToken}</p><div className="profile-links"><a href={`https://bscscan.com/token/${current.address}`} target="_blank" rel="noreferrer">{t.explorer}<ExternalLink size={17} /></a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer">{t.source}<ArrowUpRight size={17} /></a></div></motion.div> : <motion.div key="empty" className="asset-profile empty-profile" aria-hidden="true">—</motion.div>}</AnimatePresence>
             </div>
           </div>
         </div>

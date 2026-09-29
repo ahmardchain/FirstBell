@@ -144,6 +144,8 @@
 .app-shell { --app-card-radius:16px; --app-pill-radius:999px; }
 .app-desktop-nav { align-items:center; }
 .app-desktop-nav button { height:40px; border-radius:var(--app-pill-radius); padding:0 16px; }
+.app-desktop-nav .motion-tab.active { border-bottom-color:transparent; }
+.app-desktop-nav .motion-tab-indicator { background:var(--hover); }
 .app-header-tool,.app-website,.app-feature-copy button,.app-filter button,.app-empty button,.portfolio-empty button,.dialog-primary,.dialog-secondary { border-radius:var(--app-pill-radius); }
 .app-feature,.feature-frame,.app-empty,.portfolio-empty,.app-search,.asset-dialog { border-radius:var(--app-card-radius); }
 .app-feature-art { overflow:hidden; }
@@ -162,7 +164,10 @@
 .asset-card-meta small { font-size:9px; }
 .app-empty button,.portfolio-empty button { min-height:44px; padding:0 18px; border:1px solid var(--foreground); }
 .app-mobile-popover { border-radius:0 0 var(--app-card-radius) var(--app-card-radius); }
+.app-mobile-popover { transform-origin:top right; }
 .app-bottom-nav button { border-radius:var(--app-pill-radius); }
+.app-bottom-nav .motion-tab.active { border-top-color:transparent; }
+.app-bottom-nav .motion-tab-indicator { background:var(--hover); }
 .dialog-top button,.dialog-title button { border-radius:var(--app-pill-radius); }
 @media(max-width:1100px) { .asset-card-info { padding:15px; } }
 @media(max-width:760px) {

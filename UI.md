@@ -12,6 +12,7 @@ Read `AGENTS.md` before making interface changes. Review matching components fro
 | shadcnblocks | https://shadcnblocks.com | Section reference |
 | Rare UI | https://rareui.com | Interaction reference |
 | BeUI | https://beui.dev | Motion reference |
+| transitions.dev | https://transitions.dev | Shared timing and easing for tabs, menus, panels, screen swaps, and icon swaps |
 | Evil Charts | https://evilcharts.com | Chart reference when data needs one |
 | 8bitcn | https://8bitcn.com | Retro reference only if requested |
 
@@ -28,7 +29,7 @@ Read `AGENTS.md` before making interface changes. Review matching components fro
 - Palette: near-black `#080808`, true white `#fff`, gray rules and type. Light surfaces are white, without cream or milk tones. Transparent company marks keep their authentic color inside raised, softly rounded hero tiles. The issuer token assets remain separate from the company marks.
 - Typography: Inter variable for display/body, IBM Plex Mono for labels and technical identifiers. Chinese uses the platform CJK sans fallback.
 - Spacing: generous marketing section padding, tight technical rows, compact app navigation. App cards, inputs, and chart frame use 16px corners; actions use pills. Borders carry section separation.
-- Motion: floating hero tiles, a restrained logo loop, and React Bits Scroll Float on editorial headings and the footer statement. No scroll prompts, ornamental parallax, or forced smooth scrolling. Respect reduced motion.
+- Motion: floating hero tiles, a restrained logo loop, and React Bits Scroll Float on editorial headings and the footer statement. App state changes use transitions.dev's 150/250/400 ms timing, cubic-bezier(.22,1,.36,1), and short 8 px/3 px screen reveals. Active pills slide, menus grow from their triggers, and sheets reveal with a short travel. Respect reduced motion. No scroll prompts, ornamental parallax, or forced smooth scrolling.
 - Product contract: the App link opens `/app`. Home provides a searchable, saveable index and asset files; Trade has a Spectrum UI market chart empty state, asset selector, and Buy/Sell sheet with no payment method. It accepts no order while a verified quote and execution integration are absent. Agent uses Spectrum's AI Chat Card structure, with a source-backed conversation and no unsupported attachment action. Portfolio uses Privy Google/email login and an embedded wallet when its App ID is configured, and reads BNB plus five listed token quantities on chain. No invented balances, prices, USD valuations, or execution claims.
 
 ## App direction

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useLinkAccount, usePrivy, useWallets } from '@privy-io/react-auth'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, ArrowUpRight, Bookmark, Eye, EyeOff, RefreshCw, Search, UserRound } from 'lucide-react'
 import { displayQuantity, readWalletBalances, type WalletBalances } from './wallet-balances'
 import './portfolio.css'
@@ -100,6 +100,7 @@ export function PortfolioWorkspace(props: Props) {
 }
 
 function PortfolioView({ assets, saved, language, onExplore, onInspect, onToggleSaved, account }: Props & { account: Account }) {
+  const reduceMotion = useReducedMotion()
   const t = copy[language]
   const [section, setSection] = React.useState<Section>('positions')
   const [search, setSearch] = React.useState('')
@@ -123,7 +124,7 @@ function PortfolioView({ assets, saved, language, onExplore, onInspect, onToggle
 
   return <section className="portfolio-workspace" aria-labelledby="portfolio-title">
     <AnimatePresence mode="wait">
-      {!account.ready || !account.authenticated ? <motion.div key="guest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: .18 }}>
+      {!account.ready || !account.authenticated ? <motion.div key="guest" initial={reduceMotion ? false : { opacity: 0, x: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
         <div className="portfolio-page-head"><span className="app-label">FIRSTBELL / PORTFOLIO</span><h1 id="portfolio-title">{t.title}</h1></div>
         <div className="portfolio-guest-card">
           <div className="portfolio-orbit" aria-hidden="true"><div className="portfolio-orbit-ring" />{['apple', 'nvidia', 'tesla'].map(mark => <span className={`portfolio-orbit-mark portfolio-orbit-mark--${mark}`} key={mark}><img className={`brand-mark brand-mark--${mark}`} src={`/assets/marks/${mark}.svg`} alt="" /></span>)}</div>
@@ -133,7 +134,7 @@ function PortfolioView({ assets, saved, language, onExplore, onInspect, onToggle
         </div>
         <div className="portfolio-saved-head"><span className="app-label">{t.saved.toUpperCase()} / {String(savedAssets.length).padStart(2, '0')}</span></div>
         {savedAssets.length ? savedRows(savedAssets) : <div className="portfolio-saved-empty"><Bookmark size={19} /><span>{t.noSaved}. {t.saveHint}</span><button type="button" onClick={onExplore}>{t.explore}<ArrowUpRight size={16} /></button></div>}
-      </motion.div> : <motion.div key="account" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: .18 }}>
+      </motion.div> : <motion.div key="account" initial={reduceMotion ? false : { opacity: 0, x: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
         <div className="portfolio-preview-bar"><span className="app-label">FIRSTBELL / BNB SMART CHAIN</span><button type="button" onClick={account.logout}>{t.signOut}</button></div>
         <div className="portfolio-account-head"><span className="portfolio-avatar"><UserRound size={22} strokeWidth={1.6} /></span><div><span className="app-label">{account.email || 'FIRSTBELL'}</span><h1 id="portfolio-title">{t.account}</h1></div></div>
         <div className="portfolio-balance"><div className="portfolio-balance-label"><span>{t.balance}</span><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(value => !value)}>{hidden ? <EyeOff size={20} /> : <Eye size={20} />}</button><button type="button" aria-label={t.refresh} disabled={!account.address || account.loading} onClick={account.refresh}><RefreshCw size={17} /></button></div><div className="portfolio-balance-value" aria-live="polite">{hidden ? '••••••' : account.balances ? `${displayQuantity(account.balances.bnb)} BNB` : '—'}</div><p>{t.positionsValue} <strong>{account.balances ? account.balances.tokens.filter(token => token.raw > 0n).length : '—'}</strong></p><small>{!account.walletReady || !account.address ? t.walletLoading : account.loading ? t.loading : account.error ? t.error : t.source}</small></div>
@@ -141,11 +142,13 @@ function PortfolioView({ assets, saved, language, onExplore, onInspect, onToggle
         <div className="portfolio-action-row"><button type="button" disabled>{t.deposit}</button><button type="button" disabled>{t.withdraw}</button></div>
         <p className="portfolio-action-note">{t.transferNote}</p>
         {(!account.hasEmail || !account.hasGoogle) && <div className="portfolio-link-methods"><span>{t.linkNote}</span><div>{!account.hasEmail && <button type="button" onClick={account.linkEmail}>{t.linkEmail}</button>}{!account.hasGoogle && <button type="button" onClick={account.linkGoogle}>{t.linkGoogle}</button>}</div></div>}
-        <div className="portfolio-content-head"><div className="portfolio-tabs" role="tablist" aria-label={t.title}>{(['positions', 'saved', 'activity'] as const).map(id => <button type="button" role="tab" key={id} aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => { setSection(id); setSearch('') }}>{t[id]}</button>)}</div></div>
+        <div className="portfolio-content-head"><div className="portfolio-tabs" role="tablist" aria-label={t.title}>{(['positions', 'saved', 'activity'] as const).map(id => <button type="button" role="tab" key={id} aria-selected={section === id} className={`motion-tab ${section === id ? 'active' : ''}`} onClick={() => { setSection(id); setSearch('') }}>{section === id && <motion.span className="motion-tab-indicator" layoutId="portfolio-section-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[id]}</span></button>)}</div></div>
         {section !== 'activity' && <label className="portfolio-search"><Search size={19} /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>}
+        <AnimatePresence mode="wait" initial={false}><motion.div key={section} initial={reduceMotion ? false : { opacity: 0, x: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 1 } : { opacity: 0, x: -8, filter: 'blur(3px)' }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
         {section === 'positions' && positions.length > 0 ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => <button type="button" className="portfolio-asset-row portfolio-position-row" key={asset.symbol} onClick={() => onInspect(asset)}><span className="portfolio-mark"><img className={`brand-mark brand-mark--${asset.mark}`} src={`/assets/marks/${asset.mark}.svg`} alt="" /></span><span className="portfolio-asset-names"><strong>{asset.symbol}</strong><small>{asset.company}</small></span><strong className="portfolio-position-quantity">{hidden ? '••••' : displayQuantity(quantity)}</strong></button>)}</div>
           : section === 'saved' && visibleSaved.length ? savedRows(visibleSaved)
             : <div className="portfolio-content-empty"><Bookmark size={23} strokeWidth={1.5} /><h2>{section === 'positions' ? account.loading || account.error || !account.address ? account.error ? t.error : t.loading : t.noPositions : section === 'saved' ? t.noSaved : t.noActivity}</h2><p>{section === 'positions' ? account.loading || account.error || !account.address ? '' : t.noPositionsHint : section === 'saved' ? t.saveHint : t.noActivityHint}</p>{section === 'saved' && <button type="button" onClick={onExplore}>{t.explore}<ArrowUpRight size={16} /></button>}</div>}
+        </motion.div></AnimatePresence>
       </motion.div>}
     </AnimatePresence>
   </section>

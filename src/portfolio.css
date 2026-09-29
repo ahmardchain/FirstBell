@@ -64,6 +64,8 @@
 .portfolio-tabs { display:flex; flex-wrap:wrap; gap:7px; }
 .portfolio-tabs button { min-height:40px; padding:0 16px; border:1px solid var(--line); border-radius:999px; background:var(--background); font-size:13px; font-weight:600; }
 .portfolio-tabs button.active { background:var(--hover); border-color:var(--line); }
+.portfolio-tabs .motion-tab.active { background:transparent; }
+.portfolio-tabs .motion-tab-indicator { background:var(--hover); }
 .portfolio-search { display:flex; align-items:center; gap:11px; min-height:48px; margin-bottom:17px; padding:0 15px; border:1px solid var(--line); border-radius:16px; color:var(--muted); }
 .portfolio-search:focus-within { border-color:var(--foreground); }
 .portfolio-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--foreground); font-size:14px; }

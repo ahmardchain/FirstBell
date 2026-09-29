@@ -1,0 +1,32 @@
+/* FirstBell motion language, adapted from transitions.dev recipes. */
+:root {
+  --motion-quick: 150ms;
+  --motion-fast: 250ms;
+  --motion-panel-open: 400ms;
+  --motion-panel-close: 350ms;
+  --motion-ease: cubic-bezier(.22,1,.36,1);
+}
+
+.motion-tab { position:relative; isolation:isolate; }
+.motion-tab > :not(.motion-tab-indicator) { position:relative; z-index:1; }
+.motion-tab-indicator { position:absolute; z-index:0; inset:0; border-radius:inherit; pointer-events:none; }
+.motion-icon-swap { display:inline-grid; place-items:center; }
+.motion-icon-swap > svg { grid-area:1/1; transition:opacity var(--motion-fast) ease-in-out,filter var(--motion-fast) ease-in-out,transform var(--motion-fast) ease-in-out; }
+.motion-icon-swap[data-state="a"] > svg:nth-child(2),
+.motion-icon-swap[data-state="b"] > svg:first-child { opacity:0; filter:blur(2px); transform:scale(.25); }
+.motion-icon-swap[data-state="a"] > svg:first-child,
+.motion-icon-swap[data-state="b"] > svg:nth-child(2) { opacity:1; filter:blur(0); transform:scale(1); }
+
+.app-shell button:not(:disabled),.site-nav button:not(:disabled),.site-nav a {
+  transition-property:color,background-color,border-color,opacity,transform,box-shadow;
+  transition-duration:var(--motion-fast);
+  transition-timing-function:var(--motion-ease);
+}
+.app-shell button:disabled { cursor:not-allowed; }
+.app-shell input:not([type=range]),.site-nav input {
+  transition:border-color var(--motion-fast) var(--motion-ease),box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+@media(prefers-reduced-motion:reduce) {
+  .motion-icon-swap > svg,.app-shell button,.site-nav button,.site-nav a,.app-shell input,.site-nav input { transition:none!important; }
+}
