@@ -65,11 +65,11 @@ function FloatingIcon({
       aria-hidden="true"
     >
       <motion.div
-        className="flex size-14 items-center justify-center md:size-[76px]"
+        className="floating-icon-tile"
         animate={reducedMotion ? undefined : { y: [0, -7, 0, 7, 0], x: [0, 5, 0, -5, 0], rotate: [0, 4, 0, -4, 0] }}
         transition={{ duration: 6 + (index % 4) * 0.85, repeat: Infinity, ease: 'easeInOut' }}
       >
-        <iconData.icon className="size-14 md:size-[76px]" />
+        <iconData.icon className="floating-icon-mark" />
       </motion.div>
     </motion.div>
   )

@@ -23,8 +23,13 @@
 
 @media(min-width:801px) { .nav-links a[href="#app"] { display:none; } }
 
-/* Company marks are bare transparent vectors; the Ondo asset symbols remain in the index. */
+/* Company marks remain transparent inside the raised tiles from the reference hero. */
 .brand-mark { object-fit:contain; background:none!important; border:0!important; box-shadow:none!important; filter:none; }
 [data-theme=dark] .brand-mark--apple, [data-theme=dark] .brand-mark--amazon { filter:brightness(0) invert(1); }
+.floating-icon-tile { display:flex; align-items:center; justify-content:center; width:72px; height:72px; padding:15px; border:1px solid rgba(0,0,0,.035); border-radius:19px; background:rgba(255,255,255,.92); box-shadow:0 11px 22px rgba(0,0,0,.13),0 2px 5px rgba(0,0,0,.04); backdrop-filter:blur(12px); }
+.floating-icon-mark { display:block; width:100%; height:100%; overflow:visible; }
+[data-theme=dark] .floating-icon-tile { border-color:rgba(255,255,255,.035); background:rgba(24,24,24,.9); box-shadow:0 14px 28px rgba(0,0,0,.32),0 2px 7px rgba(0,0,0,.15); }
+@media(max-width:800px) { .landing-hero { min-height:1120px; } }
+@media(max-width:620px) { .landing-hero { min-height:940px; } .floating-icon-tile { width:62px; height:62px; padding:13px; border-radius:17px; } }
 .hero-cta { display:inline-flex; align-items:center; justify-content:center; gap:18px; min-height:52px; padding:0 22px; border:1px solid var(--primary); background:var(--primary); color:var(--primary-foreground)!important; font-size:14px; font-weight:650; text-decoration:none; }
 .hero-cta:hover { opacity:.78; }
