@@ -1,9 +1,10 @@
 import { PrivyProvider } from '@privy-io/react-auth'
 import { bsc } from 'viem/chains'
 import FirstBellApp from './app'
+import { PRIVY_APP_ID } from './privy-config'
 
 export default function AppEntry() {
-  const appId = import.meta.env.VITE_PRIVY_APP_ID?.trim()
+  const appId = PRIVY_APP_ID
   if (!appId) return <FirstBellApp />
   return <PrivyProvider appId={appId} config={{
     loginMethods: ['email', 'google'],

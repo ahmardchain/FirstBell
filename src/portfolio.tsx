@@ -3,6 +3,7 @@ import { useLinkAccount, usePrivy, useWallets } from '@privy-io/react-auth'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, ArrowUpRight, Bookmark, Eye, EyeOff, RefreshCw, Search, UserRound } from 'lucide-react'
 import { displayQuantity, readWalletBalances, type WalletBalances } from './wallet-balances'
+import { PRIVY_APP_ID } from './privy-config'
 import './portfolio.css'
 
 type Language = 'en' | 'zh'
@@ -91,7 +92,7 @@ function ConnectedPortfolio(props: Props) {
 }
 
 export function PortfolioWorkspace(props: Props) {
-  if (import.meta.env.VITE_PRIVY_APP_ID?.trim()) return <ConnectedPortfolio {...props} />
+  if (PRIVY_APP_ID) return <ConnectedPortfolio {...props} />
   return <PortfolioView {...props} account={{
     configured: false, ready: true, authenticated: false, walletReady: false,
     hasEmail: false, hasGoogle: false, balances: null, loading: false, error: false,
