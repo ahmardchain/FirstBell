@@ -1,10 +1,12 @@
 import * as React from 'react'
+import { usePrivy } from '@privy-io/react-auth'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, ArrowUpRight, Bookmark, ChevronDown, ExternalLink, Globe2, House, Menu, Moon, Search, Sparkles, Sun, X, ChartNoAxesCombined, ChartPie } from 'lucide-react'
 import manifest from '@/asset-sources.json'
 import { AIChatCard } from '@/components/spectrumui/ai-chat-card'
 import { TradeWorkspace } from './trade'
 import { PortfolioWorkspace } from './portfolio'
+import { getAccount, setSavedAsset } from './account-api'
 import './app.css'
 import './agent.css'
 
@@ -83,6 +85,7 @@ function AssetMark({ asset, className = '' }: { asset: Asset; className?: string
 }
 
 export default function FirstBellApp() {
+  const { ready, authenticated, user, getAccessToken } = usePrivy()
   const reduceMotion = useReducedMotion()
   const [language, setLanguage] = React.useState<Language>(() => localStorage.getItem('firstbell-language') === 'zh' ? 'zh' : 'en')
   const [theme, setTheme] = React.useState<Theme>(() => localStorage.getItem('firstbell-theme') === 'dark' ? 'dark' : 'light')
@@ -93,6 +96,7 @@ export default function FirstBellApp() {
   const [query, setQuery] = React.useState('')
   const [filter, setFilter] = React.useState<'all' | 'saved'>('all')
   const [saved, setSaved] = React.useState<string[]>(() => { try { const value = JSON.parse(localStorage.getItem('firstbell-saved') ?? '[]'); return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [] } catch { return [] } })
+  const savedWrite = React.useRef(Promise.resolve())
   const [selected, setSelected] = React.useState<Asset | null>(null)
   const [workingAsset, setWorkingAsset] = React.useState<Asset>(assets.find(a => a.symbol === 'NVDAon')!)
   const [messages, setMessages] = React.useState<{ id: number; role: 'user' | 'guide'; text: string }[]>([])
@@ -104,6 +108,14 @@ export default function FirstBellApp() {
   React.useEffect(() => { document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'; localStorage.setItem('firstbell-language', language) }, [language])
   React.useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('firstbell-theme', theme); document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#ffffff' : '#080808') }, [theme])
   React.useEffect(() => { localStorage.setItem('firstbell-saved', JSON.stringify(saved)) }, [saved])
+  React.useEffect(() => {
+    if (!ready || !authenticated || !user?.id) return
+    let active = true
+    getAccount(getAccessToken).then(account => {
+      if (active && account.id === user.id) setSaved(account.saved.filter(symbol => assets.some(asset => asset.symbol === symbol)))
+    }).catch(() => { /* Local saves remain available while the account service is offline. */ })
+    return () => { active = false }
+  }, [ready, authenticated, user?.id, getAccessToken])
   React.useEffect(() => {
     if (!selected) return
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -127,7 +139,15 @@ export default function FirstBellApp() {
     window.history.replaceState(null, '', id === 'home' ? '/app/' : `/app/?tab=${id}`)
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
-  const toggleSaved = (symbol: string) => setSaved(list => list.includes(symbol) ? list.filter(s => s !== symbol) : [...list, symbol])
+  const toggleSaved = (symbol: string) => {
+    const next = !saved.includes(symbol)
+    setSaved(list => next ? [...new Set([...list, symbol])] : list.filter(item => item !== symbol))
+    if (ready && authenticated) {
+      savedWrite.current = savedWrite.current.then(() => setSavedAsset(getAccessToken, symbol, next)).catch(() => {
+        /* The local saved list continues to work if the server is not configured. */
+      })
+    }
+  }
   const answer = (prompt: string) => {
     const q = prompt.trim()
     if (!q) return
