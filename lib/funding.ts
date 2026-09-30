@@ -4,9 +4,25 @@ export const BSC_USDT = {
   decimals: 18,
   chainId: 56,
   currencyCode: 'usdt_bsc',
+  symbol: 'USDT',
+  network: 'BNB Smart Chain',
+  explorer: 'https://bscscan.com',
+} as const
+
+// MoonPay's `eth` currency uses Ethereum metadata in its catalog, but test
+// purchases deliver native ETH on Sepolia. It never funds BSC mainnet.
+export const SANDBOX_ETH = {
+  currencyCode: 'eth',
+  decimals: 18,
+  chainId: 11155111,
+  symbol: 'ETH',
+  network: 'Ethereum Sepolia',
+  explorer: 'https://sepolia.etherscan.io',
 } as const
 
 export type FundingMode = 'sandbox' | 'live'
+export type CheckoutCurrency = typeof BSC_USDT.currencyCode | typeof SANDBOX_ETH.currencyCode
+export const checkoutAsset = (mode: FundingMode | null | undefined) => mode === 'sandbox' ? SANDBOX_ETH : BSC_USDT
 export type DepositStatus = 'awaiting_payment' | 'action_required' | 'processing' | 'confirming' | 'completed' | 'failed' | 'expired' | 'test_completed'
 export type DepositSession = {
   id: string
@@ -15,6 +31,8 @@ export type DepositSession = {
   amount: string
   fiatCurrency: string
   mode: FundingMode
+  // Records created before the sandbox extension are BSC USDT sessions.
+  currencyCode?: CheckoutCurrency
   status: DepositStatus
   createdAt: string
   checkedAt: string | null
@@ -22,6 +40,7 @@ export type DepositSession = {
   transactionHash: string | null
   receivedAmount: string | null
 }
+export const sessionAsset = (session: DepositSession) => session.currencyCode === 'eth' ? SANDBOX_ETH : BSC_USDT
 export type FiatOption = { code: string; name: string; min: number; max: number }
 export type DepositConfig = {
   ready: boolean

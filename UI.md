@@ -51,3 +51,10 @@ Read `AGENTS.md` before making interface changes. Review matching components fro
 - Motion: a 250ms, 8px dialog reveal and a pending-state spinner. Reduced motion removes both. Forms, errors, checking, success, terminal history and unconfigured checkout have real states.
 
 The mark provenance is in `brand-mark-sources.json`. The floating icon component lives at `components/ui/floating-icons-hero-section.tsx`. React Bits adaptations live at `components/ui/logo-loop.tsx` and `components/ui/scroll-float.tsx`, with a license notice in `third_party/REACT_BITS_LICENSE.md`.
+
+## Sandbox checkout extension (2026-09-30)
+
+- Preserve the existing deposit dialog, Inter/IBM Plex Mono, gray rules, 16px surfaces, pill actions, light/dark tokens, native dialog focus behavior and reduced-motion settings. Design Read: extension; variance 2/10, motion 2/10, density 5/10, brand fidelity 9/10. Reviewed the existing components and shadcn/ui Dialog guidance; no new library or layout overhaul.
+- Sandbox's Portfolio action is **Test card checkout**. The dialog shows **ETH / Ethereum Sepolia**, a persistent test-mode notice, the documented test card/billing instructions and the provider's 1/100 testnet-delivery caveat. It never calls Sepolia ETH BSC USDT.
+- Session details and explorers use the recorded asset, independent of the current checkout configuration. Sandbox completion is **Test completed**, with no credited USDT. Portfolio continues to display only actual BSC mainnet balances. Pending sessions from a different mode have a clear configuration-change state and cannot be resumed under a different asset.
+- Mainnet stock execution remains unavailable; sandbox success must not imply a real stock purchase.

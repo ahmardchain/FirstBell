@@ -1,6 +1,6 @@
 import { importSPKI, jwtVerify } from 'jose'
 import { isAddress } from 'viem'
-import { type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding.ts'
+import { BSC_USDT, checkoutAsset, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding.ts'
 import { checkDeposit, createCheckoutUrl, customerIp, FundingError, getFiatOptions, getMoonPayCredentials, hmac, validateFiatAmount, type FundingEnv } from './moonpay.ts'
 
 type Store = {
@@ -108,11 +108,13 @@ export async function handleStoredDeposits(request: Request, env: FundingEnv, st
       const input = await request.json() as { sessionId?: string; walletAddress: string; amount: string; fiatCurrency: string; customerId: string; ip: string; origin: string; theme: 'dark' | 'light' }
       let session = input.sessionId ? sessions.find(item => item.id === input.sessionId) : undefined
       if (input.sessionId && (!session || isDepositTerminal(session.status) || session.walletAddress.toLowerCase() !== input.walletAddress.toLowerCase()
-        || session.mode !== credentials.mode || session.customerId !== input.customerId)) throw new FundingError('invalid_session', 409)
+        || session.mode !== credentials.mode || (session.currencyCode ?? BSC_USDT.currencyCode) !== checkoutAsset(credentials.mode).currencyCode
+        || session.customerId !== input.customerId)) throw new FundingError('invalid_session', 409)
       if (!session) {
         if (sessions.filter(item => !isDepositTerminal(item.status)).length >= 10) throw new FundingError('too_many_pending', 409)
         session = { id: crypto.randomUUID(), customerId: input.customerId, walletAddress: input.walletAddress, amount: input.amount, fiatCurrency: input.fiatCurrency,
-          mode: credentials.mode, status: 'awaiting_payment', createdAt: new Date().toISOString(), checkedAt: null,
+          mode: credentials.mode, currencyCode: checkoutAsset(credentials.mode).currencyCode,
+          status: 'awaiting_payment', createdAt: new Date().toISOString(), checkedAt: null,
           transactionId: null, transactionHash: null, receivedAmount: null }
       }
       const checkoutUrl = await createCheckoutUrl(credentials, session, input.origin, input.ip, input.theme)

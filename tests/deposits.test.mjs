@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto'
 import { after, test } from 'node:test'
 import { exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import { encodeEventTopics, erc20Abi, pad, toHex } from 'viem'
-import { BSC_USDT } from '../lib/funding.ts'
+import { BSC_USDT, SANDBOX_ETH, sessionAsset } from '../lib/funding.ts'
 import { canonicalIp, confirmedTransfer, createCheckoutUrl, getFiatOptions, getMoonPayCredentials, normalizeTransaction, signWidgetUrl, validateFiatAmount } from '../worker/moonpay.ts'
 import { handleDepositRequest, handleStoredDeposits, verifyWalletIdentity } from '../worker/deposits.ts'
 
@@ -19,6 +19,10 @@ const session = { id: 'd228e63d-627e-4e3c-8dfb-b916a8950ff0', customerId: 'pseud
 const usdt = { type: 'crypto', code: 'usdt_bsc', isSuspended: false, supportsLiveMode: true, supportsTestMode: false,
   metadata: { chainId: '56', contractAddress: BSC_USDT.address } }
 const fiat = { type: 'fiat', code: 'usd', name: 'US Dollar', minBuyAmount: 20, maxBuyAmount: 30000 }
+const sandboxEnv = { ...env, MOONPAY_ENVIRONMENT: 'sandbox', MOONPAY_PUBLISHABLE_KEY: 'pk_test_sandbox', MOONPAY_SECRET_KEY: 'sk_test_sandbox' }
+const eth = { type: 'crypto', code: 'eth', isSuspended: false, supportsLiveMode: true, supportsTestMode: true,
+  metadata: { chainId: '1', contractAddress: '0x0000000000000000000000000000000000000000', networkCode: 'ethereum' } }
+const sandboxSession = { ...session, mode: 'sandbox', currencyCode: 'eth' }
 const transaction = overrides => ({ id: 'provider-transaction', externalTransactionId: session.id, externalCustomerId: session.customerId,
   walletAddress: wallet, currency: usdt, baseCurrency: fiat, baseCurrencyAmount: 50, quoteCurrencyAmount: 47,
   status: 'completed', cryptoTransactionId: hash, ...overrides })
@@ -56,6 +60,21 @@ test('environment/key mismatch and missing credentials fail closed', () => {
   assert.throws(() => getMoonPayCredentials({ ...env, MOONPAY_ENVIRONMENT: 'sandbox' }), /invalid_configuration/)
 })
 
+test('sandbox checkout signs an ETH request for test delivery, while the legacy live route remains BSC USDT', async () => {
+  const url = new URL(await createCheckoutUrl(getMoonPayCredentials(sandboxEnv), sandboxSession, 'https://firstbell.example', '203.0.113.42', 'light'))
+  assert.equal(url.origin, 'https://buy-sandbox.moonpay.com')
+  assert.equal(url.searchParams.get('currencyCode'), 'eth')
+  assert.equal(url.searchParams.get('walletAddress'), wallet)
+  assert.equal(url.searchParams.get('baseCurrencyAmount'), '50')
+  const signature = url.searchParams.get('signature')
+  url.searchParams.delete('signature')
+  assert.equal(signature, createHmac('sha256', sandboxEnv.MOONPAY_SECRET_KEY).update(url.search).digest('base64'))
+  assert.equal(sessionAsset(sandboxSession).chainId, 11155111)
+  assert.equal(sessionAsset(session).chainId, 56)
+  await assert.rejects(() => createCheckoutUrl(getMoonPayCredentials(sandboxEnv), { ...sandboxSession, currencyCode: undefined }, 'https://firstbell.example', '203.0.113.42', 'light'), /invalid_session/)
+  await assert.rejects(() => createCheckoutUrl(getMoonPayCredentials(env), sandboxSession, 'https://firstbell.example', '203.0.113.42', 'light'), /invalid_session/)
+})
+
 test('IP canonicalization covers IPv4, RFC 5952, mapped IPv6 and invalid addresses', () => {
   assert.equal(canonicalIp('203.0.113.042:443'), '203.0.113.42')
   assert.equal(canonicalIp('[2001:0DB8:0000:0000:0000:0000:0000:0001]:443'), '2001:db8::1')
@@ -71,6 +90,20 @@ test('currency catalog checks partner enablement, exact BSC contract and live-on
   await assert.rejects(() => getFiatOptions(getMoonPayCredentials(testEnv)), /sandbox_asset_unavailable/)
   globalThis.fetch = async () => respond([{ ...usdt, metadata: { ...usdt.metadata, chainId: '1' } }, fiat])
   await assert.rejects(() => getFiatOptions(getMoonPayCredentials({ ...env, MOONPAY_PUBLISHABLE_KEY: 'pk_live_wrong_chain' })), /asset_unavailable/)
+})
+
+test('sandbox requires enabled native ETH with test support, and offers only the documented USD/GBP test currencies', async () => {
+  globalThis.fetch = async () => respond([usdt, eth, fiat,
+    { ...fiat, code: 'gbp', name: 'Pound Sterling' }, { ...fiat, code: 'ngn', name: 'Nigerian Naira' }])
+  assert.deepEqual((await getFiatOptions(getMoonPayCredentials(sandboxEnv))).map(option => option.code), ['usd', 'gbp'])
+  for (const [index, asset] of [
+    { ...eth, supportsTestMode: false }, { ...eth, isSuspended: true },
+    { ...eth, metadata: { ...eth.metadata, chainId: '56' } },
+    { ...eth, metadata: { ...eth.metadata, contractAddress: BSC_USDT.address } },
+  ].entries()) {
+    globalThis.fetch = async () => respond([asset, fiat])
+    await assert.rejects(() => getFiatOptions(getMoonPayCredentials({ ...sandboxEnv, MOONPAY_PUBLISHABLE_KEY: `pk_test_disabled_${index}` })), /sandbox_asset_unavailable/)
+  }
 })
 
 test('fiat limits are provider-derived and reject exponent, decimal, negative and out-of-range inputs', () => {
@@ -110,7 +143,11 @@ test('provider completion alone is confirming; mismatched recipient, network, to
     assert.throws(() => normalizeTransaction(transaction(overrides), session), /transaction_mismatch/)
   }
   assert.throws(() => normalizeTransaction([transaction(), transaction()], session), /ambiguous_transaction/)
-  assert.equal(normalizeTransaction(transaction(), { ...session, mode: 'sandbox' }).status, 'test_completed')
+  assert.throws(() => normalizeTransaction(transaction(), { ...session, mode: 'sandbox' }), /transaction_mismatch/)
+  const simulated = normalizeTransaction(transaction({ currency: eth, quoteCurrencyAmount: 0.01 }), sandboxSession)
+  assert.equal(simulated.status, 'test_completed')
+  assert.equal(simulated.receivedAmount, null)
+  assert.throws(() => normalizeTransaction(transaction({ currency: eth }), session), /transaction_mismatch/)
 })
 
 const transferLog = (to = wallet, token = BSC_USDT.address, amount = 47n * 10n ** 18n) => ({ address: token,
@@ -141,6 +178,42 @@ test('stored session survives checkout; resuming reuses its ID, and repeated cre
   assert.equal(history.sessions.length, 2)
   assert.ok(!JSON.stringify(history).includes('checkoutUrl'))
   assert.ok(!JSON.stringify(history).includes(env.MOONPAY_SECRET_KEY))
+})
+
+test('stored sandbox checkout records its asset and completion never reads or credits BSC', async () => {
+  const store = storage()
+  const input = { walletAddress: wallet, amount: '50', fiatCurrency: 'usd', customerId: session.customerId, ip: '203.0.113.42', origin: 'https://firstbell.example', theme: 'light' }
+  const created = await (await handleStoredDeposits(new Request('https://account.internal/deposits/checkout', { method: 'POST', body: JSON.stringify(input) }), sandboxEnv, store)).json()
+  assert.equal(created.session.currencyCode, 'eth')
+  assert.equal(created.session.mode, 'sandbox')
+  assert.equal(new URL(created.checkoutUrl).searchParams.get('currencyCode'), 'eth')
+  const calls = []
+  globalThis.fetch = async url => {
+    calls.push(String(url))
+    assert.equal(new URL(url).hostname, 'api.moonpay.com')
+    return respond([transaction({ externalTransactionId: created.session.id, currency: eth, quoteCurrencyAmount: 0.01 })])
+  }
+  const checked = await (await handleStoredDeposits(new Request(`https://account.internal/deposits/${created.session.id}`), sandboxEnv, store)).json()
+  assert.equal(checked.session.status, 'test_completed')
+  assert.equal(checked.session.receivedAmount, null)
+  assert.equal(store.values.get('deposits')[0].status, 'test_completed')
+  assert.equal(calls.length, 1)
+  assert.ok(!calls.some(url => url.includes('bnbchain')))
+  assert.deepEqual([...store.values.keys()].sort(), ['depositCheckTimes', 'depositTimes', 'deposits'])
+})
+
+test('switching checkout mode preserves the old pending session and rejects resuming it as another asset', async () => {
+  const store = storage({ deposits: [session] })
+  globalThis.fetch = async () => { throw new Error('No provider call should occur') }
+  const checked = await handleStoredDeposits(new Request(`https://account.internal/deposits/${session.id}`), sandboxEnv, store)
+  assert.equal(checked.status, 503)
+  assert.equal((await checked.json()).error, 'environment_changed')
+  assert.deepEqual(store.values.get('deposits'), [session])
+  const resumed = await handleStoredDeposits(new Request('https://account.internal/deposits/checkout', { method: 'POST', body: JSON.stringify({
+    sessionId: session.id, walletAddress: wallet, customerId: session.customerId,
+  }) }), sandboxEnv, store)
+  assert.equal(resumed.status, 409)
+  assert.deepEqual(store.values.get('deposits'), [session])
 })
 
 test('route rejects cross-origin checkout, unverified wallet and an oversized streaming body', async () => {

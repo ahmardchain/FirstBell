@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { getIdentityToken, useUser } from '@privy-io/react-auth'
-import { type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding'
+import { checkoutAsset, sessionAsset, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding'
 
 type GetAccessToken = () => Promise<string | null>
 type DepositResponse = { session: DepositSession; checkoutUrl?: string }
@@ -66,8 +66,10 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
   }, [address, getAccessToken])
 
   const selectedSession = sessions.find(session => session.id === selectedId)
-  const pendingId = selectedSession && (!isDepositTerminal(selectedSession.status) || selectedSession.status === 'expired')
-    ? selectedSession.id : sessions.find(session => !isDepositTerminal(session.status))?.id
+  const matchesConfiguration = (session: DepositSession) => session.mode === config?.mode
+    && sessionAsset(session).currencyCode === checkoutAsset(config?.mode).currencyCode
+  const pendingId = selectedSession && matchesConfiguration(selectedSession) && (!isDepositTerminal(selectedSession.status) || selectedSession.status === 'expired')
+    ? selectedSession.id : sessions.find(session => matchesConfiguration(session) && !isDepositTerminal(session.status))?.id
   React.useEffect(() => {
     if (!pendingId || !address || !config?.ready) return
     const abort = new AbortController()

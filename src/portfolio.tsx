@@ -34,6 +34,7 @@ const copy = {
     loading: 'Reading BNB Smart Chain', error: 'Balances could not be read. Try again.', loadingValue: 'Loading', unavailableValue: 'Unavailable',
     source: 'Live on-chain quantities. No USD valuation or market price is shown.',
     deposit: 'Deposit from card', withdraw: 'Withdraw', transferNote: 'Card deposits use MoonPay. Withdrawals are not available yet.',
+    sandboxDeposit: 'Test card checkout', sandboxNote: 'MoonPay sandbox sends test ETH on Sepolia. Your BSC mainnet balance is funded separately.',
     depositSetup: 'Card checkout will be available after the payment setup is completed.',
     positions: 'Positions', activity: 'Activity', search: 'Search',
     noPositions: 'No token positions found', noPositionsHint: 'Your five listed token balances are currently zero.',
@@ -52,6 +53,7 @@ const copy = {
     loading: '正在读取 BNB 智能链', error: '无法读取余额，请重试。', loadingValue: '读取中', unavailableValue: '暂不可用',
     source: '链上实时数量。此处不显示美元估值或市场价格。',
     deposit: '银行卡充值', withdraw: '提现', transferNote: '银行卡充值由 MoonPay 处理，提现暂未开放。',
+    sandboxDeposit: '测试银行卡支付', sandboxNote: 'MoonPay 沙盒向 Sepolia 发送测试 ETH，BSC 主网余额需单独充值。',
     depositSetup: '支付配置完成后即可使用银行卡充值。',
     positions: '持仓', activity: '活动', search: '搜索',
     noPositions: '未找到代币持仓', noPositionsHint: '这五种代币的当前余额均为零。',
@@ -73,7 +75,7 @@ function ConnectedPortfolio(props: Props) {
   const deposits = useDeposits(address, getAccessToken)
   const completedDeposits = React.useRef('')
   React.useEffect(() => {
-    const completed = deposits.sessions.filter(session => session.status === 'completed').map(session => session.id).join(',')
+    const completed = deposits.sessions.filter(session => session.mode === 'live' && session.status === 'completed').map(session => session.id).join(',')
     const key = `${address ?? ''}:${completed}`
     if (completedDeposits.current !== key) {
       completedDeposits.current = key
@@ -170,8 +172,8 @@ function PortfolioView({ assets, saved, language, onExplore, onInspect, onToggle
         <div className="portfolio-account-head"><span className="portfolio-avatar"><UserRound size={22} strokeWidth={1.6} /></span><div><span className="app-label">{account.email || 'FIRSTBELL'}</span><h1 id="portfolio-title">{t.account}</h1></div></div>
         <div className="portfolio-balance"><div className="portfolio-balance-label"><span>{t.balance}</span><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(value => !value)}>{hidden ? <EyeOff size={20} /> : <Eye size={20} />}</button><button type="button" aria-label={t.refresh} disabled={!account.address || account.loading} onClick={account.refresh}><RefreshCw size={17} /></button></div><div className="portfolio-balance-value" aria-live="polite">{hidden ? '••••••' : account.balances ? `${displayQuantity(account.balances.usdt)} USDT` : balancePlaceholder}</div><p className="portfolio-gas-balance">{t.gas} <strong>{hidden ? '••••' : account.balances ? `${displayQuantity(account.balances.bnb)} BNB` : balancePlaceholder}</strong></p><p>{t.positionsValue} <strong>{account.balances ? account.balances.tokens.filter(token => token.raw > 0n).length : balancePlaceholder}</strong></p><small>{!account.walletReady || !account.address ? t.walletLoading : account.loading ? t.loading : account.error ? t.error : t.source}</small></div>
         {account.address && <div className="portfolio-wallet-address"><span>{t.address}</span><a href={`https://bscscan.com/address/${account.address}`} target="_blank" rel="noreferrer" title={account.address}>{account.address.slice(0, 8)}…{account.address.slice(-6)} <ArrowUpRight size={14} /><span className="sr-only">{t.viewWallet}</span></a></div>}
-        <div className="portfolio-action-row"><button type="button" disabled={!account.address || !account.walletReady || !account.deposits} onClick={() => openDeposit()}>{t.deposit}</button><button type="button" disabled>{t.withdraw}</button></div>
-        <p className="portfolio-action-note">{account.deposits?.config?.ready ? t.transferNote : t.depositSetup}</p>
+        <div className="portfolio-action-row"><button type="button" disabled={!account.address || !account.walletReady || !account.deposits} onClick={() => openDeposit()}>{account.deposits?.config?.mode === 'sandbox' ? t.sandboxDeposit : t.deposit}</button><button type="button" disabled>{t.withdraw}</button></div>
+        <p className="portfolio-action-note">{account.deposits?.config?.mode === 'sandbox' ? t.sandboxNote : account.deposits?.config?.ready ? t.transferNote : t.depositSetup}</p>
         {account.deposits && <DepositStatusCard controller={account.deposits} language={language} onOpen={openDeposit} />}
         {account.deposits && account.address && <DepositDialog open={depositOpen} onClose={() => setDepositOpen(false)} controller={account.deposits} address={account.address} language={language} />}
         {(!account.hasEmail || !account.hasGoogle) && <div className="portfolio-link-methods"><span>{t.linkNote}</span><div>{!account.hasEmail && <button type="button" onClick={account.linkEmail}>{t.linkEmail}</button>}{!account.hasGoogle && <button type="button" onClick={account.linkGoogle}>{t.linkGoogle}</button>}</div></div>}

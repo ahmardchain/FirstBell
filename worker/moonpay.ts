@@ -1,6 +1,6 @@
 import { createPublicClient, decodeEventLog, erc20Abi, formatUnits, http, isAddress, parseUnits, type Hex } from 'viem'
 import { bsc } from 'viem/chains'
-import { BSC_USDT, type DepositSession, type FiatOption, type FundingMode } from '../lib/funding.ts'
+import { BSC_USDT, checkoutAsset, type DepositSession, type FiatOption, type FundingMode } from '../lib/funding.ts'
 
 export type FundingEnv = {
   MOONPAY_PUBLISHABLE_KEY?: string
@@ -90,6 +90,14 @@ export function matchesBscUsdt(value: unknown): boolean {
     && metadata.contractAddress.toLowerCase() === BSC_USDT.address
 }
 
+export function matchesCheckoutAsset(value: unknown, mode: FundingMode): boolean {
+  if (mode === 'live') return matchesBscUsdt(value)
+  const currency = object(value), metadata = object(currency?.metadata)
+  return currency?.type === 'crypto' && currency.code === 'eth'
+    && String(metadata?.chainId) === '1' && metadata?.networkCode === 'ethereum'
+    && metadata?.contractAddress === '0x0000000000000000000000000000000000000000'
+}
+
 export async function getFiatOptions(credentials: MoonPayCredentials): Promise<FiatOption[]> {
   let cached = currenciesCache.get(credentials.publishableKey)
   if (!cached || cached.expires <= Date.now()) {
@@ -98,12 +106,13 @@ export async function getFiatOptions(credentials: MoonPayCredentials): Promise<F
     cached = { expires: Date.now() + 180_000, currencies: result }
     currenciesCache.set(credentials.publishableKey, cached)
   }
-  const asset = cached.currencies.map(object).find(matchesBscUsdt)
-  if (!asset || asset.isSuspended !== false) throw new FundingError('asset_unavailable')
+  const asset = cached.currencies.map(object).find(currency => matchesCheckoutAsset(currency, credentials.mode))
+  if (!asset || asset.isSuspended !== false) throw new FundingError(credentials.mode === 'sandbox' ? 'sandbox_asset_unavailable' : 'asset_unavailable')
   if (credentials.mode === 'sandbox' && asset.supportsTestMode !== true) throw new FundingError('sandbox_asset_unavailable')
   if (credentials.mode === 'live' && asset.supportsLiveMode === false) throw new FundingError('asset_unavailable')
   const fiats = cached.currencies.map(object).filter((currency): currency is Json => Boolean(currency && currency.type === 'fiat'
     && typeof currency.code === 'string' && /^[a-z]{3}$/.test(currency.code)
+    && (credentials.mode === 'live' || ['usd', 'gbp'].includes(currency.code))
     && currency.isSuspended !== true && typeof currency.minBuyAmount === 'number' && typeof currency.maxBuyAmount === 'number'
     && Number.isFinite(currency.minBuyAmount) && Number.isFinite(currency.maxBuyAmount)
     && currency.minBuyAmount > 0 && currency.maxBuyAmount >= currency.minBuyAmount))
@@ -120,14 +129,16 @@ export function validateFiatAmount(amount: unknown, code: unknown, options: Fiat
 }
 
 export async function createCheckoutUrl(credentials: MoonPayCredentials, session: DepositSession, origin: string, ip: string, theme: 'dark' | 'light'): Promise<string> {
-  if (!isAddress(session.walletAddress) || session.mode !== credentials.mode) throw new FundingError('invalid_session', 400)
+  const asset = checkoutAsset(credentials.mode)
+  if (!isAddress(session.walletAddress) || session.mode !== credentials.mode
+    || (session.currencyCode ?? BSC_USDT.currencyCode) !== asset.currencyCode) throw new FundingError('invalid_session', 400)
   const redirect = new URL('/app/', origin)
   if (redirect.protocol !== 'https:') throw new FundingError('https_required')
   redirect.searchParams.set('tab', 'portfolio')
   redirect.searchParams.set('deposit', session.id)
   const params = new URLSearchParams({
     apiKey: credentials.publishableKey,
-    currencyCode: BSC_USDT.currencyCode,
+    currencyCode: asset.currencyCode,
     walletAddress: session.walletAddress,
     baseCurrencyCode: session.fiatCurrency,
     baseCurrencyAmount: session.amount,
@@ -152,7 +163,8 @@ export function normalizeTransaction(value: unknown, session: DepositSession): D
   const transaction = object(rows[0]), baseCurrency = object(transaction?.baseCurrency)
   if (!transaction || transaction.externalTransactionId !== session.id || transaction.externalCustomerId !== session.customerId
     || typeof transaction.walletAddress !== 'string' || transaction.walletAddress.toLowerCase() !== session.walletAddress.toLowerCase()
-    || !matchesBscUsdt(transaction.currency) || baseCurrency?.code !== session.fiatCurrency
+    || (session.currencyCode ?? BSC_USDT.currencyCode) !== checkoutAsset(session.mode).currencyCode
+    || !matchesCheckoutAsset(transaction.currency, session.mode) || baseCurrency?.code !== session.fiatCurrency
     || Number(transaction.baseCurrencyAmount) !== Number(session.amount)
     || typeof transaction.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(transaction.id)) throw new FundingError('transaction_mismatch')
   if (session.transactionId && transaction.id !== session.transactionId) throw new FundingError('transaction_mismatch')
@@ -183,7 +195,8 @@ export function confirmedTransfer(receipt: { status: string; blockNumber: bigint
 }
 
 export async function checkDeposit(session: DepositSession, credentials: MoonPayCredentials): Promise<DepositSession> {
-  if (session.mode !== credentials.mode) throw new FundingError('environment_changed')
+  if (session.mode !== credentials.mode || (session.currencyCode ?? BSC_USDT.currencyCode) !== checkoutAsset(credentials.mode).currencyCode)
+    throw new FundingError('environment_changed')
   const data = await providerGet(`/v1/transactions/ext/${encodeURIComponent(session.id)}`, credentials.publishableKey)
   const normalized = normalizeTransaction(data, session)
   const { expectedAmount, ...result } = normalized

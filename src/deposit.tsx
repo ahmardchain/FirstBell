@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { ArrowUpRight, Check, CreditCard, LoaderCircle, RefreshCw, X } from 'lucide-react'
-import { isDepositTerminal, type DepositSession, type DepositStatus } from '../lib/funding'
+import { checkoutAsset, isDepositTerminal, sessionAsset, type DepositSession } from '../lib/funding'
 import { displayQuantity } from './wallet-balances'
 import type { DepositController } from './deposits-api'
 import './deposit.css'
@@ -14,8 +14,17 @@ const copy = {
     timing: 'Card payments and identity checks can take several minutes or longer.',
     provider: 'Card payment and verification are handled securely by MoonPay.',
     sandbox: 'Test mode — no real money or mainnet funds.',
+    sandboxTitle: 'Test card checkout', sandboxIntro: 'Try MoonPay with test ETH on Ethereum Sepolia.',
+    sandboxContinue: 'Continue to test checkout', sandboxAmount: 'Test purchase amount', sandboxReceive: 'Test asset',
+    sandboxFees: 'MoonPay shows a test quote and fees. Use the test card below; no real card is charged.',
+    sandboxCard: 'MoonPay test card / UK', sandboxExpiry: 'Expiry', sandboxBilling: 'Use a UK test billing address in MoonPay sandbox. Use an email you can access for the login code.',
+    sandboxDelivery: 'Testnet delivery is 1/100 of the quoted ETH amount. Your BSC USDT balance is separate.',
+    sandboxWaiting: 'Finish test checkout in MoonPay. Your real BSC balance stays separate.',
+    sandboxProcessing: 'MoonPay is processing the test payment. No BSC mainnet funds will be added.',
+    sandboxNew: 'Try another test checkout', sandboxReceipt: 'View test transaction on Sepolia',
+    changed: 'This checkout belongs to a previous configuration. Start a new checkout in the current mode.',
     setup: 'Card deposits are being connected. Checkout is not available yet.',
-    sandboxUnavailable: 'MoonPay does not currently offer BSC USDT in test mode. Real checkout needs an approved live integration.',
+    sandboxUnavailable: 'MoonPay test ETH is not enabled for this integration. Enable Ethereum in MoonPay and try again.',
     unavailable: 'Card checkout is temporarily unavailable. Try again shortly.',
     retry: 'Try again', invalid: 'Enter a whole amount within the displayed limits.', limits: 'Available range',
     verify: 'Your wallet could not be verified. Sign in again and retry.',
@@ -23,7 +32,7 @@ const copy = {
     connection: 'Your connection could not be verified. Reopen checkout on the same network.',
     limited: 'Please wait a minute before opening another checkout.',
     check: 'Check status', checked: 'Last checked', resume: 'Return to checkout', new: 'Make another deposit', history: 'Card deposits',
-    historyEmpty: 'No card deposits yet', historyHint: 'Your card deposits and their confirmation status will appear here.',
+    historyEmpty: 'No card checkouts yet', historyHint: 'Your live card deposits and labelled sandbox checkouts will appear here.',
     loading: 'Checking card deposits', details: 'View deposit', receipt: 'View transfer on BscScan',
     sent: 'Sent to your wallet', paid: 'Requested amount', status: 'Deposit status', checkError: 'Status could not be verified. Your deposit remains tracked; try checking again.',
     waiting: 'Finish payment in MoonPay. Closing this screen keeps your deposit tracked.',
@@ -42,12 +51,21 @@ const copy = {
     close: '关闭充值', fees: '支付前，MoonPay 会显示最终银行卡扣款总额、USDT 到账金额和全部费用。',
     timing: '银行卡支付和身份验证可能需要数分钟或更长时间。', provider: '银行卡支付和身份验证由 MoonPay 安全处理。',
     sandbox: '测试模式：不使用真实资金，也不产生主网余额。', setup: '银行卡充值正在接入，目前尚不能支付。',
-    sandboxUnavailable: 'MoonPay 目前不支持测试模式下的 BSC USDT。真实支付需要获准的正式接入。',
+    sandboxTitle: '测试银行卡支付', sandboxIntro: '在以太坊 Sepolia 上使用测试 ETH 体验 MoonPay。',
+    sandboxContinue: '继续前往测试支付', sandboxAmount: '测试购买金额', sandboxReceive: '测试资产',
+    sandboxFees: 'MoonPay 会显示测试报价和费用。请使用下方测试卡，不会扣除真实资金。',
+    sandboxCard: 'MoonPay 英国测试卡', sandboxExpiry: '有效期', sandboxBilling: '请在 MoonPay 沙盒使用英国测试账单地址，并使用能接收登录验证码的邮箱。',
+    sandboxDelivery: '测试网到账金额为 ETH 报价数量的 1/100。BSC 主网 USDT 余额单独显示。',
+    sandboxWaiting: '请在 MoonPay 完成测试支付，BSC 主网余额单独计算。',
+    sandboxProcessing: 'MoonPay 正在处理测试支付，不会增加 BSC 主网余额。',
+    sandboxNew: '再次测试支付', sandboxReceipt: '在 Sepolia 查看测试交易',
+    changed: '此支付记录属于之前的配置，请在当前模式下创建新的支付。',
+    sandboxUnavailable: '此接入尚未启用 MoonPay 测试 ETH。请在 MoonPay 启用以太坊后重试。',
     unavailable: '银行卡支付暂时不可用，请稍后重试。', retry: '重试', invalid: '请输入范围内的整数金额。', limits: '可用金额范围',
     verify: '无法验证钱包，请重新登录后重试。', identity: '钱包验证尚未启用。完成账户配置后才能使用银行卡充值。',
     connection: '无法验证网络连接，请在同一网络下重新打开支付页面。', limited: '请等待一分钟后再打开支付页面。',
     check: '检查状态', checked: '上次检查', resume: '返回支付页面', new: '再次充值', history: '银行卡充值记录',
-    historyEmpty: '还没有银行卡充值', historyHint: '银行卡充值及其确认状态会显示在这里。',
+    historyEmpty: '还没有银行卡支付', historyHint: '真实充值和标注为沙盒的测试支付会显示在这里。',
     loading: '正在检查充值记录', details: '查看充值', receipt: '在 BscScan 查看转账',
     sent: '钱包到账', paid: '申请金额', status: '充值状态', checkError: '暂时无法验证状态。充值仍在跟踪中，请稍后重试。',
     waiting: '请在 MoonPay 完成支付。关闭此页面不会停止跟踪充值。', action: '请在 MoonPay 完成银行卡授权或身份验证。',
@@ -67,11 +85,17 @@ export function depositErrorMessage(reason: string | null | undefined, language:
   if (['connection_unverified', 'https_required'].includes(reason ?? '')) return t.connection
   if (['rate_limited', 'too_many_pending'].includes(reason ?? '')) return t.limited
   if (reason === 'invalid_amount') return t.invalid
+  if (['invalid_session', 'environment_changed'].includes(reason ?? '')) return t.changed
   return t.unavailable
 }
 
-const statusMessage = (status: DepositStatus, language: Language) => {
+const statusMessage = (session: DepositSession, language: Language) => {
   const t = copy[language]
+  const status = session.status
+  if (session.mode === 'sandbox') {
+    if (status === 'awaiting_payment') return t.sandboxWaiting
+    if (status === 'processing' || status === 'confirming') return t.sandboxProcessing
+  }
   return ({ awaiting_payment: t.waiting, action_required: t.action, processing: t.processing, confirming: t.confirming,
     completed: t.completed, failed: t.failed, expired: t.expired, test_completed: t.testCompleted })[status]
 }
@@ -87,6 +111,9 @@ export function DepositDialog({ open, onClose, controller, address, language }: 
   const options = config?.fiatCurrencies ?? []
   const option = options.find(item => item.code === fiat) ?? options[0]
   const session = controller.sessions.find(item => item.id === controller.selectedId)
+  const sandbox = (session?.mode ?? config?.mode) === 'sandbox'
+  const asset = session ? sessionAsset(session) : checkoutAsset(config?.mode)
+  const changedConfiguration = Boolean(session && config?.mode && (session.mode !== config.mode || asset.currencyCode !== checkoutAsset(config.mode).currencyCode))
   const validAmount = Boolean(option && /^[1-9]\d{0,8}$/.test(amount) && Number(amount) >= option.min && Number(amount) <= option.max)
 
   React.useEffect(() => {
@@ -117,34 +144,40 @@ export function DepositDialog({ open, onClose, controller, address, language }: 
       const rect = dialog.current.getBoundingClientRect()
       if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose()
     }}>
-    <div className="deposit-dialog-head"><span className="app-label">FIRSTBELL / {session ? t.status.toUpperCase() : 'USDT'}</span><button type="button" aria-label={t.close} onClick={onClose}><X size={20} /></button></div>
-    <h2 id="deposit-title">{session ? t.statuses[session.status] : t.title}</h2>
-    <p id="deposit-description">{session ? statusMessage(session.status, language) : t.intro}</p>
-    {config?.mode === 'sandbox' && <p className="deposit-mode-note">{t.sandbox}</p>}
+    <div className="deposit-dialog-head"><span className="app-label">FIRSTBELL / {sandbox ? 'SANDBOX' : session ? t.status.toUpperCase() : 'USDT'}</span><button type="button" aria-label={t.close} onClick={onClose}><X size={20} /></button></div>
+    <h2 id="deposit-title">{session ? t.statuses[session.status] : sandbox ? t.sandboxTitle : t.title}</h2>
+    <p id="deposit-description">{session ? statusMessage(session, language) : sandbox ? t.sandboxIntro : t.intro}</p>
+    {sandbox && <p className="deposit-mode-note">{t.sandbox}</p>}
     {session ? <>
       <div className="deposit-status-icon" aria-hidden="true">{session.status === 'completed' || session.status === 'test_completed' ? <Check size={32} /> : isDepositTerminal(session.status) ? <CreditCard size={30} /> : <LoaderCircle className="deposit-spinner" size={30} />}</div>
       <dl className="deposit-summary"><div><dt>{t.paid}</dt><dd>{session.amount} {session.fiatCurrency.toUpperCase()}</dd></div>
-        {session.receivedAmount && session.status === 'completed' && <div><dt>{t.sent}</dt><dd>{displayQuantity(session.receivedAmount)} USDT</dd></div>}
-        <div><dt>{t.network}</dt><dd>BNB Smart Chain</dd></div><div><dt>{t.wallet}</dt><dd className="deposit-wallet">{address.slice(0, 8)}…{address.slice(-6)}</dd></div>
+        {session.mode === 'live' && session.receivedAmount && session.status === 'completed' && <div><dt>{t.sent}</dt><dd>{displayQuantity(session.receivedAmount)} USDT</dd></div>}
+        <div><dt>{sandbox ? t.sandboxReceive : t.receive}</dt><dd>{asset.symbol}</dd></div>
+        <div><dt>{t.network}</dt><dd>{asset.network}</dd></div><div><dt>{t.wallet}</dt><dd className="deposit-wallet">{address.slice(0, 8)}…{address.slice(-6)}</dd></div>
       </dl>
       {session.checkedAt && <p className="deposit-small">{t.checked}: {new Date(session.checkedAt).toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en', { hour: '2-digit', minute: '2-digit' })}</p>}
-      {controller.error && <p className="deposit-error" role="alert">{t.checkError}</p>}
+      {(controller.error || changedConfiguration) && <p className="deposit-error" role="alert">{changedConfiguration ? t.changed : t.checkError}</p>}
       {(!isDepositTerminal(session.status) || session.status === 'expired') && <div className="deposit-status-actions"><button type="button" className="deposit-secondary" disabled={controller.checking} onClick={() => void controller.refresh(session.id)}><RefreshCw size={16} />{t.check}</button>
-        {session.status === 'awaiting_payment' && <button type="button" className="deposit-primary" disabled={controller.busy || !config?.ready} onClick={() => void controller.checkout(session.amount, session.fiatCurrency, session.id)}>{controller.busy ? t.opening : t.resume}<ArrowUpRight size={16} /></button>}</div>}
-      {session.transactionHash && session.mode === 'live' && <a className="deposit-receipt" href={`https://bscscan.com/tx/${session.transactionHash}`} target="_blank" rel="noreferrer">{t.receipt}<ArrowUpRight size={15} /></a>}
-      {isDepositTerminal(session.status) && <button type="button" className="deposit-primary" onClick={() => controller.select(null)}>{t.new}</button>}
+        {session.status === 'awaiting_payment' && <button type="button" className="deposit-primary" disabled={controller.busy || !config?.ready || config.mode !== session.mode || asset.currencyCode !== checkoutAsset(config.mode).currencyCode} onClick={() => void controller.checkout(session.amount, session.fiatCurrency, session.id)}>{controller.busy ? t.opening : t.resume}<ArrowUpRight size={16} /></button>}</div>}
+      {session.transactionHash && <a className="deposit-receipt" href={`${asset.explorer}/tx/${session.transactionHash}`} target="_blank" rel="noreferrer">{sandbox ? t.sandboxReceipt : t.receipt}<ArrowUpRight size={15} /></a>}
+      {(isDepositTerminal(session.status) || changedConfiguration) && <button type="button" className="deposit-primary" onClick={() => controller.select(null)}>{config?.mode === 'sandbox' ? t.sandboxNew : t.new}</button>}
     </> : controller.loading ? <div className="deposit-unavailable" role="status"><LoaderCircle className="deposit-spinner" size={25} /><p>{t.loading}</p></div>
       : !config?.ready ? <div className="deposit-unavailable" role="status"><CreditCard size={28} /><p>{depositErrorMessage(config?.reason, language)}</p><button type="button" className="deposit-secondary" onClick={controller.reload}>{t.retry}<RefreshCw size={15} /></button></div>
         : <form onSubmit={event => { event.preventDefault(); if (validAmount && option) void controller.checkout(amount, option.code) }}>
-          <label className="deposit-amount-label" htmlFor="deposit-amount">{t.amount}</label><div className="deposit-amount-field"><input id="deposit-amount" autoFocus inputMode="numeric" type="number" step="1" min={option?.min} max={option?.max} value={amount} onChange={event => setAmount(event.target.value)} required />
+          <label className="deposit-amount-label" htmlFor="deposit-amount">{sandbox ? t.sandboxAmount : t.amount}</label><div className="deposit-amount-field"><input id="deposit-amount" autoFocus inputMode="numeric" type="number" step="1" min={option?.min} max={option?.max} value={amount} onChange={event => setAmount(event.target.value)} required />
             <select aria-label={t.currency} value={option?.code ?? ''} onChange={event => chooseFiat(event.target.value)}>{options.map(item => <option key={item.code} value={item.code}>{item.code.toUpperCase()}</option>)}</select></div>
           <p className="deposit-small">{t.limits}: {option?.min.toLocaleString()}–{option?.max.toLocaleString()} {option?.code.toUpperCase()}</p>
           {!validAmount && amount !== '' && <p className="deposit-error" role="alert">{t.invalid}</p>}
-          <dl className="deposit-summary"><div><dt>{t.receive}</dt><dd>USDT</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain</dd></div>
-            <div><dt>{t.wallet}</dt><dd><a className="deposit-wallet" href={`https://bscscan.com/address/${address}`} target="_blank" rel="noreferrer">{address.slice(0, 8)}…{address.slice(-6)}<ArrowUpRight size={13} /></a></dd></div></dl>
-          <p className="deposit-small">{t.fees} {t.timing}</p>
+          <dl className="deposit-summary"><div><dt>{sandbox ? t.sandboxReceive : t.receive}</dt><dd>{asset.symbol}</dd></div><div><dt>{t.network}</dt><dd>{asset.network}</dd></div>
+            <div><dt>{t.wallet}</dt><dd><a className="deposit-wallet" href={`${asset.explorer}/address/${address}`} target="_blank" rel="noreferrer">{address.slice(0, 8)}…{address.slice(-6)}<ArrowUpRight size={13} /></a></dd></div></dl>
+          {sandbox && <div className="deposit-test-card">
+            <span className="app-label">{t.sandboxCard}</span><code>4485 0403 7153 6584</code>
+            <dl><div><dt>{t.sandboxExpiry}</dt><dd>12/2030</dd></div><div><dt>CVC</dt><dd>123</dd></div></dl>
+            <p>{t.sandboxBilling}</p><p>{t.sandboxDelivery}</p>
+          </div>}
+          <p className="deposit-small">{sandbox ? t.sandboxFees : `${t.fees} ${t.timing}`}</p>
           {controller.error && <p className="deposit-error" role="alert">{depositErrorMessage(controller.error, language)}</p>}
-          <button type="submit" className="deposit-primary" disabled={!validAmount || controller.busy}><CreditCard size={18} />{controller.busy ? t.opening : t.continue}<ArrowUpRight size={16} /></button>
+          <button type="submit" className="deposit-primary" disabled={!validAmount || controller.busy}><CreditCard size={18} />{controller.busy ? t.opening : sandbox ? t.sandboxContinue : t.continue}<ArrowUpRight size={16} /></button>
           <p className="deposit-provider">{t.provider}</p>
         </form>}
   </dialog>
