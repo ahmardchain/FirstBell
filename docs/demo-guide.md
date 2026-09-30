@@ -2,9 +2,13 @@
 
 ## Current readiness
 
-- Implemented: Google/email login, embedded wallet, BSC on-chain balances, asset research, configured Binance RWA reads, and separate MoonPay sandbox/live checkout routes.
-- Still to verify with actual credentials: a successful deployed MoonPay sandbox checkout and a genuine Binance Web3 API call.
-- Still unfinished: executable stock buys/sells. The current trade ticket requests an Ondo indicative estimate and cannot submit a transaction. Do not record it as a completed purchase.
+- Implemented: Google/email login, embedded wallet, BSC on-chain balances, asset research, configured Binance RWA reads, an authenticated read-only Binance trading-route check, and separate MoonPay sandbox/live checkout routes.
+- Still to verify with actual credentials: a successful deployed MoonPay sandbox checkout and genuine Binance Web3 RWA/trading-route calls for this wallet.
+- Still unfinished: executable stock buys/sells. The trade ticket can check a Binance RFQ route for the listed Ondo token; it cannot sign or submit an order. Do not record a route estimate as a completed purchase.
+
+## Check the trading candidate first
+
+Follow [the Binance route-check setup](../README.md#check-an-ondo-trading-route-without-an-ondo-api-key). Configure `BINANCE_WEB3_API_KEY` and `BINANCE_WEB3_SECRET_KEY` as Worker runtime secrets, deploy and sign in. Check a Buy route using the USDT input amount. Record whether a matching BSC route is returned for your exact wallet and token, including vendor, quoted output, time and any error. Check a Sell route separately; a Buy quote alone does not establish sell liquidity. This read-only check does not require pre-funding or an Ondo API key, but provider access and wallet eligibility may still limit results.
 
 ## Prepare card testing
 

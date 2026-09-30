@@ -1,4 +1,6 @@
 import type { Candle } from '@/components/spectrumui/charts/chart-engine'
+import type { TradingRoute } from '../lib/trading'
+export type { TradingRoute } from '../lib/trading'
 
 export type Timeframe = '15m' | '1h' | '4h' | '1D'
 export type MarketData = {
@@ -43,4 +45,23 @@ export async function getTradeQuote(symbol: string, side: 'buy' | 'sell', quanti
   const result = await response.json() as { quote?: TradeQuote; error?: string }
   if (!response.ok || !result.quote) throw new Error(result.error ?? 'Quote unavailable')
   return result.quote
+}
+
+export async function getTradingRoute(symbol: string, side: 'buy' | 'sell', amount: string, walletAddress: string,
+  token: string, identityToken: string, signal: AbortSignal): Promise<TradingRoute> {
+  const response = await fetch('/api/trade/route', {
+    method: 'POST', cache: 'no-store', signal,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'privy-id-token': identityToken },
+    body: JSON.stringify({ symbol, side, amount, walletAddress }),
+  })
+  const result = await response.json() as { route?: TradingRoute; error?: string }
+  if (!response.ok || !result.route) throw new Error(result.error ?? 'provider_error')
+  const route = result.route
+  if (route.source !== 'binance-web3' || route.chainId !== 56 || route.symbol !== symbol || route.side !== side
+    || typeof route.walletAddress !== 'string' || route.walletAddress.toLowerCase() !== walletAddress.toLowerCase()
+    || route.inputAmount !== amount || route.inputSymbol !== (side === 'buy' ? 'USDT' : symbol)
+    || route.outputSymbol !== (side === 'buy' ? symbol : 'USDT') || route.executionMode !== 'RFQ' || route.executable !== false
+    || typeof route.outputAmount !== 'string' || !/^\d+(?:\.\d+)?$/.test(route.outputAmount)
+    || typeof route.vendor !== 'string' || !Number.isFinite(Date.parse(route.refreshAt))) throw new Error('invalid_provider_response')
+  return route
 }

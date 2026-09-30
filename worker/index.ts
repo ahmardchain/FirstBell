@@ -3,6 +3,7 @@ import { importSPKI, jwtVerify } from 'jose'
 import { isFrame, isSymbol, marketSnapshot, parseQuantity, softQuote } from './market'
 import { getRwaContext } from './binance-rwa'
 import { handleDepositRequest, handleStoredDeposits } from './deposits'
+import { handleTradingRoute } from './trading'
 
 type Account = {
   id: string
@@ -67,10 +68,12 @@ export class AccountStore extends DurableObject<Env> {
     }
     if (new URL(request.url).pathname === '/quote-rate') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
-      const timestamps = (await this.ctx.storage.get<number[]>('quoteTimes') ?? []).filter(value => value > Date.now() - 60_000)
-      if (timestamps.length >= 6) return json({ error: 'Quote limit reached. Try again in a minute.' }, 429)
-      await this.ctx.storage.put('quoteTimes', [...timestamps, Date.now()])
-      return json({ allowed: true })
+      return this.ctx.blockConcurrencyWhile(async () => {
+        const timestamps = (await this.ctx.storage.get<number[]>('quoteTimes') ?? []).filter(value => value > Date.now() - 60_000)
+        if (timestamps.length >= 6) return json({ error: 'Quote limit reached. Try again in a minute.' }, 429)
+        await this.ctx.storage.put('quoteTimes', [...timestamps, Date.now()])
+        return json({ allowed: true })
+      })
     }
     const account = await this.ctx.storage.get<Account>('account') ?? {
       id, createdAt: now, lastSeenAt: now, saved: [],
@@ -121,6 +124,12 @@ export default {
       const id = await getUserId(request, env)
       if (!id) return json({ error: 'unauthorized' }, 401)
       return handleDepositRequest(request, env, id)
+    }
+    if (pathname === '/api/trade/route') {
+      if (!env.PRIVY_VERIFICATION_KEY) return json({ error: 'account_not_configured' }, 503)
+      const id = await getUserId(request, env)
+      if (!id) return json({ error: 'unauthorized' }, 401)
+      return handleTradingRoute(request, env, id)
     }
     const rwaMatch = /^\/api\/rwa\/([^/]+)$/.exec(pathname)
     if (rwaMatch) {
