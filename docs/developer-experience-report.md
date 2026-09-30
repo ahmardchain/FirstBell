@@ -11,7 +11,7 @@ The [official brief](https://www.bnbchain.org/en/hackathons/tokenized-stocks) re
 
 FirstBell is a mobile-first research and trade interface for five Ondo tokenized equities on BSC. The backend uses Privy authentication, BSC RPC balance reads, signed Binance Web3 candles, trading info, RWA data and read-only route checks when configured, plus labeled Ondo and GeckoTerminal chart fallbacks. The first market and quote work was pushed in [commit `fe2b71d`](https://github.com/ahmardchain/FirstBell/commit/fe2b71d2c5899e796a9a3cd928e5a81da37607fc).
 
-**Important verification gap:** The hackathon requires a working project built on at least one **Binance Web3 API module**. The builder reports saving the keys in Cloudflare, and the provided Production screenshot lists two `BIN…` secret entries; their full names/values and actual provider acceptance remain unverified. No successful live Binance call has been recorded here. Code and mocked tests alone do not prove the hackathon requirement is met. Ondo and GeckoTerminal do not count as Binance Web3 API modules.
+**Important verification gap:** The hackathon requires a working project built on at least one **Binance Web3 API module**. The builder reports saving the keys in Cloudflare, and the provided Production screenshot lists two `BIN…` secret entries. A builder-provided live app response now reports upstream HTTP 200 with Binance business code `40304`; see the observation below. The chart code is deployed, but no successful Binance data call or credential acceptance has been recorded. Code, mocked tests and a rejected live request do not prove the hackathon requirement is met. Ondo and GeckoTerminal do not count as Binance Web3 API modules.
 
 ## 2026-09-30: Binance Web3 RWA Data implementation
 
@@ -35,7 +35,7 @@ FirstBell is a mobile-first research and trade interface for five Ondo tokenized
 
 ### Onboarding
 
-- **Binance Web3 API:** RWA Data signer and parser implemented with fixtures. No developer portal key, first successful live call, or elapsed onboarding time recorded yet. The `/build` signing detail was found in the Authentication docs before making a live request, so it is **not** a firsthand 40102 incident.
+- **Binance Web3 API:** Signed RWA, chart and route-check integrations are implemented. The builder saved runtime secrets and provided a live `40304` response after deployment. First successful live call and elapsed onboarding time remain unmeasured. The `/build` signing detail was found in the Authentication docs before making a live request, so it is **not** a firsthand 40102 incident.
 - **Ondo:** Its documented market and OHLC routes and soft quote contract were implemented behind a Worker secret. The key must be obtained through Ondo onboarding; no key or successful live request was available here. Time from docs to first live response is **not measured**.
 - **GeckoTerminal:** A public fallback was implemented against documented pool and OHLC shapes. Only fixture responses were tested here; no live latency or pool availability was measured.
 - **Privy:** Frontend login and backend JWT verification were implemented earlier. No successful deployed verification request is recorded in this log.
@@ -46,7 +46,7 @@ No documentation error has been confirmed by a live request. Do not claim one. W
 
 The implementation validates decimal token amounts without floating-point arithmetic and rejects a provider response if its asset address, BSC chain ID, side or amount differs from the request. This came from threat modeling and the documented response format; it is **not** evidence of those mismatches occurring in production.
 
-No actual status code, confusing error response, rate limit, or p95 latency from the Binance Web3 API has been observed. Add exact endpoint, sanitized request shape, response code/body, timestamp and repeatable steps after a real call. The docs explicitly warn that omitting `/build` from the signature yields `40102`; our mock test proves the signed path includes it, but we have not seen that error ourselves.
+The builder-provided deployed market response now records upstream HTTP 200 with business code `40304`. No rate-limit incident or p95 latency has been measured. The docs explicitly warn that omitting `/build` from the signature yields `40102`; our mock test proves the signed path includes it, but we have not seen that error ourselves. See the compliance observation below for the exact evidence and its limits.
 
 ### AI stack feedback
 
@@ -133,5 +133,19 @@ Update this log immediately after each real integration session. Mark untested i
 - Live-call evidence: requests to the deployed health, RWA and chart URLs from this environment failed to establish a connection; CUA navigation to `/api/rwa/NVDAon` reported `net::ERR_BLOCKED_BY_CLIENT`. These are request-path limitations, not proof of Binance rejection or an outage. Time to first successful live call and provider latency remain unmeasured. No browser-rendered validation was completed.
 - Recovery: deploy this source while retaining the saved secrets, then inspect `/api/market/NVDAon?frame=15m` and `/api/rwa/NVDAon`. Record actual source, candles, timestamps and sanitized codes before marking the integration verified. An actionable app improvement was to expose safe error codes rather than collapse every provider failure into empty history. Binance Agentic Wallet, Wallet Skills and CLI were not used.
 - Validation: all **38 automated tests passed**, including seven new Binance market/API contract checks. TypeScript and the Vite production build passed; Wrangler 4.144.0 deployment dry-run passed. Responses in the tests were mocked. These checks do not establish live prices, candle availability, key acceptance or successful deployment.
+
+## 2026-10-01 00:53 Africa/Lagos (2026-09-30 UTC): Builder-observed live compliance error
+
+- After deploying the chart correction and opening `/api/market/NVDAon?frame=15m`, the builder supplied this exact app response:
+
+  ```json
+  {"status":"unavailable","symbol":"NVDAon","candles":[],"reason":"provider_error","httpStatus":200,"providerCode":40304}
+  ```
+
+- This is user-provided deployed evidence, not a direct successful call from this workspace. The response shape confirms the new market error path is active and reached a nonzero Binance business result. It does not verify valid credentials or establish whether the candle call, trading-info call or both were rejected; the app currently exposes the first failed branch when neither produces usable data.
+- The Market API error-code page lists `40301`–`40303`, but does not list `40304`. The official [combined documentation](https://web3.binance.com/en/dev-docs/llms-full.txt) and [DeFi API Error Codes](https://web3.binance.com/en/dev-docs/products/defi-api/error-codes), in the API Gateway/compliance section, define `40304` as **Service not available due to compliance restriction**: a compliance rule not covered by a more specific code. Applying that shared-gateway definition to the observed Market API code points to a compliance restriction; the exact rule remains unverified because the original provider `msg` is intentionally not returned by the app.
+- Requests originate from the Cloudflare Worker. Nothing in this evidence identifies the builder's location, API project settings, server egress location, VPN screening or allowlist as the specific cause. Do not recommend rotating keys, changing hosts, disabling restrictions, spoofing a client IP or substituting a different issuer as a confirmed fix.
+- Recovery: ask the Binance Web3 developer/hackathon support team to explain `40304` for BSC candle and trading-info queries from Cloudflare Workers and specify the approved access/hosting requirements. No contact was sent by the agent. Retain the error timestamp, affected endpoints, chain 56 and the public NVDAon contract. Do not include API keys or secrets in a support message. Successful data, recovery time and provider latency remain unmeasured.
+- Actionable documentation feedback: include the shared `40304` code in Market API's compliance table and provide an approved recovery/contact path for a hosted backend. This is a verified table omission and a builder-observed error; it does not establish which internal compliance rule is responsible.
 - Actionable documentation suggestion: the quote `vendor` selector lists `LiquidMesh`, `Pancake` and `Jupiter`, while the approval section tells equity users to pass the returned RFQ `vendorName`, such as `PcsXRfq`. Add a complete BSC stock example that distinguishes the quote selector from the approval/order vendor and shows the RFQ response fields. This is a documentation-read observation, not a firsthand failed request.
 - Binance Agentic Wallet, Wallet Skills and CLI: **not used**. AI-assisted code and this living evidence ledger are not a finished Developer Experience Report; the final submission still needs the builder's firsthand review.
