@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { getIdentityToken, usePrivy, useUser, useWallets } from '@privy-io/react-auth'
 import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, X } from 'lucide-react'
 import { MarketChart } from '@/components/spectrumui/charts/market-chart'
-import { getMarket, getRwa, getTradingRoute, type MarketData, type RwaContext, type Timeframe, type TradingRoute } from './market-api'
+import { getMarket, getRwa, getTradingRoute, MarketRequestError, type MarketData, type MarketFailure, type RwaContext, type Timeframe, type TradingRoute } from './market-api'
 import { displayQuantity } from './wallet-balances'
 import './trade.css'
 
@@ -26,13 +26,16 @@ const words = {
     label: 'FIRSTBELL / TRADE', chart: 'Chart', market: 'MARKET / BNB SMART CHAIN',
     lastPrice: 'Last price', change: '24h change', orderType: 'Order type', orderMarket: 'Market', quantity: 'Quantity', allocation: 'Available balance', timeframe: 'Chart timeframe',
     select: 'Select asset', quote: 'Live quote unavailable', noData: 'No token price history yet',
-    noDataBody: 'A verified market feed is needed before candles and prices can be shown.',
+    noDataBody: 'No verified candle history is available for this token and timeframe.',
+    marketError: 'Market data unavailable', marketErrorBody: 'The market-data provider could not be reached. Retry shortly.',
+    marketAuth: 'Binance API access rejected', marketAuthBody: 'The saved Binance credentials or their access settings need to be checked.',
+    marketRate: 'Market-data request limit reached', marketRateBody: 'Wait a minute, then retry.',
     source: 'ASSET RECORD', issuer: 'Issuer', network: 'Network', contract: 'Contract',
     inspect: 'Inspect asset file', scan: 'View contract on BscScan',
     buy: 'Buy', sell: 'Sell', sheetTitle: 'Trade', buyAmount: 'Amount to spend', sellAmount: 'Token quantity',
     receive: 'Estimated receive', unavailable: 'Quote unavailable', balance: 'Wallet balance unavailable', balanceLabel: 'Wallet balance', noPrice: 'Price unavailable', noChange: 'No data', noBalance: 'Not connected',
     sheetNote: 'Check a BSC trading route for your wallet. This check does not place an order. Stock purchase and sale are not available in FirstBell yet.',
-    loading: 'Loading market data', retry: 'Retry', sourceOndo: 'Ondo primary-market data', sourceDex: 'GeckoTerminal DEX pool data', marketPrice: 'Market price', updated: 'Updated',
+    loading: 'Loading market data', retry: 'Retry', sourceOndo: 'Ondo primary-market data', sourceDex: 'GeckoTerminal DEX pool data', sourceBinance: 'Binance Web3 token-market data', sourceBinanceRwa: 'Binance RWA token price', marketPrice: 'Market price', updated: 'Updated',
     getQuote: 'Check trading route', gettingQuote: 'Checking route', login: 'Log In to check route', quoteDisclaimer: 'Route found · no order placed', quoteError: 'Trading route could not be checked. Try again.',
     route: 'Trading route', wallet: 'Receiving wallet', routeExpired: 'Quote expired. Check the route again.',
     errors: { not_configured: 'Trading quotes are not configured yet.', account_not_configured: 'Account verification is not configured yet.',
@@ -49,13 +52,16 @@ const words = {
     label: 'FIRSTBELL / 交易', chart: '图表', market: '市场 / BNB 智能链',
     lastPrice: '最新价格', change: '24小时涨跌', orderType: '订单类型', orderMarket: '市价', quantity: '数量', allocation: '可用余额', timeframe: '图表周期',
     select: '选择资产', quote: '暂无实时报价', noData: '暂无代币价格历史',
-    noDataBody: '接入经过核实的行情数据后，才能显示 K 线和价格。',
+    noDataBody: '此代币和周期暂无经过核实的 K 线历史。',
+    marketError: '行情数据暂不可用', marketErrorBody: '无法连接行情服务，请稍后重试。',
+    marketAuth: 'Binance API 访问被拒绝', marketAuthBody: '需要检查已保存的 Binance 凭证或访问设置。',
+    marketRate: '行情请求已达上限', marketRateBody: '请等待一分钟后重试。',
     source: '资产记录', issuer: '发行方', network: '网络', contract: '合约',
     inspect: '查看资产资料', scan: '在 BscScan 查看合约',
     buy: '买入', sell: '卖出', sheetTitle: '交易', buyAmount: '支付金额', sellAmount: '代币数量',
     receive: '预计收到', unavailable: '暂无报价', balance: '暂无钱包余额', balanceLabel: '钱包余额', noPrice: '暂无报价', noChange: '暂无数据', noBalance: '未连接',
     sheetNote: '为你的钱包检查 BSC 交易路线。此检查不会下单，FirstBell 目前尚不能买入或卖出股票代币。',
-    loading: '正在加载市场数据', retry: '重试', sourceOndo: 'Ondo 一级市场数据', sourceDex: 'GeckoTerminal 去中心化交易池数据', marketPrice: '市场价格', updated: '更新时间',
+    loading: '正在加载市场数据', retry: '重试', sourceOndo: 'Ondo 一级市场数据', sourceDex: 'GeckoTerminal 去中心化交易池数据', sourceBinance: 'Binance Web3 代币行情', sourceBinanceRwa: 'Binance RWA 代币价格', marketPrice: '市场价格', updated: '更新时间',
     getQuote: '检查交易路线', gettingQuote: '正在检查路线', login: '登录后检查路线', quoteDisclaimer: '已找到路线，尚未下单', quoteError: '无法检查交易路线，请重试。',
     route: '交易路线', wallet: '接收钱包', routeExpired: '报价已过期，请重新检查路线。',
     errors: { not_configured: '交易报价尚未配置。', account_not_configured: '账户验证尚未配置。',
@@ -92,8 +98,9 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const [timeframe, setTimeframe] = React.useState<Timeframe>('15m')
   const [market, setMarket] = React.useState<MarketData | null>(null)
   const [marketState, setMarketState] = React.useState<'loading' | 'empty' | 'error' | 'ready'>('loading')
+  const [marketFailure, setMarketFailure] = React.useState<MarketFailure>('provider_error')
   const [rwa, setRwa] = React.useState<RwaContext | null>(null)
-  const [rwaState, setRwaState] = React.useState<'loading' | 'not_configured' | 'no_verified_asset' | 'provider_error'>('loading')
+  const [rwaState, setRwaState] = React.useState<'loading' | 'not_configured' | 'no_verified_asset' | MarketFailure>('loading')
   const [refresh, setRefresh] = React.useState(0)
   const [quote, setQuote] = React.useState<TradingRoute | null>(null)
   const [quoteExpired, setQuoteExpired] = React.useState(false)
@@ -116,8 +123,13 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     getMarket(asset.symbol, timeframe, controller.signal).then(result => {
       if (controller.signal.aborted) return
       setMarket(result)
-      setMarketState(result?.candles.length ? 'ready' : 'empty')
-    }).catch(() => { if (!controller.signal.aborted) setMarketState('error') })
+      if (result?.historyError) setMarketFailure(result.historyError.reason)
+      setMarketState(result?.candles.length ? 'ready' : result?.historyError ? 'error' : 'empty')
+    }).catch(error => {
+      if (controller.signal.aborted) return
+      setMarketFailure(error instanceof MarketRequestError ? error.reason : 'provider_error')
+      setMarketState('error')
+    })
     return () => controller.abort()
   }, [asset.symbol, timeframe, refresh])
 
@@ -182,14 +194,19 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   }
 
   const validAmount = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,18})?$/.test(amount) && /[1-9]/.test(amount)
-  const price = market?.priceUsd && Number.isFinite(market.priceUsd)
-    ? new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(market.priceUsd)
+  const tokenPrice = market?.symbol === asset.symbol && market.priceUsd !== null ? market.priceUsd
+    : rwa?.symbol === asset.symbol ? rwa.tokenPriceUsd : null
+  const price = tokenPrice !== null && tokenPrice > 0 && Number.isFinite(tokenPrice)
+    ? new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(tokenPrice)
     : t.noPrice
   const change = market?.change24hPct != null && Number.isFinite(market.change24hPct)
     ? `${market.change24hPct >= 0 ? '+' : ''}${market.change24hPct.toFixed(2)}%` : t.noChange
-  const sourceLabel = market?.source === 'ondo' ? t.sourceOndo : market?.source === 'geckoterminal' ? t.sourceDex : t.quote
+  const sourceLabel = market?.source === 'ondo' ? t.sourceOndo : market?.source === 'geckoterminal' ? t.sourceDex : market?.source === 'binance-web3' ? t.sourceBinance : t.quote
   const money = (value: number) => new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(value)
-  const rwaStatus = rwaState === 'loading' ? t.rwaLoading : rwaState === 'not_configured' ? t.rwaPending : rwaState === 'no_verified_asset' ? t.rwaAssetMissing : t.rwaUnavailable
+  const rwaStatus = rwaState === 'loading' ? t.rwaLoading : rwaState === 'not_configured' ? t.rwaPending : rwaState === 'no_verified_asset' ? t.rwaAssetMissing
+    : rwaState === 'provider_auth_error' ? t.marketAuth : rwaState === 'rate_limited' ? t.marketRate : t.rwaUnavailable
+  const marketErrorTitle = marketFailure === 'provider_auth_error' ? t.marketAuth : marketFailure === 'rate_limited' ? t.marketRate : t.marketError
+  const marketErrorBody = marketFailure === 'provider_auth_error' ? t.marketAuthBody : marketFailure === 'rate_limited' ? t.marketRateBody : t.marketErrorBody
 
   const openSheet = (nextSide: Side, event: React.MouseEvent<HTMLButtonElement>) => {
     triggerRef.current = event.currentTarget
@@ -233,7 +250,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
           {assets.map(candidate => <button type="button" role="option" aria-selected={asset.symbol === candidate.symbol} key={candidate.symbol} onClick={() => { onAssetChange(candidate); setSelectorOpen(false) }}><TokenMark asset={candidate} /><span><strong>{candidate.symbol}</strong><small>{candidate.company}</small></span>{candidate.symbol === asset.symbol && <Check size={17} />}</button>)}
         </motion.div>}</AnimatePresence>
       </div>
-      <div className="trade-header-right"><span className="trade-network"><i /> BNB SMART CHAIN</span><div className="trade-price-pair"><span><small>{t.lastPrice}</small><strong className={market?.priceUsd ? '' : 'trade-unavailable-value'}>{price}</strong></span><span><small>{t.change}</small><strong className={market?.change24hPct != null ? (market.change24hPct >= 0 ? 'trade-change-up' : 'trade-change-down') : 'trade-unavailable-value'}>{change}</strong></span></div></div>
+      <div className="trade-header-right"><span className="trade-network"><i /> BNB SMART CHAIN</span><div className="trade-price-pair"><span><small>{market?.priceUsd == null && rwa ? t.sourceBinanceRwa : t.lastPrice}</small><strong className={tokenPrice ? '' : 'trade-unavailable-value'}>{price}</strong></span><span><small>{t.change}</small><strong className={market?.change24hPct != null ? (market.change24hPct >= 0 ? 'trade-change-up' : 'trade-change-down') : 'trade-unavailable-value'}>{change}</strong></span></div></div>
     </div>
 
     <div className="trade-body">
@@ -241,7 +258,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <div className="trade-tabs"><span className="active"><ChartCandlestick size={17} />{t.chart}</span><span>{t.market}</span></div>
         <div className="trade-timeframes" role="group" aria-label={t.timeframe}>{(['15m', '1h', '4h', '1D'] as const).map(value => <button type="button" className="motion-tab" key={value} aria-pressed={timeframe === value} onClick={() => setTimeframe(value)}>{timeframe === value && <motion.span className="motion-tab-indicator" layoutId="trade-timeframe-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{value}</span></button>)}</div>
         <div className="trade-chart" key={asset.symbol}>
-          <MarketChart data={market?.candles ?? []} symbol={asset.symbol} name={asset.company} status={marketState} showRangeSelector={false} showVolume={market?.source === 'geckoterminal'} height={320} emptyTitle={marketState === 'loading' ? t.loading : t.noData} emptyDescription={t.noDataBody} onRetry={() => setRefresh(value => value + 1)} />
+          <MarketChart data={market?.candles ?? []} symbol={asset.symbol} name={asset.company} status={marketState} showRangeSelector={false} showVolume={market?.source === 'geckoterminal' || market?.source === 'binance-web3'} height={320} emptyTitle={marketState === 'loading' ? t.loading : t.noData} emptyDescription={t.noDataBody} errorTitle={marketErrorTitle} errorDescription={marketErrorBody} retryLabel={t.retry} onRetry={() => setRefresh(value => value + 1)} />
         </div>
         <div className="trade-chart-foot"><span>OHLC / {timeframe} / {asset.symbol}</span><span>{sourceLabel}{market?.asOf ? ` · ${t.updated} ${new Date(market.asOf).toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC` : ''}</span></div>
       </div>

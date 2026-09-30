@@ -1,5 +1,6 @@
 // Market data is read-only. Ondo primary-market and GeckoTerminal DEX pool prices
 // are deliberately labeled separately; neither is an executable order price.
+import { BinanceApiError, binanceFailure, signedBinanceRequest, type BinanceCredentials } from './binance-api.ts'
 export const assets = {
   AAPLon: '0x390a684EF9cADE28A7AD0DFa61AB1Eb3842618c4',
   TSLAon: '0x2494b603319d4D9F9715c9f4496d9E0364B59d93',
@@ -12,8 +13,9 @@ export type Symbol = keyof typeof assets
 export type Frame = '15m' | '1h' | '4h' | '1D'
 export type Candle = { t: number; open: number; high: number; low: number; close: number; volume: number }
 export type MarketSnapshot = {
-  symbol: Symbol; source: 'ondo' | 'geckoterminal'; priceUsd: number | null;
+  symbol: Symbol; source: 'ondo' | 'geckoterminal' | 'binance-web3'; priceUsd: number | null;
   change24hPct: number | null; asOf: string; candles: Candle[];
+  historyError?: ReturnType<typeof binanceFailure>;
 }
 
 const frames: Record<Frame, { ondo: [string, string]; gecko: [string, number] }> = {
@@ -131,14 +133,56 @@ async function geckoMarket(symbol: Symbol, frame: Frame): Promise<MarketSnapshot
   }
 }
 
+async function binanceMarket(symbol: Symbol, frame: Frame, credentials: BinanceCredentials): Promise<MarketSnapshot | null> {
+  const address = assets[symbol]
+  const [history, trading] = await Promise.allSettled([
+    signedBinanceRequest('GET', '/api/v1/dex/market/candles', {
+      binanceChainId: '56', tokenContractAddress: address, bar: frame === '1D' ? '1d' : frame, limit: '100',
+    }, credentials),
+    signedBinanceRequest('POST', '/api/v1/dex/market/price-info', {}, credentials,
+      JSON.stringify([{ binanceChainId: '56', tokenContractAddress: address }])),
+  ])
+  // Binance's tuple is [open, high, low, close, volume, timestamp_ms, tradeCount].
+  // It is different from GeckoTerminal's timestamp-first tuple.
+  const rows = history.status === 'fulfilled' && Array.isArray(history.value.data) ? history.value.data : []
+  const bars = rows.slice(0, 200).map(row => Array.isArray(row) && row.length === 7 && finite(row[4]) !== null
+    && finite(row[5]) !== null && Number(row[5]) <= Date.now() + 120_000
+    ? candle(row[5], row[0], row[1], row[2], row[3], row[4]) : null)
+    .filter((bar): bar is Candle => bar !== null)
+  const candles = [...new Map(bars.sort((a, b) => a.t - b.t).map(bar => [bar.t, bar])).values()]
+  const prices = trading.status === 'fulfilled' && Array.isArray(trading.value.data) ? trading.value.data : []
+  const exact = prices.map(record).find(item => item && String(item.binanceChainId) === '56'
+    && typeof item.tokenContractAddress === 'string' && item.tokenContractAddress.toLowerCase() === address.toLowerCase())
+  const at = finite(exact?.time)
+  const price = at !== null && at >= 1_500_000_000_000 && at <= Date.now() + 120_000 ? positive(exact?.price) : null
+  const invalidHistory = history.status === 'fulfilled' && (!Array.isArray(history.value.data) || (rows.length > 0 && candles.length === 0))
+  if (!candles.length && price === null) {
+    const failure = [history, trading].find(result => result.status === 'rejected')
+    if (failure?.status === 'rejected') throw failure.reason
+    if (invalidHistory) throw new BinanceApiError('provider_error')
+    return null
+  }
+  return {
+    symbol, source: 'binance-web3', priceUsd: price,
+    change24hPct: price !== null ? finite(exact?.priceChange24H) : null,
+    asOf: new Date(price !== null ? at! : candles.at(-1)!.t).toISOString(), candles,
+    ...(history.status === 'rejected' ? { historyError: binanceFailure(history.reason) }
+      : invalidHistory ? { historyError: { reason: 'provider_error' as const } } : {}),
+  }
+}
+
 // A short isolate-local cache reduces public API load. Failures are never cached.
 const cache = new Map<string, { until: number; data: MarketSnapshot }>()
-export async function marketSnapshot(symbol: Symbol, frame: Frame, ondoKey?: string): Promise<MarketSnapshot | null> {
-  const cacheKey = `${symbol}:${frame}:${ondoKey ? 'ondo' : 'public'}`
+export async function marketSnapshot(symbol: Symbol, frame: Frame, ondoKey?: string, binance?: BinanceCredentials): Promise<MarketSnapshot | null> {
+  const cacheKey = `${symbol}:${frame}:${ondoKey ? 'ondo' : 'public'}:${binance ? 'binance' : 'no-binance'}`
   const hit = cache.get(cacheKey)
   if (hit && hit.until > Date.now()) return hit.data
   let data: MarketSnapshot | null = null
-  if (ondoKey) {
+  let binanceError: unknown
+  if (binance) {
+    try { data = await binanceMarket(symbol, frame, binance) } catch (error) { binanceError = error }
+  }
+  if (!data && ondoKey) {
     try { data = await ondoMarket(symbol, frame, ondoKey) } catch { /* source unavailable; try public DEX */ }
   }
   if (!data) {
@@ -146,8 +190,9 @@ export async function marketSnapshot(symbol: Symbol, frame: Frame, ondoKey?: str
   }
   if (data) {
     if (cache.size > 24) cache.clear()
-    cache.set(cacheKey, { until: Date.now() + 30_000, data })
+    if (!data.historyError) cache.set(cacheKey, { until: Date.now() + 30_000, data })
   }
+  if (!data && binanceError) throw binanceError
   return data
 }
 

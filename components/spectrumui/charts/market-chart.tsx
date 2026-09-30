@@ -56,6 +56,9 @@ export interface MarketChartProps {
   onRetry?: () => void;
   emptyTitle?: string;
   emptyDescription?: string;
+  errorTitle?: string;
+  errorDescription?: string;
+  retryLabel?: string;
 }
 
 export function MarketChart({
@@ -76,6 +79,9 @@ export function MarketChart({
   onRetry,
   emptyTitle = 'No price data',
   emptyDescription = 'Point the chart at a candle feed and it will render as soon as bars arrive.',
+  errorTitle,
+  errorDescription,
+  retryLabel,
 }: MarketChartProps) {
   const reduce = usePrefersReducedMotion();
   const [wrapRef, width] = useElementWidth<HTMLDivElement>();
@@ -385,6 +391,7 @@ export function MarketChart({
         height={height}
         variant="bars"
         empty={{ title: emptyTitle, description: emptyDescription }}
+        error={{ title: errorTitle, description: errorDescription, retryLabel }}
         onRetry={onRetry}
       >
       <div className="relative w-full" style={{ height }}>

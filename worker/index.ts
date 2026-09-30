@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { importSPKI, jwtVerify } from 'jose'
 import { isFrame, isSymbol, marketSnapshot, parseQuantity, softQuote } from './market'
 import { getRwaContext } from './binance-rwa'
+import { binanceFailure } from './binance-api'
 import { handleDepositRequest, handleStoredDeposits } from './deposits'
 import { handleTradingRoute } from './trading'
 
@@ -142,7 +143,7 @@ export default {
         return context ? json({ status: 'ready', ...context }) : json({ status: 'unavailable', reason: 'no_verified_asset' }, 503)
       } catch (error) {
         console.warn('Binance RWA read failed', error instanceof Error ? error.message : 'Unknown provider error')
-        return json({ status: 'unavailable', reason: 'provider_error' }, 503)
+        return json({ status: 'unavailable', ...binanceFailure(error) }, 503)
       }
     }
     const marketMatch = /^\/api\/market\/([^/]+)$/.exec(pathname)
@@ -150,8 +151,15 @@ export default {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
       const frame = new URL(request.url).searchParams.get('frame') ?? '15m'
       if (!isSymbol(marketMatch[1]) || !isFrame(frame)) return json({ error: 'Unknown market or timeframe' }, 400)
-      const result = await marketSnapshot(marketMatch[1], frame, env.ONDO_API_KEY)
-      return json(result ? { status: 'ready', ...result } : { status: 'unavailable', symbol: marketMatch[1], candles: [] }, result ? 200 : 503)
+      const credentials = env.BINANCE_WEB3_API_KEY && env.BINANCE_WEB3_SECRET_KEY
+        ? { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY } : undefined
+      try {
+        const result = await marketSnapshot(marketMatch[1], frame, env.ONDO_API_KEY, credentials)
+        return json(result ? { status: 'ready', ...result } : { status: 'unavailable', symbol: marketMatch[1], candles: [] }, result ? 200 : 503)
+      } catch (error) {
+        console.warn('Binance market read failed', error instanceof Error ? error.message : 'Unknown provider error')
+        return json({ status: 'unavailable', symbol: marketMatch[1], candles: [], ...binanceFailure(error) }, 503)
+      }
     }
     if (pathname === '/api/trade/quote') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)

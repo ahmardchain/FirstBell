@@ -4,8 +4,14 @@ export type { TradingRoute } from '../lib/trading'
 
 export type Timeframe = '15m' | '1h' | '4h' | '1D'
 export type MarketData = {
-  status: 'ready'; symbol: string; source: 'ondo' | 'geckoterminal';
+  status: 'ready'; symbol: string; source: 'ondo' | 'geckoterminal' | 'binance-web3';
   priceUsd: number | null; change24hPct: number | null; asOf: string; candles: Candle[];
+  historyError?: { reason: MarketFailure; httpStatus?: number; providerCode?: number };
+}
+export type MarketFailure = 'provider_auth_error' | 'rate_limited' | 'provider_error'
+export class MarketRequestError extends Error {
+  reason: MarketFailure
+  constructor(reason: MarketFailure) { super(reason); this.reason = reason }
 }
 export type TradeQuote = {
   symbol: string; side: 'buy' | 'sell'; quantity: string;
@@ -17,11 +23,16 @@ export type RwaContext = {
   priceUpdatedAt: string; fetchedAt: string;
   underlyingMarket: { session: string; open: boolean; nextOpenAt: string | null } | null;
 }
-export type RwaResult = RwaContext | { status: 'unavailable'; reason: 'not_configured' | 'no_verified_asset' | 'provider_error' }
+export type RwaResult = RwaContext | { status: 'unavailable'; reason: 'not_configured' | 'no_verified_asset' | MarketFailure; httpStatus?: number; providerCode?: number }
 
 export async function getMarket(symbol: string, frame: Timeframe, signal: AbortSignal): Promise<MarketData | null> {
   const response = await fetch(`/api/market/${encodeURIComponent(symbol)}?frame=${frame}`, { signal })
-  if (response.status === 503) return null
+  if (response.status === 503) {
+    const result = await response.json() as { status?: string; reason?: string }
+    if (result.status !== 'unavailable') throw new MarketRequestError('provider_error')
+    if (result.reason === 'provider_auth_error' || result.reason === 'rate_limited' || result.reason === 'provider_error') throw new MarketRequestError(result.reason)
+    return null
+  }
   if (!response.ok) throw new Error('Market data request failed')
   const body: MarketData = await response.json()
   if (body.status !== 'ready' || body.symbol !== symbol || !Array.isArray(body.candles)) throw new Error('Invalid market response')
