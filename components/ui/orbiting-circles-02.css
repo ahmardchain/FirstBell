@@ -1,0 +1,127 @@
+.orbit-globe {
+  --orbit-inner: 440px;
+  --orbit-middle: 600px;
+  --orbit-outer: 720px;
+  --orbit-sphere: 300px;
+  --orbit-logo: 56px;
+  position: relative;
+  width: 100%;
+  height: 440px;
+  overflow: hidden;
+  isolation: isolate;
+  color: var(--foreground);
+}
+
+.orbit-globe-sphere,
+.orbit-globe-ring {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  aspect-ratio: 1;
+  transform: translate(-50%, 50%);
+}
+
+.orbit-globe-sphere {
+  width: var(--orbit-sphere);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.orbit-globe-sphere canvas { display: block; width: 100%; height: 100%; }
+.orbit-globe-ring { border: 1px solid var(--line); border-radius: 50%; }
+.orbit-globe-ring-1 { width: var(--orbit-inner); }
+.orbit-globe-ring-2 { width: var(--orbit-middle); }
+.orbit-globe-ring-3 { width: var(--orbit-outer); }
+
+.orbit-globe-arm {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: var(--orbit-logo);
+  height: 50%;
+  margin-left: calc(var(--orbit-logo) / -2);
+  transform-origin: center bottom;
+  transform: rotate(var(--start-angle));
+  animation-duration: var(--orbit-duration);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-play-state: paused;
+}
+
+.orbit-globe-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--orbit-logo);
+  height: var(--orbit-logo);
+  margin-top: calc(var(--orbit-logo) / -2);
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--background);
+  transform: rotate(var(--counter-angle));
+  animation-duration: var(--orbit-duration);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-play-state: paused;
+}
+
+.orbit-globe-logo img { width: 100%; height: 100%; object-fit: contain; }
+.orbit-globe-cw { animation-name: firstbell-orbit-cw; }
+.orbit-globe-cw .orbit-globe-logo { animation-name: firstbell-counter-cw; }
+.orbit-globe-ccw { animation-name: firstbell-orbit-ccw; }
+.orbit-globe-ccw .orbit-globe-logo { animation-name: firstbell-counter-ccw; }
+.orbit-globe[data-running="true"] .orbit-globe-arm,
+.orbit-globe[data-running="true"] .orbit-globe-logo { animation-play-state: running; }
+.orbit-globe:hover .orbit-globe-arm,
+.orbit-globe:hover .orbit-globe-logo { animation-play-state: paused; }
+[data-theme=dark] .orbit-globe .brand-mark--uber { filter: brightness(0) invert(1); }
+
+.site-footer .footer-statement { margin-bottom: 24px; }
+.site-footer .footer-orbit { margin-bottom: 64px; border-bottom: 1px solid var(--line); }
+
+@keyframes firstbell-orbit-cw {
+  from { transform: rotate(var(--start-angle)); }
+  to { transform: rotate(calc(var(--start-angle) + 360deg)); }
+}
+@keyframes firstbell-orbit-ccw {
+  from { transform: rotate(var(--start-angle)); }
+  to { transform: rotate(calc(var(--start-angle) - 360deg)); }
+}
+@keyframes firstbell-counter-cw {
+  from { transform: rotate(var(--counter-angle)); }
+  to { transform: rotate(calc(var(--counter-angle) - 360deg)); }
+}
+@keyframes firstbell-counter-ccw {
+  from { transform: rotate(var(--counter-angle)); }
+  to { transform: rotate(calc(var(--counter-angle) + 360deg)); }
+}
+
+@media (min-width: 768px) {
+  .orbit-globe {
+    --orbit-inner: 720px;
+    --orbit-middle: 880px;
+    --orbit-outer: 1060px;
+    --orbit-sphere: 580px;
+    --orbit-logo: 64px;
+    height: 640px;
+  }
+  .orbit-globe-logo { padding: 16px; }
+}
+
+@media (max-width: 620px) {
+  .orbit-globe {
+    --orbit-inner: 280px;
+    --orbit-middle: 420px;
+    --orbit-outer: 560px;
+    --orbit-sphere: 220px;
+    --orbit-logo: 48px;
+    height: 340px;
+  }
+  .orbit-globe-logo { padding: 10px; }
+  .site-footer .footer-orbit { width: calc(100% + 48px); margin-inline: -24px; margin-bottom: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit-globe-arm, .orbit-globe-logo { animation: none; }
+}
