@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { usePrivy } from '@privy-io/react-auth'
 import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, X } from 'lucide-react'
 import { MarketChart } from '@/components/spectrumui/charts/market-chart'
-import { getMarket, getTradeQuote, type MarketData, type Timeframe, type TradeQuote } from './market-api'
+import { getMarket, getRwa, getTradeQuote, type MarketData, type RwaContext, type Timeframe, type TradeQuote } from './market-api'
 import './trade.css'
 
 export type TradeAsset = {
@@ -33,6 +33,8 @@ const words = {
     sheetNote: 'Ondo soft quotes are estimates, not executable orders. On-chain trading requires an eligible account, a binding quote, and wallet approval. No trade will be submitted here.',
     loading: 'Loading market data', retry: 'Retry', sourceOndo: 'Ondo primary-market data', sourceDex: 'GeckoTerminal DEX pool data', marketPrice: 'Market price', updated: 'Updated',
     getQuote: 'Get estimate', gettingQuote: 'Requesting estimate', login: 'Log In for estimate', quotePrice: 'Indicative token price', quoteTotal: 'Estimated total', quoteDisclaimer: 'Indicative Ondo quote. This cannot be executed from FirstBell yet.', quoteError: 'Quote unavailable',
+    rwaSource: 'BINANCE WEB3 / RWA DATA', rwaPrice: 'On-chain token price', rwaReference: 'Per-share reference', rwaSession: 'Underlying market', rwaPending: 'Binance Web3 API setup pending', rwaUnavailable: 'Binance RWA data unavailable', rwaAssetMissing: 'This asset is not verified in the Binance RWA response', rwaLoading: 'Loading RWA data', rwaNoSession: 'Market status unavailable', rwaNextOpen: 'Next open',
+    rwaNote: 'The reference is a per-share conversion derived from the token price, not an official stock exchange quote or a trade fill.',
     close: 'Close trade sheet', choose: 'Choose a tokenized equity',
   },
   zh: {
@@ -47,6 +49,8 @@ const words = {
     sheetNote: 'Ondo 参考报价只是估算，不能直接执行。链上交易还需要合格账户、正式报价和钱包授权。这里不会提交交易。',
     loading: '正在加载市场数据', retry: '重试', sourceOndo: 'Ondo 一级市场数据', sourceDex: 'GeckoTerminal 去中心化交易池数据', marketPrice: '市场价格', updated: '更新时间',
     getQuote: '获取估算', gettingQuote: '正在请求估算', login: '登录后获取估算', quotePrice: '参考代币价格', quoteTotal: '预计总额', quoteDisclaimer: 'Ondo 参考报价，目前不能在 FirstBell 执行。', quoteError: '暂无报价',
+    rwaSource: 'BINANCE WEB3 / RWA 数据', rwaPrice: '链上代币价格', rwaReference: '每股参考价', rwaSession: '标的市场', rwaPending: 'Binance Web3 API 待配置', rwaUnavailable: 'Binance RWA 数据暂不可用', rwaAssetMissing: 'Binance RWA 响应中未核实此资产', rwaLoading: '正在加载 RWA 数据', rwaNoSession: '市场状态暂不可用', rwaNextOpen: '下次开市',
+    rwaNote: '参考价由代币价格换算为每股价格，并非证券交易所官方报价或成交价。',
     close: '关闭交易面板', choose: '选择代币化股票',
   },
 }
@@ -72,6 +76,8 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const [timeframe, setTimeframe] = React.useState<Timeframe>('15m')
   const [market, setMarket] = React.useState<MarketData | null>(null)
   const [marketState, setMarketState] = React.useState<'loading' | 'empty' | 'error' | 'ready'>('loading')
+  const [rwa, setRwa] = React.useState<RwaContext | null>(null)
+  const [rwaState, setRwaState] = React.useState<'loading' | 'not_configured' | 'no_verified_asset' | 'provider_error'>('loading')
   const [refresh, setRefresh] = React.useState(0)
   const [quote, setQuote] = React.useState<TradeQuote | null>(null)
   const [quoteState, setQuoteState] = React.useState<'idle' | 'loading' | 'error'>('idle')
@@ -94,6 +100,18 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   }, [asset.symbol, timeframe, refresh])
 
   React.useEffect(() => {
+    const controller = new AbortController()
+    setRwa(null)
+    setRwaState('loading')
+    getRwa(asset.symbol, controller.signal).then(result => {
+      if (controller.signal.aborted) return
+      if (result.status === 'ready') setRwa(result)
+      else setRwaState(result.reason)
+    }).catch(() => { if (!controller.signal.aborted) setRwaState('provider_error') })
+    return () => controller.abort()
+  }, [asset.symbol, refresh])
+
+  React.useEffect(() => {
     const timer = window.setInterval(() => setRefresh(value => value + 1), 30_000)
     return () => window.clearInterval(timer)
   }, [])
@@ -105,10 +123,10 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     if (!authenticated) { login(); return }
     const version = ++quoteVersion.current
     setQuoteState('loading'); setQuoteError('')
-    const token = await getAccessToken()
-    if (version !== quoteVersion.current) return
-    if (!token) { setQuoteState('error'); setQuoteError(t.login); return }
     try {
+      const token = await getAccessToken()
+      if (version !== quoteVersion.current) return
+      if (!token) { setQuoteState('error'); setQuoteError(t.login); return }
       const result = await getTradeQuote(asset.symbol, side, amount, token)
       if (version !== quoteVersion.current) return
       setQuote(result)
@@ -127,6 +145,8 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const change = market?.change24hPct != null && Number.isFinite(market.change24hPct)
     ? `${market.change24hPct >= 0 ? '+' : ''}${market.change24hPct.toFixed(2)}%` : t.noChange
   const sourceLabel = market?.source === 'ondo' ? t.sourceOndo : market?.source === 'geckoterminal' ? t.sourceDex : t.quote
+  const money = (value: number) => new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(value)
+  const rwaStatus = rwaState === 'loading' ? t.rwaLoading : rwaState === 'not_configured' ? t.rwaPending : rwaState === 'no_verified_asset' ? t.rwaAssetMissing : t.rwaUnavailable
 
   const openSheet = (nextSide: Side, event: React.MouseEvent<HTMLButtonElement>) => {
     triggerRef.current = event.currentTarget
@@ -194,6 +214,18 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <a href={sourceHref(asset)} target="_blank" rel="noreferrer" className="trade-external">{t.scan}<ExternalLink size={15} /></a>
       </aside>
     </div>
+
+    <section className="trade-rwa-card" aria-label={t.rwaSource} aria-live="polite">
+      <div className="trade-rwa-heading"><span>{t.rwaSource}</span><span>{rwa ? `${t.updated} ${new Date(rwa.priceUpdatedAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC` : rwaStatus}</span></div>
+      {rwa && <>
+        <div className="trade-rwa-values">
+          <div><small>{t.rwaPrice}</small><strong>{money(rwa.tokenPriceUsd)}</strong></div>
+          <div><small>{t.rwaReference}</small><strong>{rwa.referencePerShareUsd !== null ? money(rwa.referencePerShareUsd) : t.rwaUnavailable}</strong></div>
+          <div><small>{t.rwaSession}</small><strong>{rwa.underlyingMarket ? rwa.underlyingMarket.session : t.rwaNoSession}</strong>{rwa.underlyingMarket?.nextOpenAt && <small>{t.rwaNextOpen}: {new Date(rwa.underlyingMarket.nextOpenAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC</small>}</div>
+        </div>
+        <p>{t.rwaNote}</p>
+      </>}
+    </section>
 
     <section className="trade-ticket" aria-label={t.sheetTitle}>
       <div className="trade-ticket-head"><span>{t.sheetTitle} / {asset.symbol}</span><span>{sourceLabel}</span></div>

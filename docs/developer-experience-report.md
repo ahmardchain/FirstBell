@@ -9,9 +9,19 @@ The [official brief](https://www.bnbchain.org/en/hackathons/tokenized-stocks) re
 
 ## Project and eligibility status
 
-FirstBell is a mobile-first research and trade interface for five Ondo tokenized equities on BSC. The current backend uses Privy authentication, BSC RPC balance reads, Ondo primary-market data and soft quotes when configured, and a labeled GeckoTerminal DEX pool fallback for public charts. The market and quote work was pushed in [commit `fe2b71d`](https://github.com/ahmardchain/FirstBell/commit/fe2b71d2c5899e796a9a3cd928e5a81da37607fc).
+FirstBell is a mobile-first research and trade interface for five Ondo tokenized equities on BSC. The backend uses Privy authentication, BSC RPC balance reads, Ondo primary-market data and soft quotes when configured, a labeled GeckoTerminal DEX pool fallback for public charts, and a signed Binance Web3 RWA Data readout when configured. The first market and quote work was pushed in [commit `fe2b71d`](https://github.com/ahmardchain/FirstBell/commit/fe2b71d2c5899e796a9a3cd928e5a81da37607fc).
 
-**Important eligibility gap:** The hackathon requires a working project built on at least one **Binance Web3 API module**. FirstBell has not yet integrated a Binance Web3 API module. Ondo and GeckoTerminal do not satisfy that requirement. A future Binance integration must be implemented and actually exercised before the report describes its developer experience.
+**Important verification gap:** The hackathon requires a working project built on at least one **Binance Web3 API module**. FirstBell now contains the signed Binance RWA Data code path, but there is no configured developer key or recorded successful live call or deployed verification. Code and mocked tests alone do not prove the hackathon requirement is met. Ondo and GeckoTerminal do not count as Binance Web3 API modules.
+
+## 2026-09-30: Binance Web3 RWA Data implementation
+
+| Area | Firsthand evidence | Limit |
+| --- | --- | --- |
+| Documentation read | [Authentication](https://web3.binance.com/en/dev-docs/authentication) specifies `timestamp + method + requestPath + body`, Base64 HMAC-SHA256, with `/build` included in the signed path. [RWA Data](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data) lists `/rwa/price` and `/rwa/underlying-market` for chain 56 and a token contract. | These are documented contracts, not an observed API response. No documentation error has been confirmed. |
+| Implementation | `worker/binance-rwa.ts` signs requests server-side and checks the exact BSC contract and `platformId: ondo`. It normalizes token price, a per-share reference and underlying market session without treating that session as token tradability. `/api/rwa/:symbol` returns explicit configuration or provider unavailable states. | `BINANCE_WEB3_API_KEY` and `BINANCE_WEB3_SECRET_KEY` have not been configured here. Runtime behavior against Binance is unverified. |
+| Validation | `node --test tests/market.test.mjs tests/binance-rwa.test.mjs`: 7 passed, 0 failed, including an independent Node HMAC comparison, wrong-chain/issuer rejection and partial upstream failure. `npm run build` passed. `npx wrangler deploy --dry-run` passed and bundled the Worker. | All Binance responses were mocked. No real request timing, status code, rate-limit behavior or successful live call is measured. |
+
+**Specific integration decision:** The RWA `referencePrice` is documented as a per-share conversion derived from the on-chain token price, not an official traditional exchange quote. FirstBell labels it accordingly and does not compute a misleading "on-chain vs stock exchange" spread from it. This is an interpretation of the documented field, to be checked against a live response.
 
 ## 2026-09-30: Market data and trade estimate backend
 
@@ -25,7 +35,7 @@ FirstBell is a mobile-first research and trade interface for five Ondo tokenized
 
 ### Onboarding
 
-- **Binance Web3 API:** Not started. No developer portal key, request signature, first successful call, or elapsed time recorded yet.
+- **Binance Web3 API:** RWA Data signer and parser implemented with fixtures. No developer portal key, first successful live call, or elapsed onboarding time recorded yet. The `/build` signing detail was found in the Authentication docs before making a live request, so it is **not** a firsthand 40102 incident.
 - **Ondo:** Its documented market and OHLC routes and soft quote contract were implemented behind a Worker secret. The key must be obtained through Ondo onboarding; no key or successful live request was available here. Time from docs to first live response is **not measured**.
 - **GeckoTerminal:** A public fallback was implemented against documented pool and OHLC shapes. Only fixture responses were tested here; no live latency or pool availability was measured.
 - **Privy:** Frontend login and backend JWT verification were implemented earlier. No successful deployed verification request is recorded in this log.
@@ -36,7 +46,7 @@ No documentation error has been confirmed by a live request. Do not claim one. W
 
 The implementation validates decimal token amounts without floating-point arithmetic and rejects a provider response if its asset address, BSC chain ID, side or amount differs from the request. This came from threat modeling and the documented response format; it is **not** evidence of those mismatches occurring in production.
 
-No actual status code, confusing error response, rate limit, or p95 latency from the Binance Web3 API has been observed. Add exact endpoint, sanitized request shape, response code/body, timestamp and repeatable steps after a real call.
+No actual status code, confusing error response, rate limit, or p95 latency from the Binance Web3 API has been observed. Add exact endpoint, sanitized request shape, response code/body, timestamp and repeatable steps after a real call. The docs explicitly warn that omitting `/build` from the signature yields `40102`; our mock test proves the signed path includes it, but we have not seen that error ourselves.
 
 ### AI stack feedback
 
@@ -59,7 +69,7 @@ These are requests for investigation, not conclusions about the existing Binance
 
 ## Next evidence to collect
 
-1. Obtain a Binance Web3 developer key and implement at least one real module (RWA Data is the most relevant starting point). Time the first successful signed request from opening the docs. Save a sanitized response and request ID if supplied.
+1. Obtain a Binance Web3 developer API Key and Secret Key, configure both as Worker runtime secrets, deploy, and call `/api/rwa/NVDAon`. Time the first successful signed Binance request from opening the docs and save a sanitized response and request ID if supplied. Confirm the expected contract, chain 56 and issuer in the returned data.
 2. Record one successful and one failed call for every integrated module, including endpoint, code, response text, duration, and what the docs led us to expect. Keep secrets, wallet tokens and personal data out of this report.
 3. With a configured Ondo key, test all five symbols' market, OHLC and soft quote paths on a deployed Worker. Note missing sessions or symbol-specific behavior; do not infer fills from quotes.
 4. Measure actual DEX depth and simulated price impact for a small BSC spot trade. Compare token-market and underlying reference timestamps during and outside market hours; record methodology and time zone.

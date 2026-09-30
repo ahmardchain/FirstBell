@@ -173,3 +173,20 @@
   .trade-ticket-fields { grid-template-columns:minmax(100px,.8fr) minmax(0,1.6fr); gap:8px; }
   .trade-chart-foot { font-size:9px; }
 }
+
+/* Binance RWA data is a separate read-only source from the OHLC chart. */
+.trade-rwa-card { margin-top:18px; padding:17px 19px; border:1px solid var(--line); border-radius:16px; background:var(--background); }
+.trade-rwa-heading { display:flex; justify-content:space-between; flex-wrap:wrap; gap:5px 18px; color:var(--muted); font:500 10px/1.4 'IBM Plex Mono',monospace; text-transform:uppercase; }
+.trade-rwa-heading span:last-child { text-align:right; }
+.trade-rwa-values { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:17px; }
+.trade-rwa-values>div { display:flex; flex-direction:column; align-items:flex-start; gap:7px; min-width:0; }
+.trade-rwa-values small { color:var(--muted); font-size:11px; line-height:1.35; }
+.trade-rwa-values strong { color:var(--foreground); font-size:18px; font-weight:650; letter-spacing:-.03em; overflow-wrap:anywhere; }
+.trade-rwa-card p { max-width:690px; margin:16px 0 0; color:var(--muted); font-size:11px; line-height:1.5; }
+@media(max-width:540px) {
+  .trade-rwa-card { padding:15px; }
+  .trade-rwa-heading span:last-child { text-align:left; }
+  .trade-rwa-values { grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 10px; }
+  .trade-rwa-values>div:last-child { grid-column:1 / -1; }
+  .trade-rwa-values strong { font-size:16px; }
+}

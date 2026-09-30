@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import { importSPKI, jwtVerify } from 'jose'
 import { isFrame, isSymbol, marketSnapshot, parseQuantity, softQuote } from './market'
+import { getRwaContext } from './binance-rwa'
 
 type Account = {
   id: string
@@ -15,6 +16,8 @@ interface Env {
   PRIVY_APP_ID: string
   PRIVY_VERIFICATION_KEY?: string
   ONDO_API_KEY?: string
+  BINANCE_WEB3_API_KEY?: string
+  BINANCE_WEB3_SECRET_KEY?: string
 }
 
 const symbols = new Set(['AAPLon', 'TSLAon', 'NVDAon', 'MSFTon', 'AMZNon'])
@@ -106,6 +109,20 @@ export default {
     const pathname = new URL(request.url).pathname
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
     if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok' })
+    const rwaMatch = /^\/api\/rwa\/([^/]+)$/.exec(pathname)
+    if (rwaMatch) {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
+      if (!isSymbol(rwaMatch[1])) return json({ error: 'Unknown tokenized equity' }, 400)
+      if (!env.BINANCE_WEB3_API_KEY || !env.BINANCE_WEB3_SECRET_KEY)
+        return json({ status: 'unavailable', reason: 'not_configured' }, 503)
+      try {
+        const context = await getRwaContext(rwaMatch[1], { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY })
+        return context ? json({ status: 'ready', ...context }) : json({ status: 'unavailable', reason: 'no_verified_asset' }, 503)
+      } catch (error) {
+        console.warn('Binance RWA read failed', error instanceof Error ? error.message : 'Unknown provider error')
+        return json({ status: 'unavailable', reason: 'provider_error' }, 503)
+      }
+    }
     const marketMatch = /^\/api\/market\/([^/]+)$/.exec(pathname)
     if (marketMatch) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
