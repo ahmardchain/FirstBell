@@ -2,6 +2,10 @@
 
 FirstBell is a landing page and research app for exploring tokenized equities on BNB Smart Chain. It presents issuer, network, token symbol, contract address, and public source links for five Ondo Global Markets assets. Market data and indicative quotes are available when their providers respond; order execution is not available yet.
 
+## Hackathon report and integration requirement
+
+The [living Developer Experience field log](docs/developer-experience-report.md) records verified build evidence and outstanding tests. The hackathon weights its report at 25% and requires at least one Binance Web3 API module in the working project. The current Ondo/GeckoTerminal backend does **not** satisfy that module requirement yet. Add a real Binance module, record its first successful call and failures in the log, and review the final report from firsthand experience before submitting.
+
 ## Run locally
 
 ```bash

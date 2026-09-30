@@ -793,3 +793,9 @@ Never confuse these responsibilities.
 The goal is not to make an interface that merely looks expensive.
 
 The goal is to make an interface that looks **intentional**.
+
+---
+
+# FirstBell hackathon evidence
+
+The BNB Hack: Tokenized Stocks Edition judges the Developer Experience Report at 25%. After every backend/API integration, append firsthand notes to `docs/developer-experience-report.md`: the exact docs page and endpoint, time to first successful call, sanitized request/response or error, latency, token and market context, recovery, and an actionable suggestion. Record whether Binance Agentic Wallet, Wallet Skills, or CLI was actually used. Distinguish mocked tests, documented behavior, hypotheses, and deployed observations. Do not invent API friction or claim a successful integration from a fixture. The final report must be reviewed against actual developer experience before submission.
