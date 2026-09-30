@@ -1,0 +1,13 @@
+{
+  "purpose": "Transparent company marks used only in the FirstBell landing hero. Symbols are decorative labels supplied by the user, not additions to the app asset index.",
+  "marks": [
+    { "symbol": "GOOGLx", "company": "Alphabet / Google", "file": "google.svg", "source": "https://commons.wikimedia.org/wiki/File:Google_%22G%22_logo.svg" },
+    { "symbol": "METAx", "company": "Meta", "file": "meta.svg", "source": "https://cdn.simpleicons.org/meta/0866FF" },
+    { "symbol": "NFLXx", "company": "Netflix", "file": "netflix.svg", "source": "https://cdn.simpleicons.org/netflix/E50914" },
+    { "symbol": "COINx", "company": "Coinbase", "file": "coinbase.svg", "source": "https://cdn.simpleicons.org/coinbase/0052FF" },
+    { "symbol": "INTCx", "company": "Intel", "file": "intel.svg", "source": "https://cdn.simpleicons.org/intel/0071C5" },
+    { "symbol": "UBERx", "company": "Uber", "file": "uber.svg", "source": "https://cdn.simpleicons.org/uber/000000" },
+    { "symbol": "KO_x", "company": "Coca-Cola", "file": "cocacola.svg", "source": "https://cdn.simpleicons.org/cocacola/F40009" },
+    { "symbol": "HOODx", "company": "Robinhood", "file": "robinhood.svg", "source": "https://cdn.simpleicons.org/robinhood/00C805" }
+  ]
+}

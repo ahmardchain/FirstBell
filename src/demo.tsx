@@ -5,21 +5,36 @@ import { FloatingIconsHero, type FloatingIconsHeroProps } from '@/components/ui/
 import LogoLoop from '@/components/ui/logo-loop'
 import ScrollFloat from '@/components/ui/scroll-float'
 import manifest from '@/asset-sources.json'
+import './homepage-icons.css'
 
 
-const makeTokenIcon = (mark: string): React.FC<React.SVGProps<SVGSVGElement>> =>
+const makeTokenIcon = (mark: string, symbol: string): React.FC<React.SVGProps<SVGSVGElement>> =>
   function TokenIcon({ className, ...props }) {
-    return <svg viewBox="0 0 64 64" role="presentation" {...props} className={`${className ?? ''} brand-mark brand-mark--${mark}`}><image href={`/assets/marks/${mark}.svg`} width="64" height="64" /></svg>
+    return <svg viewBox="0 0 64 64" role="presentation" data-symbol={symbol} {...props} className={`${className ?? ''} brand-mark brand-mark--${mark}`}><image href={`/assets/marks/${mark}.svg`} width="64" height="64" /></svg>
   }
 
-const marks = ['apple', 'nvidia', 'tesla', 'microsoft', 'amazon']
+// Each company appears once; this decorative set is local to the landing page.
+const heroAssets = [
+  { symbol: 'AAPLon', mark: 'apple' },
+  { symbol: 'NVDAon', mark: 'nvidia' },
+  { symbol: 'TSLAon', mark: 'tesla' },
+  { symbol: 'MSFTon', mark: 'microsoft' },
+  { symbol: 'AMZNon', mark: 'amazon' },
+  { symbol: 'GOOGLx', mark: 'google' },
+  { symbol: 'METAx', mark: 'meta' },
+  { symbol: 'NFLXx', mark: 'netflix' },
+  { symbol: 'COINx', mark: 'coinbase' },
+  { symbol: 'INTCx', mark: 'intel' },
+  { symbol: 'UBERx', mark: 'uber' },
+  { symbol: 'KO_x', mark: 'cocacola' },
+  { symbol: 'HOODx', mark: 'robinhood' },
+]
 const markBySymbol: Record<string, string> = { aaplon: 'apple', nvdaon: 'nvidia', tslaon: 'tesla', msfton: 'microsoft', amznon: 'amazon' }
 const markFor = (symbol: string) => markBySymbol[symbol.toLowerCase()]
-const positions = ['tile-1', 'tile-2', 'tile-3', 'tile-4', 'tile-5', 'tile-6', 'tile-7', 'tile-8', 'tile-9', 'tile-10']
-const icons: FloatingIconsHeroProps['icons'] = positions.map((className, index) => ({
+const icons: FloatingIconsHeroProps['icons'] = heroAssets.map((asset, index) => ({
   id: index + 1,
-  icon: makeTokenIcon(marks[index % marks.length]),
-  className,
+  icon: makeTokenIcon(asset.mark, asset.symbol),
+  className: `tile-${index + 1}`,
 }))
 const assets = manifest.assets.map(asset => ({ ...asset, company: asset.name.split(' (Ondo')[0] }))
 type Asset = (typeof assets)[number]
