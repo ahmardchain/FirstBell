@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { importSPKI, jwtVerify } from 'jose'
 import { isFrame, isSymbol, marketSnapshot, parseQuantity, softQuote } from './market'
 import { getRwaContext } from './binance-rwa'
+import { handleDepositRequest, handleStoredDeposits } from './deposits'
 
 type Account = {
   id: string
@@ -18,6 +19,9 @@ interface Env {
   ONDO_API_KEY?: string
   BINANCE_WEB3_API_KEY?: string
   BINANCE_WEB3_SECRET_KEY?: string
+  MOONPAY_PUBLISHABLE_KEY?: string
+  MOONPAY_SECRET_KEY?: string
+  MOONPAY_ENVIRONMENT?: string
 }
 
 const symbols = new Set(['AAPLon', 'TSLAon', 'NVDAon', 'MSFTon', 'AMZNon'])
@@ -58,6 +62,9 @@ export class AccountStore extends DurableObject<Env> {
     if (!id || !/^did:privy:[a-zA-Z0-9_-]{3,128}$/.test(id)) return json({ error: 'Invalid account' }, 400)
 
     const now = new Date().toISOString()
+    if (new URL(request.url).pathname.startsWith('/deposits')) {
+      return this.ctx.blockConcurrencyWhile(() => handleStoredDeposits(request, this.env, this.ctx.storage))
+    }
     if (new URL(request.url).pathname === '/quote-rate') {
       if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
       const timestamps = (await this.ctx.storage.get<number[]>('quoteTimes') ?? []).filter(value => value > Date.now() - 60_000)
@@ -109,6 +116,12 @@ export default {
     const pathname = new URL(request.url).pathname
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
     if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok' })
+    if (pathname === '/api/deposits' || pathname.startsWith('/api/deposits/')) {
+      if (!env.PRIVY_VERIFICATION_KEY) return json({ error: 'account_not_configured' }, 503)
+      const id = await getUserId(request, env)
+      if (!id) return json({ error: 'unauthorized' }, 401)
+      return handleDepositRequest(request, env, id)
+    }
     const rwaMatch = /^\/api\/rwa\/([^/]+)$/.exec(pathname)
     if (rwaMatch) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)

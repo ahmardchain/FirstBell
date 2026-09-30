@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Build with `npm run build`.
+Build with `npm run build`. Run the backend regression suite with `npm test` (Node 24 or later).
 
 ## Deploy to Cloudflare Workers
 
@@ -30,7 +30,7 @@ For Cloudflare Workers Builds connected to GitHub, use `npm run build` as the bu
 
 ## Login and wallets
 
-FirstBell uses Privy for Google and email one-time-code sign-in. The Privy modal creates an embedded EVM wallet for a new account; a returning account loads its existing wallet. Portfolio reads the authenticated wallet's native BNB and five listed token balances from the BNB Smart Chain public RPC using viem. It displays quantities, not an invented USD valuation. On sign-in, `/api/me` verifies the Privy access token and creates or retrieves an account; saved assets sync through `/api/me/saved`. The browser retains local bookmarks when the API is unavailable. Deposit, Withdraw, and trade execution remain disabled.
+FirstBell uses Privy for Google and email one-time-code sign-in. The Privy modal creates an embedded EVM wallet for a new account; a returning account loads its existing wallet. Portfolio reads USDT, native BNB and five listed token balances from the BNB Smart Chain public RPC using viem. It displays quantities, not an invented USD valuation. On sign-in, `/api/me` verifies the Privy access token and creates or retrieves an account; saved assets sync through `/api/me/saved`. The browser retains local bookmarks when the API is unavailable. Card deposit checkout is implemented and requires the configuration below. Withdrawals and stock trade execution remain disabled.
 
 1. In the [Privy Dashboard](https://dashboard.privy.io/) for the configured App ID, enable **Email** and **Google** login, and allow your deployment origin (and localhost for development).
 2. The public App ID is in `src/privy-config.ts`; override it in a local `.env` as `VITE_PRIVY_APP_ID=...` to use another Privy app. Do not put a Privy App Secret in a Vite variable or in this repository.
@@ -38,7 +38,40 @@ FirstBell uses Privy for Google and email one-time-code sign-in. The Privy modal
 4. Add the verification public key to the Cloudflare Worker as described above. Without it the account endpoints return HTTP 503; the login modal and public chain balance reads still use Privy directly.
 5. Sign in, check the wallet address against BscScan, log out, then sign in again with the **same linked identity** to verify the address is unchanged. To use Google and email interchangeably for one wallet, link the other method from the authenticated Portfolio screen before logging out.
 
-The Worker uses Privy's ES256 verification key, issuer and app audience to validate the access token before forwarding the user ID to that user's Durable Object. `GET /api/health` is public. `GET /api/me` returns `{ account: { id, createdAt, lastSeenAt, saved } }`; `PUT /api/me/saved` accepts `{ symbol, saved }` for an indexed token. Both account routes require `Authorization: Bearer <Privy access token>`. The account record holds a Privy ID and saved symbols; it does not store wallet keys, credentials, or a fabricated balance. The wallet and its balances come from Privy and BNB Smart Chain. Transfers, transaction history, and USD portfolio valuation remain separate integrations.
+The Worker uses Privy's ES256 verification key, issuer and app audience to validate the access token before forwarding the user ID to that user's Durable Object. `GET /api/health` is public. `GET /api/me` returns `{ account: { id, createdAt, lastSeenAt, saved } }`; `PUT /api/me/saved` accepts `{ symbol, saved }` for an indexed token. Both account routes require `Authorization: Bearer <Privy access token>`. The account record holds a Privy ID and saved symbols; it does not store wallet keys, credentials, or a fabricated balance. Card deposit records are stored separately in the same per-user Durable Object. The wallet and its balances come from Privy and BNB Smart Chain. General transaction history and USD portfolio valuation remain separate integrations.
+
+## Card deposits: MoonPay → Privy wallet → BSC USDT
+
+Portfolio's **Deposit from card** action opens an amount dialog in the existing light/dark design. The Worker verifies that the receiving address is the signed-in user's Privy embedded EVM wallet, checks MoonPay's enabled currency catalog, and generates a server-signed, IP-bound checkout URL. The wallet, `usdt_bsc`, network and requested fiat amount are prefilled and locked. The user reviews MoonPay's final card total, USDT amount, fees and verification requirements before paying. FirstBell never receives card details.
+
+### Activate checkout
+
+1. Create/approve a [MoonPay business integration](https://dashboard.moonpay.com/), complete its production onboarding, and enable **USDT on BNB Smart Chain** in the partner asset settings. Confirm that IP enforcement is active with MoonPay as required by its [IP matching documentation](https://dev.moonpay.com/widget/on-ramp/customization/ip-matching). Country, bank, card and identity eligibility are determined by the provider; the general asset listing does not prove a specific card will be accepted.
+2. In **Cloudflare → Workers & Pages → firstbell → Settings → Variables and Secrets**, add these three **runtime secrets** (not build variables):
+
+   | Name | Value |
+   | --- | --- |
+   | `MOONPAY_PUBLISHABLE_KEY` | The integration's `pk_live_…` key |
+   | `MOONPAY_SECRET_KEY` | Its matching `sk_live_…` signing key |
+   | `MOONPAY_ENVIRONMENT` | `live` |
+
+   Using runtime secrets also keeps dashboard configuration across Git-triggered Wrangler deployments. CLI equivalents are `npx wrangler secret put MOONPAY_PUBLISHABLE_KEY`, `npx wrangler secret put MOONPAY_SECRET_KEY` and `npx wrangler secret put MOONPAY_ENVIRONMENT`. Paste only into the dashboard or interactive CLI prompts. Never commit keys or prefix them with `VITE_`. The publishable key appears in the provider checkout URL as intended; the secret key stays in the Worker.
+3. Keep the existing `PRIVY_VERIFICATION_KEY` runtime secret configured. In **Privy → User management → Authentication → Advanced**, enable **Return user data in an identity token**, following [Privy's identity token documentation](https://docs.privy.io/user-management/users/identity-tokens). Sign in again so checkout has an identity token containing the newly created embedded wallet. No Privy App Secret is needed for this integration.
+4. Open Portfolio, choose **Deposit from card**, and review the correct wallet, USDT and BNB Smart Chain before entering MoonPay. Runtime secret changes do not require a frontend rebuild. FirstBell returns an explicit setup/unavailable state until the keys, mode and enabled asset are valid.
+5. Complete one small live deposit through MoonPay yourself. Return to FirstBell and compare its confirmed transfer and wallet balance with BscScan. Record this real payment and its latency in the developer experience report before claiming the complete card flow works.
+
+**Sandbox limitation observed 2026-09-30:** MoonPay's live public `/v3/currencies?show=all` response lists `usdt_bsc`, chain `56`, contract `0x55d398326f99059ff775485246999027b3197955`, **18 decimals**, `supportsLiveMode: true` and **`supportsTestMode: false`**. FirstBell checks the account's current enabled catalog and blocks unsupported sandbox checkout; it never silently changes the chain/token or counts a test payment as mainnet funds. If MoonPay later enables testing for this asset, configure matching `pk_test_…` / `sk_test_…` keys and environment `sandbox`. Test completion is labeled separately and does not update mainnet balances.
+
+### Status and confirmation
+
+- `GET /api/deposits/config` returns availability, mode, a reason when unavailable, and provider-derived fiat amount limits.
+- `POST /api/deposits/checkout` accepts `{ walletAddress, amount, fiatCurrency, theme, sessionId? }`. It requires the usual Privy access token, an independently verified `privy-id-token`, and a same-origin `Origin` header. New sessions use a server-generated UUID; resuming a session preserves its amount, address and ID. Checkout is limited to three requests per account per minute.
+- `GET /api/deposits` returns this account's persisted deposit history. `GET /api/deposits/:id` checks MoonPay's external-transaction lookup, with a 15-second cache and an account rate limit. The browser checks the selected pending deposit, or the most recent pending deposit, every 15 seconds while visible and refreshes on return to the app. Older deposits can be checked from Activity. Unused checkouts are labeled expired after 24 hours without a detected payment; this local timeout does not cancel MoonPay checkout. Expired records remain retained and checkable so a late payment can still be confirmed.
+- Provider status is validated against the session's customer ID, recipient, BSC USDT contract, fiat currency and requested amount. A redirect's `transactionStatus` is never treated as proof. A live deposit becomes **completed** only after a successful BSC receipt contains the expected USDT transfer to this wallet and has three block confirmations. Failed or missing RPC receipts stay unconfirmed. Balance refresh reads the actual chain; it never credits a local mock balance.
+- Sessions survive reload and closing the dialog. Activity contains card deposits only. All pending and expired records, plus the 20 most recent finalized payment records, are retained. Card details, identity documents, signing secrets and full checkout URLs are not stored in deposit history.
+- Signed URLs bind to the current Cloudflare-observed IP (with canonical IPv6 and Pseudo IPv4 handling). Do not change Wi-Fi, cellular or VPN between generating and opening checkout. Private Relay and split-network cases need an additional tested detection flow; this integration does not bypass IP matching.
+
+Receiving USDT does not fund outgoing transaction gas automatically. Portfolio shows the separate **BNB for network fees** balance. Gas sponsorship, executable stock buys/sells and withdrawal are still separate work. Card funding speed depends on MoonPay and verification; the "under a minute" idea is a target that has not been demonstrated with a real payment.
 
 ## Market and trade API
 
