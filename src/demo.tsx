@@ -5,6 +5,7 @@ import { FloatingIconsHero, type FloatingIconsHeroProps } from '@/components/ui/
 import LogoLoop from '@/components/ui/logo-loop'
 import ScrollFloat from '@/components/ui/scroll-float'
 import OrbitingCirclesGlobe from '@/components/ui/orbiting-circles-02'
+import HowItWorks from '@/components/ui/how-it-works'
 import manifest from '@/asset-sources.json'
 import './homepage-icons.css'
 
@@ -44,7 +45,7 @@ type Theme = 'dark' | 'light'
 
 const content = {
   en: {
-    navigation: ['Overview', 'App', 'Why FirstBell'], language: 'Language', theme: 'Toggle color theme', menu: 'Toggle navigation',
+    navigation: ['Overview', 'App', 'How it works'], language: 'Language', theme: 'Toggle color theme', menu: 'Toggle navigation',
     eyebrow: 'FIRSTBELL / TOKENIZED EQUITIES ON BSC',
     hero: 'The stock names you know. The on-chain details you need.',
     heroSub: 'Explore tokenized equities on BNB Smart Chain. See the issuer, contract, and source in one clear place.',
@@ -61,19 +62,20 @@ const content = {
     search: 'Search company or symbol', listLabel: 'Tokenized equity assets', noResults: 'No assets match your search.', clear: 'Clear search',
     assetProfile: 'ASSET FILE', issuer: 'Issuer', chain: 'Network', symbol: 'Token symbol', address: 'Contract address',
     explorer: 'Open on BscScan', source: 'View source token list', aboutToken: 'Issuer terms and location rules determine whether a token is available to you and what rights it carries.',
-    aboutKicker: '03 / THE DISTINCTION', aboutTitle: 'The ticker is familiar.\nThe product is different.',
-    aboutText: 'A tokenized equity has its own issuer, terms, and on-chain contract. FirstBell keeps those details near the name so you can investigate the actual product.',
-    aboutFacts: [
-      ['Issuer', 'Know who created the token.'],
-      ['Terms', 'Read the rights and restrictions from the issuer.'],
-      ['Contract', 'Check the address on the chain.'],
+    howKicker: '03 / HOW IT WORKS', howTitle: 'How it works.',
+    howText: 'From your account to your first tokenized stock.',
+    howSteps: [
+      { title: 'Create account', description: 'Log in with Google or email. Your wallet is created with your account.', colorTheme: 'orange' },
+      { title: 'Deposit', description: 'Use your wallet address to receive funds on BNB Smart Chain.', colorTheme: 'blue' },
+      { title: 'Choose a stock', description: 'Explore the stocks and check the token, issuer, and contract.', colorTheme: 'purple' },
+      { title: 'Buy or sell', description: 'Choose Buy or Sell, enter a quantity, and review the available quote.', colorTheme: 'orange' },
     ],
     endKicker: 'FIRSTBELL / START WITH CLARITY', endTitle: 'Look closer.\nThen decide.', endCta: 'Open the asset index',
     footerText: 'A clearer front door to tokenized equities.', footerNote: 'Independent interface concept. Asset availability and terms vary by location.',
     product: 'Product', resources: 'Resources', community: 'Community', docs: 'Documentation', github: 'GitHub source', bnbDocs: 'BNB Chain docs', x: 'BNB Chain on X', tokenList: 'Token source', top: 'Back to top',
   },
   zh: {
-    navigation: ['概览', '应用', '关于 FirstBell'], language: '语言', theme: '切换明暗主题', menu: '切换导航',
+    navigation: ['概览', '应用', '使用流程'], language: '语言', theme: '切换明暗主题', menu: '切换导航',
     eyebrow: 'FIRSTBELL / BSC 上的代币化股票',
     hero: '熟悉的股票名称。清楚的链上信息。',
     heroSub: '探索 BNB 智能链上的代币化股票。在同一个地方查看发行方、合约和来源。',
@@ -90,12 +92,13 @@ const content = {
     search: '搜索公司或代币符号', listLabel: '代币化股票资产', noResults: '未找到匹配的资产。', clear: '清除搜索',
     assetProfile: '资产资料', issuer: '发行方', chain: '网络', symbol: '代币符号', address: '合约地址',
     explorer: '在 BscScan 查看', source: '查看代币来源', aboutToken: '代币是否对你开放以及它所代表的权益，取决于发行方条款和你所在的地区。',
-    aboutKicker: '03 / 重要区别', aboutTitle: '代码很熟悉。\n产品却不同。',
-    aboutText: '代币化股票有自己的发行方、条款和链上合约。FirstBell 将这些信息放在名称旁，帮助你研究实际持有的产品。',
-    aboutFacts: [
-      ['发行方', '了解代币由谁创建。'],
-      ['条款', '阅读发行方规定的权益和限制。'],
-      ['合约', '在链上核对地址。'],
+    howKicker: '03 / 使用流程', howTitle: '使用流程。',
+    howText: '从创建账户，到了解你的第一只代币化股票。',
+    howSteps: [
+      { title: '创建账户', description: '通过 Google 或邮箱登录。系统会为你的账户创建钱包。', colorTheme: 'orange' },
+      { title: '充值', description: '使用你的钱包地址，在 BNB 智能链上接收资金。', colorTheme: 'blue' },
+      { title: '选择股票', description: '浏览股票，并查看代币、发行方和合约。', colorTheme: 'purple' },
+      { title: '买入或卖出', description: '选择买入或卖出，输入数量，并查看可用的参考报价。', colorTheme: 'orange' },
     ],
     endKicker: 'FIRSTBELL / 从清晰的信息开始', endTitle: '看得更清楚。\n再做决定。', endCta: '打开资产目录',
     footerText: '了解代币化股票，更清晰的入口。', footerNote: '独立界面概念。资产可用性和条款因地区而异。',
@@ -119,7 +122,7 @@ export default function FirstBellLanding() {
   const t = content[language]
   const filtered = assets.filter(asset => `${asset.company} ${asset.symbol}`.toLowerCase().includes(query.trim().toLowerCase()))
   const current = filtered.find(asset => asset.symbol === selected.symbol) ?? filtered[0]
-  const nav = [{ id: 'top', text: t.navigation[0] }, { id: 'app', text: t.navigation[1] }, { id: 'about', text: t.navigation[2] }]
+  const nav = [{ id: 'top', text: t.navigation[0] }, { id: 'app', text: t.navigation[1] }, { id: 'how-it-works', text: t.navigation[2] }]
   const tokenLogos = assets.map(asset => ({
     node: <span className="loop-token"><img className={`brand-mark brand-mark--${markFor(asset.symbol)}`} src={`/assets/marks/${markFor(asset.symbol)}.svg`} alt="" /><b>{asset.symbol}</b></span>,
     href: `https://bscscan.com/token/${asset.address}`,
@@ -132,7 +135,7 @@ export default function FirstBellLanding() {
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => { if (entry.isIntersecting) setActive(entry.target.id) })
     }, { rootMargin: '-20% 0px -70% 0px' })
-    document.querySelectorAll('#top, #app, #about').forEach(node => observer.observe(node))
+    document.querySelectorAll('#top, #app, #how-it-works').forEach(node => observer.observe(node))
     return () => observer.disconnect()
   }, [])
 
@@ -176,9 +179,12 @@ export default function FirstBellLanding() {
           </div>
         </div>
       </section>
-      <section id="about" className="editorial-section about-section" aria-labelledby="about-title"><div className="content-width about-grid"><div><SectionMarker>{t.aboutKicker}</SectionMarker><ScrollFloat id="about-title">{t.aboutTitle}</ScrollFloat><p className="section-intro">{t.aboutText}</p></div><div className="about-facts">{t.aboutFacts.map(([title, body], index) => <div key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></div>)}</div></div></section>
+      <section id="how-it-works" className="how-it-works-section" aria-labelledby="how-it-works-title">
+        <div className="content-width how-it-works-heading"><SectionMarker>{t.howKicker}</SectionMarker><ScrollFloat id="how-it-works-title">{t.howTitle}</ScrollFloat><p className="section-intro">{t.howText}</p></div>
+        <HowItWorks features={[...t.howSteps]} />
+      </section>
       <section className="end-section"><div className="content-width"><SectionMarker>{t.endKicker}</SectionMarker><ScrollFloat>{t.endTitle}</ScrollFloat><a href="/app/">{t.endCta}<ArrowUpRight size={19} /></a></div></section>
     </main>
-    <footer className="site-footer"><div className="content-width"><ScrollFloat className="footer-statement" scrollStart="top 98%" scrollEnd="top 70%">{t.footerText}</ScrollFloat><OrbitingCirclesGlobe className="footer-orbit" /><div className="footer-grid"><div className="footer-brand"><a className="brand" href="#top"><img src="/assets/firstbell-mark.svg" width="27" height="27" alt="" />FirstBell</a><small>© 2026 FirstBell. {t.footerNote}</small></div><div className="footer-col"><strong>{t.product}</strong><a href="#top">{t.navigation[0]}</a><a href="/app/">{t.navigation[1]}</a><a href="#about">{t.navigation[2]}</a></div><div className="footer-col"><strong>{t.resources}</strong><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs} ↗</a><a href="https://docs.bnbchain.org/" target="_blank" rel="noreferrer">{t.bnbDocs} ↗</a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer">{t.tokenList} ↗</a></div><div className="footer-col"><strong>{t.community}</strong><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github} ↗</a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x} ↗</a><a href="#top">{t.top} ↑</a></div></div></div></footer>
+    <footer className="site-footer"><div className="content-width"><ScrollFloat className="footer-statement" scrollStart="top 98%" scrollEnd="top 70%">{t.footerText}</ScrollFloat><OrbitingCirclesGlobe className="footer-orbit" /><div className="footer-grid"><div className="footer-brand"><a className="brand" href="#top"><img src="/assets/firstbell-mark.svg" width="27" height="27" alt="" />FirstBell</a><small>© 2026 FirstBell. {t.footerNote}</small></div><div className="footer-col"><strong>{t.product}</strong><a href="#top">{t.navigation[0]}</a><a href="/app/">{t.navigation[1]}</a><a href="#how-it-works">{t.navigation[2]}</a></div><div className="footer-col"><strong>{t.resources}</strong><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs} ↗</a><a href="https://docs.bnbchain.org/" target="_blank" rel="noreferrer">{t.bnbDocs} ↗</a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer">{t.tokenList} ↗</a></div><div className="footer-col"><strong>{t.community}</strong><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github} ↗</a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x} ↗</a><a href="#top">{t.top} ↑</a></div></div></div></footer>
   </>
 }

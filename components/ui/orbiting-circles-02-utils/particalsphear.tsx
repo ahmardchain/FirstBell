@@ -11,7 +11,7 @@ const points = Array.from({ length: 1100 }, (_, index) => {
   return { x: Math.cos(angle) * radius, y, z: Math.sin(angle) * radius }
 })
 
-export default function ParticleSphereAnimation({ running = true }: { running?: boolean }) {
+export default function ParticleSphereAnimation() {
   const ref = React.useRef<HTMLCanvasElement>(null)
 
   React.useEffect(() => {
@@ -65,12 +65,6 @@ export default function ParticleSphereAnimation({ running = true }: { running?: 
       frame = requestAnimationFrame(animate)
     }
 
-    function resume() {
-      cancelAnimationFrame(frame)
-      lastFrame = 0
-      if (running && !document.hidden) frame = requestAnimationFrame(animate)
-    }
-
     const resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(canvas)
     const themeObserver = new MutationObserver(() => {
@@ -78,17 +72,15 @@ export default function ParticleSphereAnimation({ running = true }: { running?: 
       draw()
     })
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-    document.addEventListener('visibilitychange', resume)
     resize()
-    resume()
+    frame = requestAnimationFrame(animate)
 
     return () => {
       cancelAnimationFrame(frame)
       resizeObserver.disconnect()
       themeObserver.disconnect()
-      document.removeEventListener('visibilitychange', resume)
     }
-  }, [running])
+  }, [])
 
   return <canvas ref={ref} aria-hidden="true" />
 }

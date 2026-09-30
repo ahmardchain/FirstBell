@@ -42,10 +42,10 @@
   margin-left: calc(var(--orbit-logo) / -2);
   transform-origin: center bottom;
   transform: rotate(var(--start-angle));
-  animation-duration: var(--orbit-duration);
+  animation-duration: var(--orbit-duration) !important;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
-  animation-play-state: paused;
+  animation-play-state: running;
 }
 
 .orbit-globe-logo {
@@ -60,10 +60,10 @@
   border-radius: 50%;
   background: var(--background);
   transform: rotate(var(--counter-angle));
-  animation-duration: var(--orbit-duration);
+  animation-duration: var(--orbit-duration) !important;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
-  animation-play-state: paused;
+  animation-play-state: running;
 }
 
 .orbit-globe-logo img { width: 100%; height: 100%; object-fit: contain; }
@@ -71,10 +71,6 @@
 .orbit-globe-cw .orbit-globe-logo { animation-name: firstbell-counter-cw; }
 .orbit-globe-ccw { animation-name: firstbell-orbit-ccw; }
 .orbit-globe-ccw .orbit-globe-logo { animation-name: firstbell-counter-ccw; }
-.orbit-globe[data-running="true"] .orbit-globe-arm,
-.orbit-globe[data-running="true"] .orbit-globe-logo { animation-play-state: running; }
-.orbit-globe:hover .orbit-globe-arm,
-.orbit-globe:hover .orbit-globe-logo { animation-play-state: paused; }
 [data-theme=dark] .orbit-globe .brand-mark--uber { filter: brightness(0) invert(1); }
 
 .site-footer .footer-statement { margin-bottom: 24px; }
@@ -120,8 +116,4 @@
   }
   .orbit-globe-logo { padding: 10px; }
   .site-footer .footer-orbit { width: calc(100% + 48px); margin-inline: -24px; margin-bottom: 44px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .orbit-globe-arm, .orbit-globe-logo { animation: none; }
 }

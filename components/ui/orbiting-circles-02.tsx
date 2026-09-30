@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from 'react'
-import { useInView, useReducedMotion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import ParticleSphereAnimation from '@/components/ui/orbiting-circles-02-utils/particalsphear'
 import './orbiting-circles-02.css'
@@ -12,42 +11,41 @@ const orbits = [
   {
     duration: 18,
     icons: [
-      { mark: 'google', symbol: 'GOOGLx', angle: -60 },
-      { mark: 'meta', symbol: 'METAx', angle: 0 },
+      { mark: 'apple', symbol: 'AAPLon', angle: -60 },
+      { mark: 'google', symbol: 'GOOGLx', angle: -20 },
+      { mark: 'meta', symbol: 'METAx', angle: 20 },
       { mark: 'netflix', symbol: 'NFLXx', angle: 60 },
     ],
   },
   {
     duration: 24,
     icons: [
-      { mark: 'coinbase', symbol: 'COINx', angle: -45 },
-      { mark: 'intel', symbol: 'INTCx', angle: 45 },
+      { mark: 'nvidia', symbol: 'NVDAon', angle: -55 },
+      { mark: 'coinbase', symbol: 'COINx', angle: -20 },
+      { mark: 'intel', symbol: 'INTCx', angle: 20 },
+      { mark: 'microsoft', symbol: 'MSFTon', angle: 55 },
     ],
   },
   {
     duration: 30,
     icons: [
-      { mark: 'uber', symbol: 'UBERx', angle: -36 },
-      { mark: 'cocacola', symbol: 'KO_x', angle: 0 },
-      { mark: 'robinhood', symbol: 'HOODx', angle: 36 },
+      { mark: 'tesla', symbol: 'TSLAon', angle: -30 },
+      { mark: 'amazon', symbol: 'AMZNon', angle: -15 },
+      { mark: 'uber', symbol: 'UBERx', angle: 0 },
+      { mark: 'cocacola', symbol: 'KO_x', angle: 15 },
+      { mark: 'robinhood', symbol: 'HOODx', angle: 30 },
     ],
   },
 ] as const
 
 export default function OrbitingCirclesGlobe({ className }: { className?: string }) {
-  const ref = React.useRef<HTMLDivElement>(null)
-  const inView = useInView(ref, { margin: '100px' })
-  const reducedMotion = useReducedMotion()
-
   return (
     <div
-      ref={ref}
       className={cn('orbit-globe', className)}
-      data-running={inView && !reducedMotion}
       aria-hidden="true"
     >
       <div className="orbit-globe-sphere">
-        <ParticleSphereAnimation running={inView && !reducedMotion} />
+        <ParticleSphereAnimation />
       </div>
 
       {orbits.map((orbit, index) => (

@@ -1,0 +1,36 @@
+/* Keep the supplied card colors and shape; match FirstBell's data-theme switch. */
+.how-it-works.how-it-works { background: var(--background); overflow: clip; }
+.how-it-works .hiw-card-shell { background: #fff; border-color: #f5f5f5; box-shadow: 0 10px 20px #d3d3d3; }
+.how-it-works .hiw-title { color: #262626; }
+.how-it-works .hiw-description { color: #737373; }
+.how-it-works .hiw-connector { color: #d4d4d4; }
+.how-it-works .hiw-light-lines { opacity: .08; }
+.how-it-works .hiw-dark-lines { opacity: 0; }
+.how-it-works [data-color-theme=orange] { --note-background: #fff7ed; --note-text: #f97316; --note-border: #ffedd5; }
+.how-it-works [data-color-theme=blue] { --note-background: #eff6ff; --note-text: #2563eb; --note-border: #dbeafe; }
+.how-it-works [data-color-theme=purple] { --note-background: #faf5ff; --note-text: #9333ea; --note-border: #f3e8ff; }
+.how-it-works [data-color-theme] .hiw-note { background: var(--note-background); border-color: var(--note-border); }
+.how-it-works [data-color-theme] .hiw-number,
+.how-it-works [data-color-theme] .hiw-pin { color: var(--note-text); }
+.how-it-works .hiw-number { font-family: inherit; }
+.how-it-works .hiw-card { transition-duration: 300ms !important; }
+
+[data-theme=dark] .how-it-works .hiw-card-shell { background: #171717; border-color: #262626; box-shadow: none; }
+[data-theme=dark] .how-it-works .hiw-title { color: #f5f5f5; }
+[data-theme=dark] .how-it-works .hiw-description { color: #a3a3a3; }
+[data-theme=dark] .how-it-works .hiw-connector { color: #404040; }
+[data-theme=dark] .how-it-works .hiw-light-lines { opacity: 0; }
+[data-theme=dark] .how-it-works .hiw-dark-lines { opacity: .1; }
+[data-theme=dark] .how-it-works [data-color-theme=orange] { --note-background: rgb(249 115 22 / .1); --note-text: #fb923c; --note-border: rgb(249 115 22 / .2); }
+[data-theme=dark] .how-it-works [data-color-theme=blue] { --note-background: rgb(59 130 246 / .1); --note-text: #60a5fa; --note-border: rgb(59 130 246 / .2); }
+[data-theme=dark] .how-it-works [data-color-theme=purple] { --note-background: rgb(168 85 247 / .1); --note-text: #c084fc; --note-border: rgb(168 85 247 / .2); }
+
+.how-it-works-section { border-bottom: 1px solid var(--line); padding-top: clamp(90px, 8vw, 130px); }
+.how-it-works-section .how-it-works-heading { margin-bottom: 16px; }
+.how-it-works-section .how-it-works-heading h2 { margin: 0; font-size: clamp(48px, 5.8vw, 88px); font-weight: 600; letter-spacing: -.07em; line-height: 1.03; }
+
+@media (max-width: 1023px) {
+  .how-it-works .hiw-board { display: flex; flex-direction: column; height: auto; gap: 56px; }
+  .how-it-works .hiw-board > .hiw-card { position: relative; top: auto; left: auto; right: auto; align-self: center; width: min(100%, 360px); margin-block: 0; }
+  .how-it-works .hiw-path-svg { display: none; }
+}
