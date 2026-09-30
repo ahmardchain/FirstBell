@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 import { importSPKI, jwtVerify } from 'jose'
+import { isFrame, isSymbol, marketSnapshot, parseQuantity, softQuote } from './market'
 
 type Account = {
   id: string
@@ -13,6 +14,7 @@ interface Env {
   ACCOUNTS: DurableObjectNamespace
   PRIVY_APP_ID: string
   PRIVY_VERIFICATION_KEY?: string
+  ONDO_API_KEY?: string
 }
 
 const symbols = new Set(['AAPLon', 'TSLAon', 'NVDAon', 'MSFTon', 'AMZNon'])
@@ -53,6 +55,13 @@ export class AccountStore extends DurableObject<Env> {
     if (!id || !/^did:privy:[a-zA-Z0-9_-]{3,128}$/.test(id)) return json({ error: 'Invalid account' }, 400)
 
     const now = new Date().toISOString()
+    if (new URL(request.url).pathname === '/quote-rate') {
+      if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+      const timestamps = (await this.ctx.storage.get<number[]>('quoteTimes') ?? []).filter(value => value > Date.now() - 60_000)
+      if (timestamps.length >= 6) return json({ error: 'Quote limit reached. Try again in a minute.' }, 429)
+      await this.ctx.storage.put('quoteTimes', [...timestamps, Date.now()])
+      return json({ allowed: true })
+    }
     const account = await this.ctx.storage.get<Account>('account') ?? {
       id, createdAt: now, lastSeenAt: now, saved: [],
     }
@@ -97,6 +106,37 @@ export default {
     const pathname = new URL(request.url).pathname
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
     if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok' })
+    const marketMatch = /^\/api\/market\/([^/]+)$/.exec(pathname)
+    if (marketMatch) {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
+      const frame = new URL(request.url).searchParams.get('frame') ?? '15m'
+      if (!isSymbol(marketMatch[1]) || !isFrame(frame)) return json({ error: 'Unknown market or timeframe' }, 400)
+      const result = await marketSnapshot(marketMatch[1], frame, env.ONDO_API_KEY)
+      return json(result ? { status: 'ready', ...result } : { status: 'unavailable', symbol: marketMatch[1], candles: [] }, result ? 200 : 503)
+    }
+    if (pathname === '/api/trade/quote') {
+      if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+      const origin = request.headers.get('Origin')
+      if (origin && origin !== new URL(request.url).origin) return json({ error: 'Invalid origin' }, 403)
+      if (Number(request.headers.get('Content-Length') || 0) > maxBodyBytes) return json({ error: 'Request too large' }, 413)
+      if (!env.PRIVY_VERIFICATION_KEY || !env.ONDO_API_KEY) return json({ error: 'Trade quote service is not configured' }, 503)
+      const id = await getUserId(request, env)
+      if (!id) return json({ error: 'Unauthorized' }, 401)
+      const body = await readSmallBody(request)
+      if (body === null) return json({ error: 'Request too large' }, 413)
+      let input: Record<string, unknown>
+      try { input = JSON.parse(body) } catch { return json({ error: 'Invalid JSON' }, 400) }
+      if (!input || !isSymbol(String(input.symbol)) || (input.side !== 'buy' && input.side !== 'sell')) return json({ error: 'Invalid trade request' }, 400)
+      const quantity = parseQuantity(input.quantity)
+      if (!quantity) return json({ error: 'Enter a valid token quantity' }, 400)
+      const stub = env.ACCOUNTS.get(env.ACCOUNTS.idFromName(id))
+      const allowed = await stub.fetch(new Request('https://account.internal/quote-rate', { method: 'POST', headers: { 'X-Privy-DID': id } }))
+      if (!allowed.ok) return allowed
+      try {
+        const quote = await softQuote(input.symbol as Parameters<typeof softQuote>[0], input.side, quantity, env.ONDO_API_KEY)
+        return quote ? json({ quote }) : json({ error: 'Ondo quote unavailable for this token and size' }, 503)
+      } catch { return json({ error: 'Ondo quote unavailable right now' }, 503) }
+    }
     if (pathname !== '/api/me' && pathname !== '/api/me/saved') return json({ error: 'Not found' }, 404)
     if (!env.PRIVY_VERIFICATION_KEY) return json({ error: 'Account service is not configured' }, 503)
     if (pathname === '/api/me' && request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)

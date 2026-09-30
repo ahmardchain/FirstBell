@@ -135,6 +135,9 @@
 .trade-submit.trade-buy { background:var(--trade-buy); color:#fff!important; }
 .trade-submit.trade-sell { background:var(--trade-sell); color:#fff!important; }
 .trade-submit:disabled { opacity:.7; }
+.trade-change-up { color:var(--trade-buy); }
+.trade-change-down { color:var(--trade-sell); }
+.trade-sheet-error { margin:0 0 14px; color:var(--trade-sell); font-size:12px; line-height:1.5; }
 .trade-sheet { border-radius:24px 24px 0 0; }
 .trade-sheet-handle { border-radius:var(--trade-pill-radius); }
 .trade-sheet-header button { border-radius:var(--trade-pill-radius); }

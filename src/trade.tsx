@@ -1,7 +1,9 @@
 import * as React from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { usePrivy } from '@privy-io/react-auth'
 import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, X } from 'lucide-react'
 import { MarketChart } from '@/components/spectrumui/charts/market-chart'
+import { getMarket, getTradeQuote, type MarketData, type Timeframe, type TradeQuote } from './market-api'
 import './trade.css'
 
 export type TradeAsset = {
@@ -27,8 +29,10 @@ const words = {
     source: 'ASSET RECORD', issuer: 'Issuer', network: 'Network', contract: 'Contract',
     inspect: 'Inspect asset file', scan: 'View contract on BscScan',
     buy: 'Buy', sell: 'Sell', sheetTitle: 'Trade', buyAmount: 'Quantity', sellAmount: 'Quantity',
-    receive: 'Estimated receive', unavailable: 'Quote unavailable', balance: 'Wallet balance unavailable', balanceLabel: 'Wallet balance', noPrice: 'No quote', noChange: 'No data', noBalance: 'Not connected',
-    sheetNote: 'Live quotes and order execution are not connected. No payment or trade will be submitted.',
+    receive: 'Estimated receive', unavailable: 'Quote unavailable', balance: 'Wallet balance unavailable', balanceLabel: 'Wallet balance', noPrice: 'Price unavailable', noChange: 'No data', noBalance: 'Not connected',
+    sheetNote: 'Ondo soft quotes are estimates, not executable orders. On-chain trading requires an eligible account, a binding quote, and wallet approval. No trade will be submitted here.',
+    loading: 'Loading market data', retry: 'Retry', sourceOndo: 'Ondo primary-market data', sourceDex: 'GeckoTerminal DEX pool data', marketPrice: 'Market price', updated: 'Updated',
+    getQuote: 'Get estimate', gettingQuote: 'Requesting estimate', login: 'Log In for estimate', quotePrice: 'Indicative token price', quoteTotal: 'Estimated total', quoteDisclaimer: 'Indicative Ondo quote. This cannot be executed from FirstBell yet.', quoteError: 'Quote unavailable',
     close: 'Close trade sheet', choose: 'Choose a tokenized equity',
   },
   zh: {
@@ -40,7 +44,9 @@ const words = {
     inspect: '查看资产资料', scan: '在 BscScan 查看合约',
     buy: '买入', sell: '卖出', sheetTitle: '交易', buyAmount: '数量', sellAmount: '数量',
     receive: '预计收到', unavailable: '暂无报价', balance: '暂无钱包余额', balanceLabel: '钱包余额', noPrice: '暂无报价', noChange: '暂无数据', noBalance: '未连接',
-    sheetNote: '实时报价与订单执行尚未接入。这里不会收款或提交交易。',
+    sheetNote: 'Ondo 参考报价只是估算，不能直接执行。链上交易还需要合格账户、正式报价和钱包授权。这里不会提交交易。',
+    loading: '正在加载市场数据', retry: '重试', sourceOndo: 'Ondo 一级市场数据', sourceDex: 'GeckoTerminal 去中心化交易池数据', marketPrice: '市场价格', updated: '更新时间',
+    getQuote: '获取估算', gettingQuote: '正在请求估算', login: '登录后获取估算', quotePrice: '参考代币价格', quoteTotal: '预计总额', quoteDisclaimer: 'Ondo 参考报价，目前不能在 FirstBell 执行。', quoteError: '暂无报价',
     close: '关闭交易面板', choose: '选择代币化股票',
   },
 }
@@ -63,9 +69,64 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const reduceMotion = useReducedMotion()
   const [side, setSide] = React.useState<Side | null>(null)
   const [amount, setAmount] = React.useState('')
-  const [timeframe, setTimeframe] = React.useState<'15m' | '1h' | '4h' | '1D'>('15m')
+  const [timeframe, setTimeframe] = React.useState<Timeframe>('15m')
+  const [market, setMarket] = React.useState<MarketData | null>(null)
+  const [marketState, setMarketState] = React.useState<'loading' | 'empty' | 'error' | 'ready'>('loading')
+  const [refresh, setRefresh] = React.useState(0)
+  const [quote, setQuote] = React.useState<TradeQuote | null>(null)
+  const [quoteState, setQuoteState] = React.useState<'idle' | 'loading' | 'error'>('idle')
+  const [quoteError, setQuoteError] = React.useState('')
+  const { authenticated, login, getAccessToken } = usePrivy()
   const sheetRef = React.useRef<HTMLElement>(null)
   const triggerRef = React.useRef<HTMLButtonElement | null>(null)
+  const quoteVersion = React.useRef(0)
+
+  React.useEffect(() => {
+    const controller = new AbortController()
+    setMarket(null)
+    setMarketState('loading')
+    getMarket(asset.symbol, timeframe, controller.signal).then(result => {
+      if (controller.signal.aborted) return
+      setMarket(result)
+      setMarketState(result?.candles.length ? 'ready' : 'empty')
+    }).catch(() => { if (!controller.signal.aborted) setMarketState('error') })
+    return () => controller.abort()
+  }, [asset.symbol, timeframe, refresh])
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setRefresh(value => value + 1), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  React.useEffect(() => { quoteVersion.current += 1; setQuote(null); setQuoteState('idle'); setQuoteError('') }, [asset.symbol, side, amount])
+
+  const requestQuote = async () => {
+    if (!side) return
+    if (!authenticated) { login(); return }
+    const version = ++quoteVersion.current
+    setQuoteState('loading'); setQuoteError('')
+    const token = await getAccessToken()
+    if (version !== quoteVersion.current) return
+    if (!token) { setQuoteState('error'); setQuoteError(t.login); return }
+    try {
+      const result = await getTradeQuote(asset.symbol, side, amount, token)
+      if (version !== quoteVersion.current) return
+      setQuote(result)
+      setQuoteState('idle')
+    } catch (error) {
+      if (version !== quoteVersion.current) return
+      setQuoteState('error')
+      setQuoteError(error instanceof Error ? error.message : t.quoteError)
+    }
+  }
+
+  const validAmount = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,18})?$/.test(amount) && /[1-9]/.test(amount)
+  const price = market?.priceUsd && Number.isFinite(market.priceUsd)
+    ? new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(market.priceUsd)
+    : t.noPrice
+  const change = market?.change24hPct != null && Number.isFinite(market.change24hPct)
+    ? `${market.change24hPct >= 0 ? '+' : ''}${market.change24hPct.toFixed(2)}%` : t.noChange
+  const sourceLabel = market?.source === 'ondo' ? t.sourceOndo : market?.source === 'geckoterminal' ? t.sourceDex : t.quote
 
   const openSheet = (nextSide: Side, event: React.MouseEvent<HTMLButtonElement>) => {
     triggerRef.current = event.currentTarget
@@ -108,7 +169,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
           {assets.map(candidate => <button type="button" role="option" aria-selected={asset.symbol === candidate.symbol} key={candidate.symbol} onClick={() => { onAssetChange(candidate); setSelectorOpen(false) }}><TokenMark asset={candidate} /><span><strong>{candidate.symbol}</strong><small>{candidate.company}</small></span>{candidate.symbol === asset.symbol && <Check size={17} />}</button>)}
         </motion.div>}</AnimatePresence>
       </div>
-      <div className="trade-header-right"><span className="trade-network"><i /> BNB SMART CHAIN</span><div className="trade-price-pair"><span><small>{t.lastPrice}</small><strong className="trade-unavailable-value">{t.noPrice}</strong></span><span><small>{t.change}</small><strong className="trade-unavailable-value">{t.noChange}</strong></span></div></div>
+      <div className="trade-header-right"><span className="trade-network"><i /> BNB SMART CHAIN</span><div className="trade-price-pair"><span><small>{t.lastPrice}</small><strong className={market?.priceUsd ? '' : 'trade-unavailable-value'}>{price}</strong></span><span><small>{t.change}</small><strong className={market?.change24hPct != null ? (market.change24hPct >= 0 ? 'trade-change-up' : 'trade-change-down') : 'trade-unavailable-value'}>{change}</strong></span></div></div>
     </div>
 
     <div className="trade-body">
@@ -116,9 +177,9 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <div className="trade-tabs"><span className="active"><ChartCandlestick size={17} />{t.chart}</span><span>{t.market}</span></div>
         <div className="trade-timeframes" role="group" aria-label={t.timeframe}>{(['15m', '1h', '4h', '1D'] as const).map(value => <button type="button" className="motion-tab" key={value} aria-pressed={timeframe === value} onClick={() => setTimeframe(value)}>{timeframe === value && <motion.span className="motion-tab-indicator" layoutId="trade-timeframe-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{value}</span></button>)}</div>
         <div className="trade-chart" key={asset.symbol}>
-          <MarketChart data={[]} symbol={asset.symbol} name={asset.company} status="empty" showRangeSelector={false} height={320} emptyTitle={t.noData} emptyDescription={t.noDataBody} />
+          <MarketChart data={market?.candles ?? []} symbol={asset.symbol} name={asset.company} status={marketState} showRangeSelector={false} showVolume={market?.source === 'geckoterminal'} height={320} emptyTitle={marketState === 'loading' ? t.loading : t.noData} emptyDescription={t.noDataBody} onRetry={() => setRefresh(value => value + 1)} />
         </div>
-        <div className="trade-chart-foot"><span>OHLC / {timeframe} / {asset.symbol}</span><span>{t.quote}</span></div>
+        <div className="trade-chart-foot"><span>OHLC / {timeframe} / {asset.symbol}</span><span>{sourceLabel}{market?.asOf ? ` · ${t.updated} ${new Date(market.asOf).toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC` : ''}</span></div>
       </div>
 
       <aside className="trade-asset-record" aria-label={t.source}>
@@ -135,7 +196,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     </div>
 
     <section className="trade-ticket" aria-label={t.sheetTitle}>
-      <div className="trade-ticket-head"><span>{t.sheetTitle} / {asset.symbol}</span><span>{t.quote}</span></div>
+      <div className="trade-ticket-head"><span>{t.sheetTitle} / {asset.symbol}</span><span>{sourceLabel}</span></div>
       <div className="trade-ticket-fields"><div className="trade-ticket-market"><small>{t.orderType}</small><strong>{t.orderMarket}</strong></div><label className="trade-ticket-quantity"><small>{t.quantity}</small><span><input id="trade-ticket-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><strong>{asset.symbol}</strong></span></label></div>
       <div className="trade-ticket-slider"><input type="range" min="0" max="100" value="0" disabled aria-label={t.allocation} /><span>{t.balance}</span></div>
       <div className="trade-dock-buttons"><button type="button" className="trade-buy" onClick={event => openSheet('buy', event)}>{t.buy}</button><button type="button" className="trade-sell" onClick={event => openSheet('sell', event)}>{t.sell}</button></div>
@@ -149,10 +210,12 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <div className="trade-sheet-tabs" role="tablist" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" role="tab" key={value} aria-selected={side === value} className={`motion-tab trade-${value} ${side === value ? 'active' : ''}`} onClick={() => setSide(value)}>{side === value && <motion.span className="motion-tab-indicator" layoutId="trade-side-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[value]}</span></button>)}</div>
         <label className="trade-amount-label" htmlFor="trade-amount">{side === 'buy' ? t.buyAmount : t.sellAmount}</label>
         <div className="trade-amount-field"><input id="trade-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><span>{asset.symbol}</span></div>
-        <div className="trade-sheet-row"><span>{t.receive}</span><strong>{t.noPrice}</strong></div>
+        <div className="trade-sheet-row"><span>{t.quotePrice}</span><strong>{quote ? `$${quote.priceUsd}` : t.unavailable}</strong></div>
+        {quote && <div className="trade-sheet-row"><span>{t.quoteTotal}</span><strong>${quote.estimatedTotalUsd}</strong></div>}
         {side === 'sell' && <div className="trade-sheet-row"><span>{t.balanceLabel}</span><strong>{t.noBalance}</strong></div>}
-        <div className="trade-sheet-status"><span>{t.unavailable}</span><span>BNB SMART CHAIN</span></div>
-        <button type="button" className={`trade-submit trade-${side}`} disabled>{t.unavailable}</button>
+        <div className="trade-sheet-status"><span>{quote ? t.quoteDisclaimer : t.unavailable}</span><span>BNB SMART CHAIN</span></div>
+        {quoteError && <p role="alert" className="trade-sheet-error">{quoteError}</p>}
+        <button type="button" className={`trade-submit trade-${side}`} disabled={quoteState === 'loading' || (authenticated && !validAmount)} onClick={requestQuote}>{!authenticated ? t.login : quoteState === 'loading' ? t.gettingQuote : t.getQuote}</button>
         <p className="trade-sheet-note">{t.sheetNote}</p>
       </motion.section>
     </div>}</AnimatePresence>
