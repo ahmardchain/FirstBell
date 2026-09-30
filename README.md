@@ -11,13 +11,23 @@ npm run dev
 
 Build with `npm run build`.
 
+## Deploy to Cloudflare Workers
+
+`wrangler.jsonc` serves the Vite output in `dist` as Workers static assets. Both `/` and `/app/` are built as HTML entry points.
+
+1. Sign in with `npx wrangler login` (or set a scoped `CLOUDFLARE_API_TOKEN` in your deployment environment).
+2. Set the **public** `VITE_PRIVY_APP_ID` in the environment that runs `npm run build`. Vite embeds this value in the browser bundle at build time; a Worker runtime variable set after the build cannot turn login on.
+3. Run `npm run deploy:cloudflare`. Add the resulting `https://firstbell.<your-subdomain>.workers.dev` origin to your Privy app's allowed domains.
+
+For Cloudflare Workers Builds connected to GitHub, use `npm run build` as the build command and `npx --yes wrangler@4.144.0 deploy` as the deploy command. Add `VITE_PRIVY_APP_ID` to the **build** variables before deploying. Keep the Privy App Secret out of the frontend and repository.
+
 ## Login and wallets
 
 FirstBell uses Privy for Google and email one-time-code sign-in. The Privy modal creates an embedded EVM wallet for a new account; a returning account loads its existing wallet. Portfolio reads the authenticated wallet's native BNB and five listed token balances from the BNB Smart Chain public RPC using viem. It displays quantities, not an invented USD valuation. The saved list is still local to the browser. Deposit, Withdraw, and trade execution remain disabled.
 
 1. Create a FirstBell app in the [Privy Dashboard](https://dashboard.privy.io/), enable **Email** and **Google** login, and allow your deployment origin (and localhost for development).
 2. Copy its public App ID into a local `.env` as `VITE_PRIVY_APP_ID=...` before `npm run dev` or `npm run build`. Do not put a Privy App Secret in a Vite variable or in this repository.
-3. Redeploy with the App ID supplied at build time. Without it, the Portfolio login button stays disabled and says setup is pending. A static deployment does not consume Sites runtime environment variables during its build.
+3. Build and deploy with the App ID supplied at build time. Without it, the Portfolio login button stays disabled and says setup is pending. A static deployment cannot pick up runtime environment variables after the build.
 4. Sign in, check the wallet address against BscScan, log out, then sign in again with the **same linked identity** to verify the address is unchanged. To use Google and email interchangeably for one wallet, link the other method from the authenticated Portfolio screen before logging out.
 
 This is a hosted authentication and wallet backend from Privy plus public chain reads. There is no FirstBell server API or account database yet; protected account APIs should validate Privy access tokens on the server when they are added. User-specific bookmarks, transfers, transaction history, market prices, and USD valuation are separate integrations.
