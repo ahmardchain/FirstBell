@@ -65,10 +65,10 @@ const content = {
     howKicker: '03 / HOW IT WORKS', howTitle: 'How it works.',
     howText: 'From your account to your first tokenized stock.',
     howSteps: [
-      { title: 'Create account', description: 'Log in with Google or email. Your wallet is created with your account.', colorTheme: 'orange' },
-      { title: 'Deposit', description: 'Use your wallet address to receive funds on BNB Smart Chain.', colorTheme: 'blue' },
+      { title: 'Create account', description: 'Create your account with Google or email. Simple — your wallet is made for you, no seed phrase to write down.', colorTheme: 'orange' },
+      { title: 'Deposit from your card', description: 'Pay with your card. Your funds land on BNB Smart Chain, ready to trade.', colorTheme: 'blue' },
       { title: 'Choose a stock', description: 'Explore the stocks and check the token, issuer, and contract.', colorTheme: 'purple' },
-      { title: 'Buy or sell', description: 'Choose Buy or Sell, enter a quantity, and review the available quote.', colorTheme: 'orange' },
+      { title: 'Trade your tokenized equity', description: 'Buy and sell. Own your first tokenized stock in under a minute.', colorTheme: 'orange' },
     ],
     endKicker: 'FIRSTBELL / START WITH CLARITY', endTitle: 'Look closer.\nThen decide.', endCta: 'Open the asset index',
     footerText: 'A clearer front door to tokenized equities.', footerNote: 'Independent interface concept. Asset availability and terms vary by location.',
@@ -93,12 +93,12 @@ const content = {
     assetProfile: '资产资料', issuer: '发行方', chain: '网络', symbol: '代币符号', address: '合约地址',
     explorer: '在 BscScan 查看', source: '查看代币来源', aboutToken: '代币是否对你开放以及它所代表的权益，取决于发行方条款和你所在的地区。',
     howKicker: '03 / 使用流程', howTitle: '使用流程。',
-    howText: '从创建账户，到了解你的第一只代币化股票。',
+    howText: '从创建账户，到拥有你的第一只代币化股票。',
     howSteps: [
-      { title: '创建账户', description: '通过 Google 或邮箱登录。系统会为你的账户创建钱包。', colorTheme: 'orange' },
-      { title: '充值', description: '使用你的钱包地址，在 BNB 智能链上接收资金。', colorTheme: 'blue' },
+      { title: '创建账户', description: '使用 Google 或邮箱创建账户。很简单——系统会为你创建钱包，无需记录助记词。', colorTheme: 'orange' },
+      { title: '使用银行卡充值', description: '使用银行卡付款。资金将到账 BNB 智能链，随时准备交易。', colorTheme: 'blue' },
       { title: '选择股票', description: '浏览股票，并查看代币、发行方和合约。', colorTheme: 'purple' },
-      { title: '买入或卖出', description: '选择买入或卖出，输入数量，并查看可用的参考报价。', colorTheme: 'orange' },
+      { title: '交易代币化股票', description: '买入和卖出。不到一分钟，拥有你的第一只代币化股票。', colorTheme: 'orange' },
     ],
     endKicker: 'FIRSTBELL / 从清晰的信息开始', endTitle: '看得更清楚。\n再做决定。', endCta: '打开资产目录',
     footerText: '了解代币化股票，更清晰的入口。', footerNote: '独立界面概念。资产可用性和条款因地区而异。',
@@ -181,7 +181,7 @@ export default function FirstBellLanding() {
       </section>
       <section id="how-it-works" className="how-it-works-section" aria-labelledby="how-it-works-title">
         <div className="content-width how-it-works-heading"><SectionMarker>{t.howKicker}</SectionMarker><ScrollFloat id="how-it-works-title">{t.howTitle}</ScrollFloat><p className="section-intro">{t.howText}</p></div>
-        <HowItWorks features={[...t.howSteps]} />
+        <HowItWorks features={[...t.howSteps]} ariaLabel={t.howTitle} />
       </section>
       <section className="end-section"><div className="content-width"><SectionMarker>{t.endKicker}</SectionMarker><ScrollFloat>{t.endTitle}</ScrollFloat><a href="/app/">{t.endCta}<ArrowUpRight size={19} /></a></div></section>
     </main>
