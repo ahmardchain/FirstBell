@@ -3,7 +3,7 @@
 **Hackathon:** BNB Hack: Tokenized Stocks Edition  
 **Judging weight:** 25% for the Developer Experience Report  
 **Status:** Living evidence log, not a finished submission  
-**Last updated:** 2026-09-30 (UTC)
+**Last updated:** 2026-10-01 (UTC)
 
 The [official brief](https://www.bnbchain.org/en/hackathons/tokenized-stocks) requests firsthand, specific feedback on onboarding, documentation, API pitfalls, the AI stack, tokenized stock behavior, redesigns, and requested capabilities. It explicitly rejects perfunctory or AI-generated reports. Keep this file as an evidence ledger; the final submission must be reviewed and written from actual developer experience. Do not turn an untested hypothesis into an observed defect.
 
@@ -11,7 +11,7 @@ The [official brief](https://www.bnbchain.org/en/hackathons/tokenized-stocks) re
 
 FirstBell is a mobile-first research and trade interface for five Ondo tokenized equities on BSC. The backend uses Privy authentication, BSC RPC balance reads, signed Binance Web3 candles, trading info, RWA data and read-only route checks when configured, plus labeled Ondo and GeckoTerminal chart fallbacks. The first market and quote work was pushed in [commit `fe2b71d`](https://github.com/ahmardchain/FirstBell/commit/fe2b71d2c5899e796a9a3cd928e5a81da37607fc).
 
-**Important verification gap:** The hackathon requires a working project built on at least one **Binance Web3 API module**. The builder reports saving the keys in Cloudflare, and the provided Production screenshot lists two `BIN…` secret entries. A builder-provided live app response now reports upstream HTTP 200 with Binance business code `40304`; see the observation below. The chart code is deployed, but no successful Binance data call or credential acceptance has been recorded. Code, mocked tests and a rejected live request do not prove the hackathon requirement is met. Ondo and GeckoTerminal do not count as Binance Web3 API modules.
+**Important verification gap:** The hackathon requires a working project built on at least one **Binance Web3 API module**. The builder reports saving the keys in Cloudflare, and the provided Production screenshot lists two `BIN…` secret entries. An earlier builder-provided deployed response reported HTTP 200 with Binance business code `40304`. On 2026-10-01, the builder's direct local diagnostic accepted both Market API calls with `code: 0`, returning 100 candle entries and one trading-info entry; see the observations below. This records successful local credential/signature acceptance, but the actual prices and candle fields have not been reviewed, the saved Worker credential pair has not been compared, and successful data through the deployed app remains unverified. Ondo and GeckoTerminal do not count as Binance Web3 API modules.
 
 ## 2026-09-30: Binance Web3 RWA Data implementation
 
@@ -35,7 +35,7 @@ FirstBell is a mobile-first research and trade interface for five Ondo tokenized
 
 ### Onboarding
 
-- **Binance Web3 API:** Signed RWA, chart and route-check integrations are implemented. The builder saved runtime secrets and provided a live `40304` response after deployment. First successful live call and elapsed onboarding time remain unmeasured. The `/build` signing detail was found in the Authentication docs before making a live request, so it is **not** a firsthand 40102 incident.
+- **Binance Web3 API:** Signed RWA, chart and route-check integrations are implemented. The builder saved runtime secrets and provided a live `40304` response after deployment. The first recorded successful direct local call was requested at `2026-10-01T07:00:40.626Z` and returned 100 candle entries with `code: 0`; the subsequent trading-info call also succeeded. Elapsed onboarding time from opening the docs remains unmeasured, and deployed success is still unverified. The `/build` signing detail was found in the Authentication docs before making a live request, so it is **not** a firsthand 40102 incident.
 - **Ondo:** Its documented market and OHLC routes and soft quote contract were implemented behind a Worker secret. The key must be obtained through Ondo onboarding; no key or successful live request was available here. Time from docs to first live response is **not measured**.
 - **GeckoTerminal:** A public fallback was implemented against documented pool and OHLC shapes. Only fixture responses were tested here; no live latency or pool availability was measured.
 - **Privy:** Frontend login and backend JWT verification were implemented earlier. No successful deployed verification request is recorded in this log.
@@ -46,7 +46,7 @@ No documentation error has been confirmed by a live request. Do not claim one. W
 
 The implementation validates decimal token amounts without floating-point arithmetic and rejects a provider response if its asset address, BSC chain ID, side or amount differs from the request. This came from threat modeling and the documented response format; it is **not** evidence of those mismatches occurring in production.
 
-The builder-provided deployed market response now records upstream HTTP 200 with business code `40304`. No rate-limit incident or p95 latency has been measured. The docs explicitly warn that omitting `/build` from the signature yields `40102`; our mock test proves the signed path includes it, but we have not seen that error ourselves. See the compliance observation below for the exact evidence and its limits.
+The builder-provided deployed market response records upstream HTTP 200 with business code `40304`; later direct local requests returned `code: 0`. No rate-limit incident or p95 latency has been measured. The docs explicitly warn that omitting `/build` from the signature yields `40102`; our mock test proves the signed path includes it, but we have not seen that error ourselves. See the compliance and local-success observations below for the exact evidence and their limits.
 
 ### AI stack feedback
 
@@ -69,7 +69,7 @@ These are requests for investigation, not conclusions about the existing Binance
 
 ## Next evidence to collect
 
-1. Obtain a Binance Web3 developer API Key and Secret Key, configure both as Worker runtime secrets, deploy, and call `/api/rwa/NVDAon`. Time the first successful signed Binance request from opening the docs and save a sanitized response and request ID if supplied. Confirm the expected contract, chain 56 and issuer in the returned data.
+1. Retest `/api/market/NVDAon?frame=15m` and `/api/rwa/NVDAon` on the deployed Worker using the saved runtime secrets. If rejection persists, confirm that the Worker uses the same credential pair as the successful local diagnostic and compare requests around the same time. Save sanitized codes, data fields, timestamps and any request ID; confirm the expected contract and chain 56, and the issuer where returned. Elapsed onboarding time remains unknown unless the builder can supply its starting time.
 2. Record one successful and one failed call for every integrated module, including endpoint, code, response text, duration, and what the docs led us to expect. Keep secrets, wallet tokens and personal data out of this report.
 3. With a configured Ondo key, test all five symbols' market, OHLC and soft quote paths on a deployed Worker. Note missing sessions or symbol-specific behavior; do not infer fills from quotes.
 4. Measure actual DEX depth and simulated price impact for a small BSC spot trade. Compare token-market and underlying reference timestamps during and outside market hours; record methodology and time zone.
@@ -158,3 +158,17 @@ Update this log immediately after each real integration session. Mark untested i
 - Live evidence: no authenticated Binance request was made by this diagnostic in the workspace. The builder must run it locally with the same Web3 credentials as the Worker. Provider latency, time to first success, genuine candle/price data and the cause of `40304` remain unmeasured. `code: 0` means a request was accepted; empty or unvalidated data does not verify usable market information.
 - Recovery: compare the two local results with the deployed `/api/market/NVDAon?frame=15m` response around the same time. Local acceptance plus Worker rejection narrows investigation to hosting/request-path differences but does not prove an IP allowlist, regional rule or VPS fix. The same rejection locally records a failure outside the Worker. Share the sanitized endpoint/timestamp/code report with official Web3 technical support. Actionable suggestion: provide a provider-maintained local diagnostic and document the approved recovery path for compliance errors.
 - Binance Agentic Wallet, Wallet Skills and Binance CLI: **not used**; this is a FirstBell diagnostic script. No stock transaction, wallet signature, payment or external support message was performed by the agent.
+
+## 2026-10-01 07:00 UTC: Builder-observed direct local Market API success
+
+- The builder ran `node scripts/check-binance-market.mjs` on their computer and supplied its sanitized JSON output. Both requests returned HTTP 200, numeric `providerCode: 0`, `message: success` and `result: accepted`. This is builder-provided live evidence, not an authenticated call made from this workspace. The reported token context is NVDAon, BSC chain 56, contract `0xA9eE28C80f960B889dFbd1902055218cBa016F75`.
+
+| Method and endpoint | Request timestamp (UTC) | Data entries | Elapsed time |
+| --- | --- | --- | --- |
+| `GET /build/api/v1/dex/market/candles?binanceChainId=56&tokenContractAddress=0xA9eE28C80f960B889dFbd1902055218cBa016F75&bar=15m&limit=100` | `2026-10-01T07:00:40.626Z` | 100 | 3,235 ms |
+| `POST /build/api/v1/dex/market/price-info`, with the diagnostic's one-token BSC request body | `2026-10-01T07:00:43.871Z` | 1 | 579 ms |
+
+- These results establish acceptance of the local credential pair and signatures for these two requests. The diagnostic intentionally omits raw market data; returned contract metadata, actual price values, OHLC validity and timestamp freshness have not been inspected. The two elapsed times are individual diagnostic measurements, not a latency distribution or time from docs to first success. No RWA, route, order or transaction endpoint was tested by this run.
+- The diagnostic and Worker sign the same paths and request bodies, with independent signature comparisons covered by the existing tests. Their runtime headers and network paths can differ. The saved Worker credential pair has not been independently compared with the local pair. The older Worker `40304` and this later local success are not simultaneous observations, so changing provider access over time remains possible. They do not prove that Cloudflare IPs, a hosting region or a specific compliance rule caused the rejection.
+- Recovery: obtain a fresh deployed market response before changing hosting or configuration. A read-only attempt to open that deployed URL through this environment's web tool reported that the URL was inaccessible; it did not return a Worker or Binance response. If a fresh Worker rejection persists with the same credentials, send both timestamped endpoint results to official Web3 technical support and request the approved resolution. Actionable documentation suggestion: provide a documented comparison procedure for a local accepted call and a hosted compliance rejection, including the safe diagnostic fields support needs.
+- Only this evidence log changed in this session; application behavior is unchanged. Binance Agentic Wallet, Wallet Skills and Binance CLI: **not used**. No external support message, wallet action, payment or stock trade was performed by the agent.
