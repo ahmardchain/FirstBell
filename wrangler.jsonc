@@ -3,6 +3,15 @@
   "name": "firstbell",
   "compatibility_date": "2026-09-30",
   "main": "./worker/index.ts",
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    },
+    "traces": { "enabled": false }
+  },
   "vars": { "PRIVY_APP_ID": "cmun7bqhg00070ck6mdyqp888" },
   "durable_objects": {
     "bindings": [{ "name": "ACCOUNTS", "class_name": "AccountStore" }]

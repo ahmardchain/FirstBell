@@ -56,6 +56,8 @@ This runs the Worker and its bindings locally while making real read-only Binanc
 
 ### Capture private Binance failure diagnostics
 
+`wrangler.jsonc` retains the dashboard's enabled log collection, sampling rate of 1, invocation logs and persistence; traces are disabled. **Settings → Observability** configures collection. Open the Worker's **Logs** view to read the entries. On a narrow screen, scroll the top tab bar toward the earlier tabs to find Logs. The dashboard's orange configuration banner is a reminder to keep source settings in sync, not a Binance error.
+
 Deploy the latest source first. Failed signed Binance requests now emit a `BINANCE_DIAG` marker and structured object in Worker logs. No new secrets are required. Each entry records the method, `/build` endpoint path without query parameters, exact signed `requestTimestamp`, upstream `httpStatus`, numeric `providerCode`, fixed failure reason and a provider `msg` capped at 200 characters. Actual credentials, signature, nonce and request values are redacted from message echoes, including common encoded forms, before truncation. Raw request/response bodies, headers, HTML and exception messages are not logged; the public API still omits provider messages.
 
 1. Open **Workers & Pages → firstbell → Logs → Live**, following Cloudflare's [real-time logs guide](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/), and start the live session.
