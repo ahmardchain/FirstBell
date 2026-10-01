@@ -15,6 +15,20 @@ npm run dev
 
 Build with `npm run build`. Run the backend regression suite with `npm test` (Node 24 or later).
 
+### Test Binance directly from your computer
+
+To investigate the deployed `40304` response without changing hosting, use Node 24 or later and run:
+
+```bash
+node scripts/check-binance-market.mjs
+```
+
+No `npm install`, frontend build, Privy login or Cloudflare deployment is needed for this standalone test. Paste your **Binance Web3 Developer Portal** API Key and matching Secret Key at the two hidden terminal prompts, pressing Enter after each. It holds them in memory for this run and does not write a credentials file. Existing `BINANCE_WEB3_API_KEY` and `BINANCE_WEB3_SECRET_KEY` environment variables can also supply the credentials; do not put their values in shell commands or Git.
+
+The script makes exactly two read-only requests from your computer to Binance: NVDAon BSC 56 candles (`15m`, limit 100), then token trading info (`POST /price-info`). It matches the Worker's paths, parameters, raw POST body and HMAC signing. Runtime/network defaults such as the automatically supplied User-Agent may differ. It prints each request's ISO timestamp, endpoint, first eight API-key characters, HTTP status, business code, bounded redacted provider message, data item count and elapsed milliseconds. Raw data, full credentials, signatures and non-JSON bodies are omitted. Exit code 0 means both requests were accepted; exit code 1 means a request failed or setup was incomplete; Ctrl+C at a key prompt cancels with exit code 130. Acceptance, especially with zero data items, does not verify current prices or usable candles.
+
+Compare the output with the deployed `/api/market/NVDAon?frame=15m` response using the same credentials around the same time. Local acceptance with Worker rejection narrows investigation to hosting or request-path differences; it does not identify a particular IP rule or prove a VPS will solve it. The same compliance error locally shows the failure also occurs outside the Worker. Save the sanitized report for the Binance Web3 API technical support group; no successful local provider call has been recorded yet.
+
 ## Deploy to Cloudflare Workers
 
 `wrangler.jsonc` serves the Vite output in `dist` as Workers static assets and routes `/api/*` to the Worker. Both `/` and `/app/` are built as HTML entry points. The Worker stores one account record per verified Privy user in a SQLite-backed Durable Object.
