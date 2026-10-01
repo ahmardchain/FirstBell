@@ -54,6 +54,22 @@ Compare the output with the deployed `/api/market/NVDAon?frame=15m` response usi
 
 This runs the Worker and its bindings locally while making real read-only Binance market requests from your computer. Public market reads do not require Privy login. For login or authenticated wallet features, allow `http://localhost:8787` in the Privy app and configure the relevant local authentication secrets separately. Local setup does not resolve the deployed compliance error or verify an executable stock trade. Build again and restart Wrangler after changing the frontend.
 
+### Capture private Binance failure diagnostics
+
+Deploy the latest source first. Failed signed Binance requests now emit a `BINANCE_DIAG` marker and structured object in Worker logs. No new secrets are required. Each entry records the method, `/build` endpoint path without query parameters, exact signed `requestTimestamp`, upstream `httpStatus`, numeric `providerCode`, fixed failure reason and a provider `msg` capped at 200 characters. Actual credentials, signature, nonce and request values are redacted from message echoes, including common encoded forms, before truncation. Raw request/response bodies, headers, HTML and exception messages are not logged; the public API still omits provider messages.
+
+1. Open **Workers & Pages → firstbell → Logs → Live**, following Cloudflare's [real-time logs guide](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/), and start the live session.
+2. In another tab, open [the NVDAon market endpoint](https://firstbell.ahmardchain.workers.dev/api/market/NVDAon?frame=15m).
+3. Copy only the `BINANCE_DIAG` entries for `GET /build/api/v1/dex/market/candles` and `POST /build/api/v1/dex/market/price-info`. Do not share the entire invocation trace, which can contain request headers. Successful requests emit no diagnostic, so only failed endpoints appear.
+
+Alternatively, start the CLI tail from the project root before opening the market endpoint:
+
+```bash
+npx --yes wrangler@4.144.0 tail firstbell --format json
+```
+
+The timestamp matches the `X-OC-TIMESTAMP` used for that request. A generic message, missing message or `40304` alone does not establish an IP allowlist or specific compliance rule. No real provider message from these new logs has been captured yet; compare the entries with the accepted local diagnostic for Binance Web3 technical support.
+
 ## Deploy to Cloudflare Workers
 
 `wrangler.jsonc` serves the Vite output in `dist` as Workers static assets and routes `/api/*` to the Worker. Both `/` and `/app/` are built as HTML entry points. The Worker stores one account record per verified Privy user in a SQLite-backed Durable Object.
