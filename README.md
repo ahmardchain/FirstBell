@@ -70,7 +70,7 @@ Alternatively, start the CLI tail from the project root before opening the marke
 npx --yes wrangler@4.144.0 tail firstbell --format json
 ```
 
-The timestamp matches the `X-OC-TIMESTAMP` used for that request. A generic message, missing message or `40304` alone does not establish an IP allowlist or specific compliance rule. No real provider message from these new logs has been captured yet; compare the entries with the accepted local diagnostic for Binance Web3 technical support.
+The timestamp matches the `X-OC-TIMESTAMP` used for that request. A generic message, missing message or `40304` alone does not establish an IP allowlist or specific compliance rule. On 2026-10-01 the builder captured a deployed price-info entry at `2026-10-01T08:59:44.995Z`: HTTP 200, code `40304`, message `Service not available due to compliance restriction`. This confirms the provider's compliance explanation for that endpoint, but not a particular rule or successful hosted market data. A matching candle diagnostic has not yet been supplied. Compare the entries with the accepted local diagnostic for Binance Web3 technical support.
 
 ## Deploy to Cloudflare Workers
 
