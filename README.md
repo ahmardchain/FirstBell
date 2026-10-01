@@ -27,7 +27,32 @@ No `npm install`, frontend build, Privy login or Cloudflare deployment is needed
 
 The script makes exactly two read-only requests from your computer to Binance: NVDAon BSC 56 candles (`15m`, limit 100), then token trading info (`POST /price-info`). It matches the Worker's paths, parameters, raw POST body and HMAC signing. Runtime/network defaults such as the automatically supplied User-Agent may differ. It prints each request's ISO timestamp, endpoint, first eight API-key characters, HTTP status, business code, bounded redacted provider message, data item count and elapsed milliseconds. Raw data, full credentials, signatures and non-JSON bodies are omitted. Exit code 0 means both requests were accepted; exit code 1 means a request failed or setup was incomplete; Ctrl+C at a key prompt cancels with exit code 130. Acceptance, especially with zero data items, does not verify current prices or usable candles.
 
-Compare the output with the deployed `/api/market/NVDAon?frame=15m` response using the same credentials around the same time. Local acceptance with Worker rejection narrows investigation to hosting or request-path differences; it does not identify a particular IP rule or prove a VPS will solve it. The same compliance error locally shows the failure also occurs outside the Worker. Save the sanitized report for the Binance Web3 API technical support group; no successful local provider call has been recorded yet.
+Compare the output with the deployed `/api/market/NVDAon?frame=15m` response using the same credentials around the same time. Local acceptance with Worker rejection narrows investigation to hosting or request-path differences; it does not identify a particular IP rule or prove a VPS will solve it. The same compliance error locally shows the failure also occurs outside the Worker. On 2026-10-01 the builder reported accepted local calls with 100 candle entries and one trading-info entry, followed by another deployed `40304` response. Raw data validity and the saved Worker credential pair remain unverified. Save the sanitized reports for Binance Web3 API technical support; the [field log](docs/developer-experience-report.md) retains the results and their limits.
+
+### Run the app and Worker together locally
+
+`npm run dev` runs the Vite frontend alone; this repository does not configure a Vite proxy for `/api/*`. To test the actual Worker market parser and chart from your computer, follow the [Cloudflare local development](https://developers.cloudflare.com/workers/local-development/) and [local secrets](https://developers.cloudflare.com/workers/local-development/environment-variables/) workflow:
+
+1. In the project root, create `.dev.vars` beside `wrangler.jsonc`. Use the credential pair that succeeded in the direct diagnostic:
+
+   ```dotenv
+   BINANCE_WEB3_API_KEY="your-web3-api-key"
+   BINANCE_WEB3_SECRET_KEY="your-matching-secret-key"
+   ```
+
+   This setup saves the keys on your computer, unlike the standalone diagnostic. `.dev.vars*` is already ignored by Git. Keep the file private and delete it after testing if you do not want to retain the keys.
+
+2. In the VS Code terminal, run these commands in order:
+
+   ```bash
+   npm install
+   npm run build
+   npx --yes wrangler@4.144.0 dev --local --port 8787
+   ```
+
+3. Leave the terminal running. Open `http://localhost:8787/api/market/NVDAon?frame=15m` first, then `http://localhost:8787/app/` and choose Trade. A useful result should name `source: "binance-web3"`, contain valid candles and provide a positive `priceUsd` for the current price. An accepted direct diagnostic alone does not prove those checks pass.
+
+This runs the Worker and its bindings locally while making real read-only Binance market requests from your computer. Public market reads do not require Privy login. For login or authenticated wallet features, allow `http://localhost:8787` in the Privy app and configure the relevant local authentication secrets separately. Local setup does not resolve the deployed compliance error or verify an executable stock trade. Build again and restart Wrangler after changing the frontend.
 
 ## Deploy to Cloudflare Workers
 
