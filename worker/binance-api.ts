@@ -1,4 +1,4 @@
-export type BinanceCredentials = { apiKey: string; secretKey: string }
+export type BinanceCredentials = { apiKey: string; secretKey: string; supportCaptureUntil?: string }
 export type BinanceFailure = 'provider_auth_error' | 'rate_limited' | 'provider_error'
 type Json = Record<string, unknown>
 
@@ -33,6 +33,57 @@ function diagnosticMessage(value: unknown, privateValues: string[]): string | nu
   return message.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').slice(0, 200)
 }
 
+// Temporary support capture: opt-in, expiring, at most once PER ISOLATE/window.
+// This is deliberately not a deployment-wide one-shot guarantee.
+let capturedSupportExpiry: string | undefined
+function captureSupportRequest(method: string, path: string, body: string, at: string, signature: string,
+  nonce: string, credentials: BinanceCredentials, response: Response, text: string): void {
+  try {
+    const until = credentials.supportCaptureUntil
+    const expiry = until ? Date.parse(until) : NaN
+    if (!until || !Number.isFinite(expiry) || expiry <= Date.now() || expiry - Date.now() > 15 * 60_000
+      || capturedSupportExpiry === until || method !== 'POST' || path !== '/build/api/v1/dex/market/price-info'
+      || body !== '[{"binanceChainId":"56","tokenContractAddress":"0xA9eE28C80f960B889dFbd1902055218cBa016F75"}]') return
+
+    const variants = [...new Set([credentials.apiKey, credentials.secretKey].filter(Boolean).flatMap(value => {
+      const encoded = encodeURIComponent(value)
+      return [value, encoded, encoded.replace(/%[0-9A-F]{2}/g, code => code.toLowerCase()), JSON.stringify(value).slice(1, -1)]
+    }))].sort((a, b) => b.length - a.length)
+    let redacted = false
+    const redact = (value: string): string => {
+      let safe = value
+      for (const secret of variants) safe = safe.replaceAll(secret, '[redacted]')
+      if (safe !== value) redacted = true
+      return safe
+    }
+    const headers: Record<string, string> = {}
+    const omittedHeaders: string[] = []
+    for (const [key, value] of response.headers) {
+      if (/^(set-cookie|cookie|authorization|proxy-authorization|x-api-key|x-oc-apikey)$/i.test(key) || /token/i.test(key)) {
+        omittedHeaders.push(key)
+      } else headers[redact(key)] = redact(value)
+    }
+    const responseText = redact(text)
+    const entry = {
+      captureId: 'binance-support-170818889', timestamp: new Date().toISOString(), expires: until,
+      scope: 'once-per-isolate-per-expiry',
+      request: {
+        method, url: `https://web3.binance.com${path}`, body,
+        headers: {
+          'X-OC-APIKEY': credentials.apiKey.length > 8 ? credentials.apiKey.slice(0, 8) + '…' : '[omitted]',
+          'X-OC-TIMESTAMP': at, 'X-OC-SIGN': signature, 'X-OC-NONCE': nonce,
+          Accept: 'application/json', 'Content-Type': 'application/json',
+        },
+      },
+      response: { httpStatus: response.status, headers, omittedHeaders, text: responseText, credentialsRedacted: redacted },
+    }
+    // Do not emit a truncated body and present it as a complete support capture.
+    if (new TextEncoder().encode(JSON.stringify(entry)).byteLength > 24_000) return
+    capturedSupportExpiry = until
+    console.log('BINANCE_CAPTURE', entry)
+  } catch { /* Never log exception strings or change the existing response path. */ }
+}
+
 // Sign exactly the bytes sent on the wire, including /build and any POST body.
 export async function signPath(at: string, method: string, path: string, body: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
@@ -63,6 +114,7 @@ export async function signedBinanceRequest(method: 'GET' | 'POST', endpoint: str
     if (Number(response.headers.get('content-length') || 0) > 300_000) throw new BinanceApiError('provider_error', response.status)
     const text = await response.text()
     if (text.length > 300_000) throw new BinanceApiError('provider_error', response.status)
+    captureSupportRequest(method, path, body, at, signature, nonce, credentials, response, text)
     try {
       const parsed: unknown = JSON.parse(text)
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) result = parsed as Json

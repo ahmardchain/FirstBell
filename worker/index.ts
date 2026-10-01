@@ -21,6 +21,7 @@ interface Env {
   ONDO_API_KEY?: string
   BINANCE_WEB3_API_KEY?: string
   BINANCE_WEB3_SECRET_KEY?: string
+  BINANCE_SUPPORT_CAPTURE_UNTIL?: string
   MOONPAY_PUBLISHABLE_KEY?: string
   MOONPAY_SECRET_KEY?: string
   MOONPAY_ENVIRONMENT?: string
@@ -152,7 +153,8 @@ export default {
       const frame = new URL(request.url).searchParams.get('frame') ?? '15m'
       if (!isSymbol(marketMatch[1]) || !isFrame(frame)) return json({ error: 'Unknown market or timeframe' }, 400)
       const credentials = env.BINANCE_WEB3_API_KEY && env.BINANCE_WEB3_SECRET_KEY
-        ? { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY } : undefined
+        ? { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY,
+          supportCaptureUntil: env.BINANCE_SUPPORT_CAPTURE_UNTIL } : undefined
       try {
         const result = await marketSnapshot(marketMatch[1], frame, env.ONDO_API_KEY, credentials)
         return json(result ? { status: 'ready', ...result } : { status: 'unavailable', symbol: marketMatch[1], candles: [] }, result ? 200 : 503)

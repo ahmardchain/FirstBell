@@ -72,6 +72,18 @@ npx --yes wrangler@4.144.0 tail firstbell --format json
 
 The timestamp matches the `X-OC-TIMESTAMP` used for that request. A generic message, missing message or `40304` alone does not establish an IP allowlist or specific compliance rule. On 2026-10-01 the builder captured a deployed price-info entry at `2026-10-01T08:59:44.995Z`: HTTP 200, code `40304`, message `Service not available due to compliance restriction`. This confirms the provider's compliance explanation for that endpoint, but not a particular rule or successful hosted market data. A matching candle diagnostic has not yet been supplied. Compare the entries with the accepted local diagnostic for Binance Web3 technical support.
 
+### Temporary Binance support capture (case #170818889)
+
+The deployed signature and original response can only be collected after deploying this source. Capture is disabled by default. In Cloudflare, start **firstbell → Logs → Live**, then add the runtime variable `BINANCE_SUPPORT_CAPTURE_UNTIL` with an ISO UTC expiry approximately ten minutes ahead and save/deploy the configuration. Generate the value on your PC with:
+
+```bash
+node -e "console.log(new Date(Date.now()+10*60*1000).toISOString())"
+```
+
+Open https://firstbell.ahmardchain.workers.dev/api/market/NVDAon?frame=15m. Copy only the private `BINANCE_CAPTURE` custom entry to your official Binance support case. Its `request.headers["X-OC-SIGN"]` is the actual outgoing signature; it also includes the matching timestamp, nonce, exact body, partial API-key identifier and original response text before parsing. Response cookies/auth headers are omitted; any actual full credential echoes are redacted and `credentialsRedacted` declares that modification. Entries larger than 24 KB are not emitted, rather than silently truncated. No capture data is returned by public API routes.
+
+The expiry must be valid and at most fifteen minutes ahead. Capture is limited to the exact NVDAon BSC 56 price-info request and once **per isolate per configured expiry**, not once across the deployment. Multiple isolates can emit entries. A healthy market cache may delay a fresh upstream call by 30 seconds. Start the log viewer before triggering. After collecting an entry, remove `BINANCE_SUPPORT_CAPTURE_UNTIL` and save/deploy. Changing the expiry explicitly allows another capture window. Temporary capture code can then be removed; normal sanitized `BINANCE_DIAG` logging is independent. No Cloudflare account deployment or live support capture has been verified by the coding agent.
+
 ## Deploy to Cloudflare Workers
 
 `wrangler.jsonc` serves the Vite output in `dist` as Workers static assets and routes `/api/*` to the Worker. Both `/` and `/app/` are built as HTML entry points. The Worker stores one account record per verified Privy user in a SQLite-backed Durable Object.
