@@ -16,10 +16,10 @@ For a new project connected to `ahmardchain/FirstBell`, use these repository-roo
 | Framework Preset | Vite |
 | Node.js Version | 24.x |
 | Install Command | `npm ci` |
-| Build Command | `npm run build` |
+| Build Command | `npm run build && node scripts/stage-vercel-diagnostic.mjs` |
 | Output Directory | `dist` |
 
-The checked-in Vercel configuration specifies the install/build commands, API routing, both HTML entry points and function region `fra1`. `npm run build:api` regenerates the committed self-contained API and its copy in the compatibility project; run the build before publishing API changes. The selected region follows the successful diagnostic; it is not a guaranteed source IP or an independently confirmed Binance hosting policy.
+The checked-in Vercel configuration specifies the install/build commands, API routing, both HTML entry points and function region `fra1`. Both project-root layouts retain the diagnostic at `/server-test` and `/api/check`. `npm run build:api` regenerates the committed self-contained API and its copy in the compatibility project; run the build before publishing API changes. The selected region follows the successful diagnostic; it is not a guaranteed source IP or an independently confirmed Binance hosting policy.
 
 ## 2. Set server environment variables
 

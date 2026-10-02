@@ -177,13 +177,17 @@ test('Vercel market API returns validated prices and candles directly from Binan
 test('deployment routes separate API and app pages; Vercel entry loads without the Cloudflare runtime', async () => {
   const config = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url)))
   assert.deepEqual(config.regions, ['fra1'])
-  assert.equal(config.rewrites[0].source, '/api/:path*')
-  assert.equal(config.rewrites[0].destination, '/api/index?__fb_path=:path*')
+  assert.equal(config.rewrites[0].source, '/api/check')
+  assert.equal(config.rewrites.find(route => route.source === '/api/:path*').destination, '/api/index?__fb_path=:path*')
   assert.ok(config.rewrites.some(route => route.source === '/app' && route.destination === '/app/index.html'))
   assert.equal(config.functions['api/index.mjs'].maxDuration, 60)
   const entry = (await import('../api/index.mjs')).default
   assert.equal((await entry.fetch(new Request('https://firstbell.example/api/health'))).status, 200)
   assert.equal((await entry.fetch(new Request('https://firstbell.example/api/not-found'))).status, 404)
+  const diagnostic = (await import('../api/check.mjs')).default
+  const diagnosticResponse = await diagnostic.fetch(new Request('https://firstbell.example/api/check'))
+  assert.equal(diagnosticResponse.status, 405)
+  assert.deepEqual(await diagnosticResponse.json(), { error: 'use_post' })
 })
 
 test('deployed API bundle starts with no source folders or node_modules beside it', async () => {
@@ -203,10 +207,17 @@ test('existing server-test project stages both app pages while retaining the dia
   try {
     for (const path of ['scripts', 'dist/app', 'dist/assets', 'server-test/public']) await mkdir(join(directory, path), { recursive: true })
     await writeFile(join(directory, 'server-test/public/index.html'), 'diagnostic')
+    await writeFile(join(directory, 'server-test/public/style.css'), 'diagnostic css')
+    await writeFile(join(directory, 'server-test/public/test.js'), 'diagnostic js')
     await writeFile(join(directory, 'dist/index.html'), 'home')
     await writeFile(join(directory, 'dist/app/index.html'), 'app')
     await writeFile(join(directory, 'dist/assets/app.css'), 'body {}')
     await copyFile(new URL('../scripts/stage-vercel-app.mjs', import.meta.url), join(directory, 'scripts/stage-vercel-app.mjs'))
+    await copyFile(new URL('../scripts/stage-vercel-diagnostic.mjs', import.meta.url), join(directory, 'scripts/stage-vercel-diagnostic.mjs'))
+    await promisify(execFile)(process.execPath, [join(directory, 'scripts/stage-vercel-diagnostic.mjs')])
+    for (const [path, content] of [['index.html', 'home'], ['app/index.html', 'app'], ['server-test.html', 'diagnostic'], ['style.css', 'diagnostic css'], ['test.js', 'diagnostic js']]) {
+      assert.equal(await readFile(join(directory, 'dist', path), 'utf8'), content)
+    }
     await promisify(execFile)(process.execPath, [join(directory, 'scripts/stage-vercel-app.mjs')])
     for (const [path, content] of [['index.html', 'home'], ['app/index.html', 'app'], ['assets/app.css', 'body {}'], ['server-test.html', 'diagnostic']]) {
       assert.equal(await readFile(join(directory, 'server-test/public', path), 'utf8'), content)

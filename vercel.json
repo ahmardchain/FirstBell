@@ -2,11 +2,17 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "npm ci",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build && node scripts/stage-vercel-diagnostic.mjs",
   "outputDirectory": "dist",
   "regions": ["fra1"],
-  "functions": { "api/index.mjs": { "maxDuration": 60 } },
+  "functions": {
+    "api/check.mjs": { "maxDuration": 30 },
+    "api/index.mjs": { "maxDuration": 60 }
+  },
   "rewrites": [
+    { "source": "/api/check", "destination": "/api/check" },
+    { "source": "/server-test", "destination": "/server-test.html" },
+    { "source": "/server-test.html", "destination": "/server-test.html" },
     { "source": "/api/:path*", "destination": "/api/index?__fb_path=:path*" },
     { "source": "/app", "destination": "/app/index.html" },
     { "source": "/app/:path*", "destination": "/app/index.html" },
