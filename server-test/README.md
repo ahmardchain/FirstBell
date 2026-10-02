@@ -1,3 +1,9 @@
+# FirstBell Vercel deployment compatibility
+
+This existing project can now host the whole FirstBell app while retaining Root Directory `server-test` and its existing Binance server variables. The configuration installs/builds the repository root, stages both app pages into `public`, and deploys the self-contained API in `api/index.mjs`. No credentials are moved between projects. Account storage on Vercel still requires Privy verification and Upstash Redis; see the [full setup guide](../docs/vercel-deployment.md).
+
+The original protected diagnostic remains available at `/server-test.html` after a build. Its separate `api/check.mjs` function and access-token requirements are retained. The older setup and evidence below describe that diagnostic, rather than the full app.
+
 # FirstBell Binance server comparison
 
 An isolated Node.js service for Binance support case **170818889**. It runs the same two read-only NVDAon/BSC 56 requests as `node scripts/check-binance-market.mjs`: candles (15m, limit 100), then price-info. The CLI and hosted test import the same checker. It does not replace FirstBell's Cloudflare Worker or forward its live traffic.

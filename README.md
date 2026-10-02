@@ -90,7 +90,7 @@ The expiry must be valid and at most fifteen minutes ahead. Capture is limited t
 
 ## Deploy the full app to Vercel
 
-Use the [Vercel deployment guide](docs/vercel-deployment.md). The repository root includes `vercel.json`, a Node.js API function in `api/index.ts`, and persistent Upstash Redis account storage. The landing page, `/app/`, market feeds, Privy verification and MoonPay API routes run in the same Vercel project. Configure Root Directory **`.`**, Framework **Vite**, Node **24.x**, Build **`npm run build`**, and Output **`dist`**. The earlier Root Directory `server-test` deploys only the diagnostic page.
+Use the [Vercel deployment guide](docs/vercel-deployment.md). The repository root includes `vercel.json`, a bundled Node.js API function in `api/index.mjs`, and persistent Upstash Redis account storage. The landing page, `/app/`, market feeds, Privy verification and MoonPay API routes run in the same Vercel project. Configure Root Directory **`.`**, Framework **Vite**, Node **24.x**, Build **`npm run build`**, and Output **`dist`**. The existing `firstbell-server-test` project can also retain Root Directory `server-test`: its configuration now builds and stages the full app from the repository root, preserving its existing server environment. The comparison page remains at `/server-test.html`.
 
 Keep the two Binance keys in server environment variables. Account features also require Privy's verification public key and Redis REST credentials. Cloudflare secrets do not transfer automatically. Optional authenticated import can retain existing saved assets and deposit records; configure it before the first Vercel account request as described in the guide. The original Worker adapter remains available below.
 

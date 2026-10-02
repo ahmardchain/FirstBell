@@ -2,11 +2,13 @@
 
 The repository supports the full landing page and app on Vercel. Its Node API reuses FirstBell's Binance signing, market validation, Privy authentication and MoonPay handlers. Upstash Redis replaces Cloudflare Durable Objects for saved stocks, deposit sessions and account rate limits. Browser calls remain on the same origin under `/api/`.
 
-The builder's separate diagnostic accepted both Binance NVDAon requests in `fra1` on 2026-10-02. This migration has passed 64 tests and the production build, but has not yet been deployed or tested against live Redis. Diagnostic acceptance does not establish usable live candles, account migration, a static outgoing IP or approval of every API operation.
+The builder's separate diagnostic accepted both Binance NVDAon requests in `fra1` on 2026-10-02. The migration builds a self-contained API in `api/index.mjs` to avoid missing TypeScript imports in Vercel. Live Redis persistence still needs verification. Diagnostic acceptance does not establish usable live candles, account migration, a static outgoing IP or approval of every API operation.
 
 ## 1. Use the repository root
 
-Open your intended FirstBell project in Vercel, connected to `ahmardchain/FirstBell` and the `main` branch. For the existing `firstbell-server-test` project, change its build settings:
+The connected `firstbell-server-test` project can keep its existing Root Directory `server-test`. Its checked-in configuration installs/builds the repository root and stages the landing page, `/app/`, and bundled API inside that project. Existing Binance environment values stay in place; the original diagnostic page is retained at `/server-test.html`. Deploy the latest `main` commit. No dashboard Root Directory change is needed for this compatibility path.
+
+For a new project connected to `ahmardchain/FirstBell`, use these repository-root settings:
 
 | Setting | Value |
 | --- | --- |
@@ -17,7 +19,7 @@ Open your intended FirstBell project in Vercel, connected to `ahmardchain/FirstB
 | Build Command | `npm run build` |
 | Output Directory | `dist` |
 
-Remove any empty install/build overrides from the diagnostic deployment. The root `vercel.json` specifies these commands, API routing, both HTML entry points and function region `fra1`. The selected region follows the successful diagnostic; it is not a guaranteed source IP or an independently confirmed Binance hosting policy.
+The checked-in Vercel configuration specifies the install/build commands, API routing, both HTML entry points and function region `fra1`. `npm run build:api` regenerates the committed self-contained API and its copy in the compatibility project; run the build before publishing API changes. The selected region follows the successful diagnostic; it is not a guaranteed source IP or an independently confirmed Binance hosting policy.
 
 ## 2. Set server environment variables
 

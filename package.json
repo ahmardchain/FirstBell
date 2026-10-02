@@ -5,9 +5,11 @@
   "type": "module",
   "engines": { "node": "24.x" },
   "scripts": {
+    "pretest": "npm run build:api",
     "test": "node --test tests/*.test.mjs",
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:api",
+    "build:api": "node scripts/build-vercel-api.mjs",
     "preview": "vite preview",
     "deploy:cloudflare": "npm run build && npx --yes wrangler@4.144.0 deploy"
   },

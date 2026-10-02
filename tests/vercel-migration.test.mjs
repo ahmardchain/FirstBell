@@ -5,7 +5,12 @@ import { createAccountNamespace } from '../server/account-storage.ts'
 import { createVercelHandler, normalizeVercelRequest } from '../server/vercel.ts'
 import { customerIp } from '../worker/moonpay.ts'
 import { assets } from '../worker/market.ts'
-import { readFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
@@ -175,7 +180,40 @@ test('deployment routes separate API and app pages; Vercel entry loads without t
   assert.equal(config.rewrites[0].source, '/api/:path*')
   assert.equal(config.rewrites[0].destination, '/api/index?__fb_path=:path*')
   assert.ok(config.rewrites.some(route => route.source === '/app' && route.destination === '/app/index.html'))
-  const entry = (await import('../api/index.ts')).default
+  assert.equal(config.functions['api/index.mjs'].maxDuration, 60)
+  const entry = (await import('../api/index.mjs')).default
   assert.equal((await entry.fetch(new Request('https://firstbell.example/api/health'))).status, 200)
   assert.equal((await entry.fetch(new Request('https://firstbell.example/api/not-found'))).status, 404)
+})
+
+test('deployed API bundle starts with no source folders or node_modules beside it', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'firstbell-api-'))
+  try {
+    const isolated = join(directory, 'index.mjs')
+    await copyFile(new URL('../api/index.mjs', import.meta.url), isolated)
+    const entry = (await import(pathToFileURL(isolated).href)).default
+    const response = await entry.fetch(new Request('https://firstbell.example/api/index?__fb_path=health'))
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), { status: 'ok' })
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('existing server-test project stages both app pages while retaining the diagnostic page', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'firstbell-stage-'))
+  try {
+    for (const path of ['scripts', 'dist/app', 'dist/assets', 'server-test/public']) await mkdir(join(directory, path), { recursive: true })
+    await writeFile(join(directory, 'server-test/public/index.html'), 'diagnostic')
+    await writeFile(join(directory, 'dist/index.html'), 'home')
+    await writeFile(join(directory, 'dist/app/index.html'), 'app')
+    await writeFile(join(directory, 'dist/assets/app.css'), 'body {}')
+    await copyFile(new URL('../scripts/stage-vercel-app.mjs', import.meta.url), join(directory, 'scripts/stage-vercel-app.mjs'))
+    await promisify(execFile)(process.execPath, [join(directory, 'scripts/stage-vercel-app.mjs')])
+    for (const [path, content] of [['index.html', 'home'], ['app/index.html', 'app'], ['assets/app.css', 'body {}'], ['server-test.html', 'diagnostic']]) {
+      assert.equal(await readFile(join(directory, 'server-test/public', path), 'utf8'), content)
+    }
+    const config = JSON.parse(await readFile(new URL('../server-test/vercel.json', import.meta.url)))
+    assert.equal(config.installCommand, 'npm --prefix .. ci')
+    assert.ok(config.buildCommand.includes('stage-vercel-app.mjs'))
+    assert.equal(await readFile(new URL('../server-test/api/index.mjs', import.meta.url), 'utf8'), await readFile(new URL('../api/index.mjs', import.meta.url), 'utf8'))
+  } finally { await rm(directory, { recursive: true, force: true }) }
 })
