@@ -9,6 +9,26 @@
     "api/check.mjs": { "maxDuration": 30 },
     "api/index.mjs": { "maxDuration": 60 }
   },
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://firstbell-server-test.vercel.app",
+      "permanent": false,
+      "has": [{ "type": "host", "value": { "neq": "firstbell-server-test.vercel.app" } }]
+    },
+    {
+      "source": "/app",
+      "destination": "https://firstbell-server-test.vercel.app/app",
+      "permanent": false,
+      "has": [{ "type": "host", "value": { "neq": "firstbell-server-test.vercel.app" } }]
+    },
+    {
+      "source": "/app/:path*",
+      "destination": "https://firstbell-server-test.vercel.app/app/:path*",
+      "permanent": false,
+      "has": [{ "type": "host", "value": { "neq": "firstbell-server-test.vercel.app" } }]
+    }
+  ],
   "rewrites": [
     { "source": "/api/check", "destination": "/api/check" },
     { "source": "/server-test", "destination": "/server-test.html" },

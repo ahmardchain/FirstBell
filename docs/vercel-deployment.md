@@ -21,6 +21,12 @@ For a new project connected to `ahmardchain/FirstBell`, use these repository-roo
 
 The checked-in Vercel configuration specifies the install/build commands, API routing, both HTML entry points and function region `fra1`. Both project-root layouts retain the diagnostic at `/server-test` and `/api/check`. `npm run build:api` regenerates the committed self-contained API and its copy in the compatibility project; run the build before publishing API changes. The selected region follows the successful diagnostic; it is not a guaranteed source IP or an independently confirmed Binance hosting policy.
 
+## Use one production origin for Privy
+
+The fixed app origin is **https://firstbell-server-test.vercel.app**. The other Vercel app/landing URLs redirect to this origin before login. This keeps Google/email login on one hostname across deployments. Page redirects preserve the route/query, exclude `/api/*`, and only match a host different from the fixed domain. Backend requests and the separate diagnostic remain scoped to their own deployment.
+
+In Privy, select the app used by FirstBell and open **Configuration → App settings → Domains → Allowed Origins**. Add exactly `https://firstbell-server-test.vercel.app`, including HTTPS and without `/app/` or another path. Use that fixed origin when signing in. Verify that Google and email are enabled under Login methods. If an app client overrides Allowed Origins, configure this origin on that client too. Vercel's deployment protection is a separate setting and is not changed by these redirects.
+
 ## 2. Set server environment variables
 
 Use **Project → Settings → Environment Variables**. Configure Production, and Preview only if you also want to test a preview deployment. Redeploy after changing values. Reuse the Binance credential pair that succeeded in your server test; never commit the values or paste them into client files.
