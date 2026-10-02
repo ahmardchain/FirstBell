@@ -13,6 +13,8 @@ export interface FloatingIconsHeroProps extends React.HTMLAttributes<HTMLElement
   subtitle: string
   ctaText: string
   ctaHref: string
+  secondaryCtaText?: string
+  secondaryCtaHref?: string
   icons: IconProps[]
   note?: string
 }
@@ -76,7 +78,7 @@ function FloatingIcon({
 }
 
 const FloatingIconsHero = React.forwardRef<HTMLElement, FloatingIconsHeroProps>(
-  ({ className, title, subtitle, ctaText, ctaHref, icons, note, onPointerMove, onPointerLeave, ...props }, ref) => {
+  ({ className, title, subtitle, ctaText, ctaHref, secondaryCtaText, secondaryCtaHref, icons, note, onPointerMove, onPointerLeave, ...props }, ref) => {
     const pointer = React.useRef({ x: -1000, y: -1000 })
 
     return (
@@ -101,8 +103,9 @@ const FloatingIconsHero = React.forwardRef<HTMLElement, FloatingIconsHeroProps>(
         <div className="relative z-10 mx-auto max-w-[790px] text-center">
           <h1 className="text-balance text-[clamp(3rem,9vw,6.6rem)] font-semibold leading-[.98] tracking-[-.075em] text-foreground">{title}</h1>
           <p className="mx-auto mt-7 max-w-[510px] text-pretty text-base leading-relaxed text-muted-foreground md:text-lg">{subtitle}</p>
-          <div className="mt-9">
+          <div className="hero-actions mt-9">
             <a className="hero-cta" href={ctaHref}>{ctaText}<span aria-hidden="true">↗</span></a>
+            {secondaryCtaText && secondaryCtaHref && <a className="hero-cta hero-cta-secondary" href={secondaryCtaHref}>{secondaryCtaText}</a>}
           </div>
           {note && <p className="mx-auto mt-5 text-xs text-muted-foreground">{note}</p>}
         </div>

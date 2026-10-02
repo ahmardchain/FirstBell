@@ -103,7 +103,7 @@ export default function FirstBellApp() {
   const savedWrite = React.useRef(Promise.resolve())
   const [selected, setSelected] = React.useState<Asset | null>(null)
   const [workingAsset, setWorkingAsset] = React.useState<Asset>(assets.find(a => a.symbol === 'NVDAon')!)
-  const [tradeEntry, setTradeEntry] = React.useState<'buy' | null>(null)
+  const [tradeEntry, setTradeEntry] = React.useState<'buy' | null>(() => tab === 'trade' && new URLSearchParams(window.location.search).get('side') === 'buy' ? 'buy' : null)
   const [homeMarkets, setHomeMarkets] = React.useState<Record<string, MarketData | null>>({})
   const [messages, setMessages] = React.useState<{ id: number; role: 'user' | 'guide'; text: string }[]>([])
   const [mobileMenu, setMobileMenu] = React.useState(false)
