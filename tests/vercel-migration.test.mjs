@@ -212,6 +212,8 @@ test('existing server-test project stages both app pages while retaining the dia
       assert.equal(await readFile(join(directory, 'server-test/public', path), 'utf8'), content)
     }
     const config = JSON.parse(await readFile(new URL('../server-test/vercel.json', import.meta.url)))
+    assert.equal(config.rewrites[0].source, '/api/check')
+    assert.ok(config.rewrites.some(route => route.source === '/server-test' && route.destination === '/server-test.html'))
     assert.equal(config.installCommand, 'npm --prefix .. ci')
     assert.ok(config.buildCommand.includes('stage-vercel-app.mjs'))
     assert.equal(await readFile(new URL('../server-test/api/index.mjs', import.meta.url), 'utf8'), await readFile(new URL('../api/index.mjs', import.meta.url), 'utf8'))

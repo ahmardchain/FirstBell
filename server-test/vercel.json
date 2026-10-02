@@ -10,6 +10,9 @@
     "api/index.mjs": { "maxDuration": 60 }
   },
   "rewrites": [
+    { "source": "/api/check", "destination": "/api/check" },
+    { "source": "/server-test", "destination": "/server-test.html" },
+    { "source": "/server-test.html", "destination": "/server-test.html" },
     { "source": "/api/:path*", "destination": "/api/index?__fb_path=:path*" },
     { "source": "/app", "destination": "/app/index.html" },
     { "source": "/app/:path*", "destination": "/app/index.html" },
