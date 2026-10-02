@@ -42,3 +42,16 @@
 .hero-cta:hover { opacity:.78; }
 .hero-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; }
 .hero-cta-secondary { background:transparent; border-color:var(--line); color:var(--foreground)!important; font-weight:500; }
+
+/* Softer landing corners follow the app's panels and pill actions. */
+.site-nav, #top, .site-footer { --landing-panel-radius:24px; --landing-control-radius:16px; --landing-action-radius:999px; }
+.hero-cta, .nav-app, .profile-links a { border-radius:var(--landing-action-radius); }
+.nav-tool { min-width:44px; height:44px; border-radius:var(--landing-action-radius); }
+.nav-app { height:44px; }
+.language-menu { border-radius:var(--landing-control-radius); }
+.language-menu button { border-radius:12px; }
+.browser-shell { border-radius:var(--landing-panel-radius); overflow:hidden; }
+.search-field, .asset-row { border-radius:var(--landing-control-radius); }
+.asset-row:focus-visible { outline-offset:-4px; }
+.end-section a { min-height:52px; padding:0 22px; border:1px solid var(--primary); border-radius:var(--landing-action-radius); background:var(--primary); color:var(--primary-foreground); }
+@media(max-width:800px) { .nav-links { border-radius:0 0 var(--landing-panel-radius) var(--landing-panel-radius); } }
