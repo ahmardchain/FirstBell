@@ -82,17 +82,18 @@ function TokenMark({ asset }: { asset: TradeAsset }) {
   return <img src={`/assets/marks/${asset.mark}.svg`} className={`brand-mark brand-mark--${asset.mark}`} alt="" />
 }
 
-export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, language }: {
+export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, language, initialSide = null }: {
   assets: TradeAsset[]
   asset: TradeAsset
   onAssetChange: (asset: TradeAsset) => void
   onInspect: (asset: TradeAsset) => void
   language: Language
+  initialSide?: Side | null
 }) {
   const t = words[language]
   const [selectorOpen, setSelectorOpen] = React.useState(false)
   const reduceMotion = useReducedMotion()
-  const [side, setSide] = React.useState<Side | null>(null)
+  const [side, setSide] = React.useState<Side | null>(initialSide)
   const [amount, setAmount] = React.useState('')
   const [ticketAmount, setTicketAmount] = React.useState('')
   const [timeframe, setTimeframe] = React.useState<Timeframe>('15m')
@@ -217,6 +218,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
 
   React.useEffect(() => {
     if (!side) return
+    triggerRef.current ??= document.querySelector<HTMLButtonElement>(`.trade-ticket .trade-${side}`)
     const priorOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const focusTimer = window.setTimeout(() => sheetRef.current?.querySelector<HTMLInputElement>('input')?.focus(), 80)

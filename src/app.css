@@ -56,6 +56,12 @@
 .app-search input { width:100%; border:0; outline:0; color:var(--foreground); background:transparent; font-size:13px; }
 .app-search input::placeholder { color:var(--muted); }
 .app-result-count { margin:25px 0 15px; color:var(--muted); }
+.app-stock-heading { display:flex; justify-content:space-between; gap:12px; }
+.app-stock-heading>span:last-child { text-align:right; }
+.app-stock-list { display:flex; flex-direction:column; gap:12px; }
+.app-stock-card { border-radius:var(--app-card-radius); }
+.app-stock-save { display:grid; place-items:center; width:44px; height:44px; padding:0; border:1px solid transparent; border-radius:var(--app-pill-radius); background:transparent; color:var(--muted); }
+.app-stock-save:hover,.app-stock-save[aria-pressed=true] { border-color:var(--line); background:var(--hover); color:var(--foreground); }
 .asset-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
 .asset-card { min-width:0; border:1px solid var(--line); background:var(--background); transition:border-color .2s,transform .2s; }
 .asset-card:hover { border-color:var(--foreground); transform:translateY(-3px); }

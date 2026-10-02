@@ -4,9 +4,11 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, ArrowUpRight, Bookmark, ChevronDown, ExternalLink, Globe2, House, Menu, Moon, Search, Sparkles, Sun, X, ChartNoAxesCombined, ChartPie } from 'lucide-react'
 import manifest from '@/asset-sources.json'
 import { AIChatCard } from '@/components/spectrumui/ai-chat-card'
+import { StockCard } from '@/components/ui/stock-card'
 import { TradeWorkspace } from './trade'
 import { PortfolioWorkspace } from './portfolio'
 import { getAccount, setSavedAsset } from './account-api'
+import { getMarket, type MarketData } from './market-api'
 import './app.css'
 import './agent.css'
 
@@ -34,6 +36,7 @@ const copy = {
     browse: 'Explore assets', browseBody: 'Real token contracts on BNB Smart Chain, with issuer and source attached.',
     search: 'Search company or token', all: 'All assets', saved: 'Saved', result: 'assets', noResults: 'No assets found.',
     emptySearch: 'Try a different company or symbol.', clear: 'Clear search',
+    buy: 'Buy', loadingPrice: 'Loading…', unavailablePrice: 'Price unavailable', noChange: 'No data', priceCaption: 'TOKEN PRICE / USD · 24H',
     source: 'Source-backed token', issuer: 'Issuer', network: 'Network', contract: 'Contract', symbol: 'Symbol',
     open: 'Open asset file', save: 'Save asset', unsave: 'Remove saved asset',
     detailKicker: 'ASSET FILE', detailIntro: 'A tokenized equity has its own issuer, contract and terms. Verify each one before making a decision.',
@@ -61,6 +64,7 @@ const copy = {
     browse: '探索资产', browseBody: 'BNB 智能链上的真实代币合约，附有发行方和公开来源。',
     search: '搜索公司或代币', all: '全部资产', saved: '已收藏', result: '项资产', noResults: '没有找到资产。',
     emptySearch: '试试其他公司或代币符号。', clear: '清除搜索',
+    buy: '买入', loadingPrice: '加载中…', unavailablePrice: '价格暂不可用', noChange: '暂无数据', priceCaption: '代币价格 / USD · 24小时',
     source: '有公开来源的代币', issuer: '发行方', network: '网络', contract: '合约', symbol: '代币符号',
     open: '打开资产资料', save: '收藏资产', unsave: '取消收藏',
     detailKicker: '资产资料', detailIntro: '代币化股票有自己的发行方、合约和条款。请核实这些信息后再作决定。',
@@ -99,6 +103,8 @@ export default function FirstBellApp() {
   const savedWrite = React.useRef(Promise.resolve())
   const [selected, setSelected] = React.useState<Asset | null>(null)
   const [workingAsset, setWorkingAsset] = React.useState<Asset>(assets.find(a => a.symbol === 'NVDAon')!)
+  const [tradeEntry, setTradeEntry] = React.useState<'buy' | null>(null)
+  const [homeMarkets, setHomeMarkets] = React.useState<Record<string, MarketData | null>>({})
   const [messages, setMessages] = React.useState<{ id: number; role: 'user' | 'guide'; text: string }[]>([])
   const [mobileMenu, setMobileMenu] = React.useState(false)
   const dialogRef = React.useRef<HTMLElement>(null)
@@ -108,6 +114,21 @@ export default function FirstBellApp() {
   React.useEffect(() => { document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'; localStorage.setItem('firstbell-language', language) }, [language])
   React.useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('firstbell-theme', theme); document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#ffffff' : '#080808') }, [theme])
   React.useEffect(() => { localStorage.setItem('firstbell-saved', JSON.stringify(saved)) }, [saved])
+  React.useEffect(() => {
+    if (tab !== 'home') return
+    let active = true
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 15_000)
+    setHomeMarkets({})
+    const update = (symbol: string, market: MarketData | null) => {
+      if (active) setHomeMarkets(current => ({ ...current, [symbol]: market }))
+    }
+    void Promise.allSettled(assets.map(async asset => {
+      try { update(asset.symbol, await getMarket(asset.symbol, '15m', controller.signal)) }
+      catch { update(asset.symbol, null) }
+    })).then(() => window.clearTimeout(timeout))
+    return () => { active = false; window.clearTimeout(timeout); controller.abort() }
+  }, [tab])
   React.useEffect(() => {
     if (!ready || !authenticated || !user?.id) return
     let active = true
@@ -136,6 +157,7 @@ export default function FirstBellApp() {
 
   const switchTab = (id: Tab) => {
     setTab(id); setMobileMenu(false)
+    if (id !== 'trade') setTradeEntry(null)
     window.history.replaceState(null, '', id === 'home' ? '/app/' : `/app/?tab=${id}`)
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
@@ -160,18 +182,18 @@ export default function FirstBellApp() {
     setMessages(list => [...list, { id: list.length + 1, role: 'user', text: q }, { id: list.length + 2, role: 'guide', text: response }])
   }
 
-  const assetCard = (asset: Asset, index: number) => <motion.article className="asset-card" key={asset.symbol} initial={reduceMotion ? false : { opacity: 0, y: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: .25, delay: Math.min(index, 5) * .04, ease: [.22, 1, .36, 1] }}>
-    <div className={`asset-art asset-art--${asset.mark}`}>
-      <span className="asset-art-index">FB / {String(assets.indexOf(asset) + 1).padStart(2, '0')}</span>
-      <button type="button" className={`asset-bookmark ${saved.includes(asset.symbol) ? 'is-saved' : ''}`} aria-label={saved.includes(asset.symbol) ? t.unsave : t.save} aria-pressed={saved.includes(asset.symbol)} onClick={() => toggleSaved(asset.symbol)}><Bookmark size={17} fill={saved.includes(asset.symbol) ? 'currentColor' : 'none'} /></button>
-      <button type="button" className="asset-art-open" onClick={() => setSelected(asset)} aria-label={`${t.open}: ${asset.company}`}><AssetMark asset={asset} /></button>
-    </div>
-    <button type="button" className="asset-card-info" onClick={() => setSelected(asset)}>
-      <span className="asset-card-title"><strong>{asset.symbol}</strong><span>{asset.company}</span><ArrowUpRight size={17} /></span>
-      <span className="asset-card-rule" />
-      <span className="asset-card-meta"><span><small>{t.issuer}</small>Ondo Global Markets</span><span><small>{t.network}</small>BNB Smart Chain</span></span>
-    </button>
-  </motion.article>
+  const assetCard = (asset: Asset) => <StockCard key={asset.symbol} className="app-stock-card max-w-none"
+    logoSrc={`/assets/marks/${asset.mark}.svg`} logoClassName={`brand-mark brand-mark--${asset.mark}`}
+    ticker={asset.symbol} name={asset.company} price={homeMarkets[asset.symbol]?.priceUsd ?? null}
+    change={homeMarkets[asset.symbol]?.change24hPct ?? null} loading={homeMarkets[asset.symbol] === undefined}
+    locale={language === 'zh' ? 'zh-CN' : 'en-US'} buyLabel={t.buy} inspectLabel={t.open}
+    loadingLabel={t.loadingPrice} unavailableLabel={t.unavailablePrice} changeUnavailableLabel={t.noChange}
+    onInspect={() => setSelected(asset)}
+    onBuy={() => { setWorkingAsset(asset); setTradeEntry('buy'); switchTab('trade') }}
+    actions={<button type="button" className="app-stock-save" aria-label={`${saved.includes(asset.symbol) ? t.unsave : t.save}: ${asset.symbol}`}
+      aria-pressed={saved.includes(asset.symbol)} onClick={() => toggleSaved(asset.symbol)}>
+      <Bookmark size={17} fill={saved.includes(asset.symbol) ? 'currentColor' : 'none'} />
+    </button>} />
 
   return <div className="app-shell">
     <header className="app-header">
@@ -193,11 +215,11 @@ export default function FirstBellApp() {
         <section className="app-feature"><div className="app-feature-copy"><span className="app-label">01 / {t.heroOverline}</span><h2>{t.heroTitle}</h2><p>{t.heroBody}</p><button type="button" onClick={() => setSelected(assets.find(a => a.symbol === 'NVDAon')!)}>{t.heroButton}<ArrowUpRight size={19} /></button></div><div className="app-feature-art" aria-hidden="true"><span className="feature-cross">✳</span><span className="feature-frame"><AssetMark asset={assets[2]} /></span><span className="feature-caption">NVDAon / BSC</span></div></section>
         <section className="app-browser" aria-labelledby="browse-title"><div className="app-section-heading"><div><p className="app-label">02 / INDEX</p><h2 id="browse-title">{t.browse}<span className="count">0{assets.length}</span></h2><p>{t.browseBody}</p></div><span className="app-index-caption">ISSUER / ONDO GLOBAL MARKETS<br />NETWORK / BNB SMART CHAIN</span></div>
           <div className="app-browser-controls"><div className="app-filter" role="group" aria-label="Asset filter"><button type="button" className={filter === 'all' ? 'active' : ''} aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>{t.all}</button><button type="button" className={filter === 'saved' ? 'active' : ''} aria-pressed={filter === 'saved'} onClick={() => setFilter('saved')}>{t.saved}{saved.length > 0 && <sup>{saved.length}</sup>}</button></div><label className="app-search"><Search size={18} /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t.search} aria-label={t.search} /></label></div>
-          <div className="app-result-count">{String(visible.length).padStart(2, '0')} {t.result}</div>
-          {visible.length ? <div className="asset-grid">{visible.map(assetCard)}</div> : <div className="app-empty"><Search size={26} strokeWidth={1.2} /><h3>{t.noResults}</h3><p>{filter === 'saved' && saved.length === 0 ? t.emptyBody : t.emptySearch}</p><button type="button" onClick={() => { setFilter('all'); setQuery('') }}>{t.clear}<ArrowRight size={16} /></button></div>}
+          <div className="app-result-count app-stock-heading"><span>{String(visible.length).padStart(2, '0')} {t.result}</span><span>{t.priceCaption}</span></div>
+          {visible.length ? <div className="app-stock-list">{visible.map(assetCard)}</div> : <div className="app-empty"><Search size={26} strokeWidth={1.2} /><h3>{t.noResults}</h3><p>{filter === 'saved' && saved.length === 0 ? t.emptyBody : t.emptySearch}</p><button type="button" onClick={() => { setFilter('all'); setQuery('') }}>{t.clear}<ArrowRight size={16} /></button></div>}
         </section>
       </>}
-      {tab === 'trade' && <TradeWorkspace assets={assets} asset={workingAsset} onAssetChange={setWorkingAsset} onInspect={setSelected} language={language} />}
+      {tab === 'trade' && <TradeWorkspace assets={assets} asset={workingAsset} onAssetChange={setWorkingAsset} onInspect={setSelected} language={language} initialSide={tradeEntry} />}
       {tab === 'agent' && <section className="agent-workspace" aria-label={t.agentTitle}>
         <AIChatCard title={t.agentTitle} subtitle={t.agentIntro} greeting={t.agentGreeting}
           prompt={t.agentHelp} prompts={t.quick} placeholder={t.agentPrompt}

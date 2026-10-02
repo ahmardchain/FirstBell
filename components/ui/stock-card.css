@@ -1,0 +1,28 @@
+.stock-card { container-type:inline-size; }
+.stock-card-identity { min-height:44px; border:0; padding:0; background:transparent; border-radius:8px; }
+.stock-card-name { max-width:210px; }
+.stock-card-price { white-space:nowrap; }
+.stock-card-change[data-direction=up] { color:#047857; }
+.stock-card-change[data-direction=down] { color:#be123c; }
+[data-theme=dark] .stock-card-change[data-direction=up] { color:#34d399; }
+[data-theme=dark] .stock-card-change[data-direction=down] { color:#fb7185; }
+.stock-card-actions { display:flex; align-items:center; }
+
+/* Keep every action reachable without squeezing the company or price on phones. */
+@container (max-width:480px) {
+  .stock-card-content:has(.stock-card-actions) { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px 12px; }
+  .stock-card-content:has(.stock-card-actions) .stock-card-market { display:contents; }
+  .stock-card-content:has(.stock-card-actions) .stock-card-identity { grid-column:1; grid-row:1; }
+  .stock-card-content:has(.stock-card-actions) .stock-card-actions { grid-column:2; grid-row:1; justify-self:end; }
+  .stock-card-content:has(.stock-card-actions) .stock-card-quote { grid-column:1; grid-row:2; text-align:left; }
+  .stock-card-content:has(.stock-card-actions) .stock-card-change { justify-content:flex-start; }
+  .stock-card-content:has(.stock-card-actions) .stock-card-buy { grid-column:2; grid-row:2; }
+}
+@container (max-width:340px) {
+  .stock-card-content { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px 12px; }
+  .stock-card-market { display:contents; }
+  .stock-card-identity { grid-column:1 / -1; grid-row:1; }
+  .stock-card-quote { grid-column:1; grid-row:2; text-align:left; }
+  .stock-card-change { justify-content:flex-start; }
+  .stock-card-buy { grid-column:2; grid-row:2; }
+}
