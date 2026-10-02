@@ -1,3 +1,4 @@
+import type { AccountNamespace } from './env.ts'
 import { isAddress } from 'viem'
 import { getTradingRoute, RouteError } from './binance-trading.ts'
 import { verifyWalletIdentity } from './deposits.ts'
@@ -6,7 +7,7 @@ import { isSymbol, parseQuantity } from './market.ts'
 type Env = {
   PRIVY_APP_ID: string; PRIVY_VERIFICATION_KEY?: string
   BINANCE_WEB3_API_KEY?: string; BINANCE_WEB3_SECRET_KEY?: string
-  ACCOUNTS: DurableObjectNamespace
+  ACCOUNTS: AccountNamespace
 }
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
 

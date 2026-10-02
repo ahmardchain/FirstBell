@@ -1,3 +1,4 @@
+import type { AccountNamespace } from './env.ts'
 import { importSPKI, jwtVerify } from 'jose'
 import { isAddress } from 'viem'
 import { BSC_USDT, checkoutAsset, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding.ts'
@@ -7,7 +8,7 @@ type Store = {
   get<T>(key: string): Promise<T | undefined>
   put<T>(key: string, value: T): Promise<void>
 }
-type Env = FundingEnv & { ACCOUNTS: DurableObjectNamespace }
+type Env = FundingEnv & { ACCOUNTS: AccountNamespace }
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
 const validId = (value: string) => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value)
 
@@ -94,8 +95,8 @@ export async function handleDepositRequest(request: Request, env: Env, userId: s
   }
 }
 
-// Called only inside the authenticated user's Durable Object and serialized
-// with blockConcurrencyWhile, so pending checks cannot overwrite a completion.
+// Called only for the authenticated user, within the hosting adapter's
+// serialized or atomic storage update.
 export async function handleStoredDeposits(request: Request, env: FundingEnv, storage: Store): Promise<Response> {
   try {
     const path = new URL(request.url).pathname

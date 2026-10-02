@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "regions": ["fra1"],
+  "functions": { "api/index.ts": { "maxDuration": 60 } },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index?__fb_path=:path*" },
+    { "source": "/app", "destination": "/app/index.html" },
+    { "source": "/app/:path*", "destination": "/app/index.html" },
+    { "source": "/:path*", "destination": "/index.html" }
+  ]
+}

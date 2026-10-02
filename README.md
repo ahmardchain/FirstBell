@@ -4,7 +4,7 @@ FirstBell is a landing page and research app for exploring tokenized equities on
 
 ## Hackathon report and integration requirement
 
-The [living Developer Experience field log](docs/developer-experience-report.md) records verified build evidence and outstanding tests. The hackathon weights its report at 25% and requires at least one Binance Web3 API module in the working project. FirstBell now has a signed Binance RWA Data integration, but its live call and deployment still need verification with developer credentials. Record its first successful call and failures in the log, and review the final report from firsthand experience before submitting.
+The [living Developer Experience field log](docs/developer-experience-report.md) records verified build evidence and outstanding tests. The hackathon weights its report at 25% and requires at least one Binance Web3 API module in the working project. The builder's separate Vercel diagnostic accepted Binance candles and price-info on 2026-10-02. The full app now includes a Vercel adapter; its deployed chart, account persistence, RWA Data and trading-route calls still need live verification. Review the final report from firsthand experience before submitting.
 
 ## Run locally
 
@@ -88,6 +88,12 @@ Open https://firstbell.ahmardchain.workers.dev/api/market/NVDAon?frame=15m. Copy
 
 The expiry must be valid and at most fifteen minutes ahead. Capture is limited to the exact NVDAon BSC 56 price-info request and once **per isolate per configured expiry**, not once across the deployment. Multiple isolates can emit entries. A healthy market cache may delay a fresh upstream call by 30 seconds. Start the log viewer before triggering. After collecting an entry, remove `BINANCE_SUPPORT_CAPTURE_UNTIL` and save/deploy. Changing the expiry explicitly allows another capture window. Temporary capture code can then be removed; normal sanitized `BINANCE_DIAG` logging is independent. No Cloudflare account deployment or live support capture has been verified by the coding agent.
 
+## Deploy the full app to Vercel
+
+Use the [Vercel deployment guide](docs/vercel-deployment.md). The repository root includes `vercel.json`, a Node.js API function in `api/index.ts`, and persistent Upstash Redis account storage. The landing page, `/app/`, market feeds, Privy verification and MoonPay API routes run in the same Vercel project. Configure Root Directory **`.`**, Framework **Vite**, Node **24.x**, Build **`npm run build`**, and Output **`dist`**. The earlier Root Directory `server-test` deploys only the diagnostic page.
+
+Keep the two Binance keys in server environment variables. Account features also require Privy's verification public key and Redis REST credentials. Cloudflare secrets do not transfer automatically. Optional authenticated import can retain existing saved assets and deposit records; configure it before the first Vercel account request as described in the guide. The original Worker adapter remains available below.
+
 ## Deploy to Cloudflare Workers
 
 `wrangler.jsonc` serves the Vite output in `dist` as Workers static assets and routes `/api/*` to the Worker. Both `/` and `/app/` are built as HTML entry points. The Worker stores one account record per verified Privy user in a SQLite-backed Durable Object.
@@ -108,10 +114,10 @@ FirstBell uses Privy for Google and email one-time-code sign-in. The Privy modal
 1. In the [Privy Dashboard](https://dashboard.privy.io/) for the configured App ID, enable **Email** and **Google** login, and allow your deployment origin (and localhost for development).
 2. The public App ID is in `src/privy-config.ts`; override it in a local `.env` as `VITE_PRIVY_APP_ID=...` to use another Privy app. Do not put a Privy App Secret in a Vite variable or in this repository.
 3. Build and deploy. A static deployment cannot pick up runtime environment variables after the build.
-4. Add the verification public key to the Cloudflare Worker as described above. Without it the account endpoints return HTTP 503; the login modal and public chain balance reads still use Privy directly.
+4. Add the verification public key to your API host as described in its deployment guide. Without it the account endpoints return HTTP 503; the login modal and public chain balance reads still use Privy directly. Vercel additionally requires the Redis account store.
 5. Sign in, check the wallet address against BscScan, log out, then sign in again with the **same linked identity** to verify the address is unchanged. To use Google and email interchangeably for one wallet, link the other method from the authenticated Portfolio screen before logging out.
 
-The Worker uses Privy's ES256 verification key, issuer and app audience to validate the access token before forwarding the user ID to that user's Durable Object. `GET /api/health` is public. `GET /api/me` returns `{ account: { id, createdAt, lastSeenAt, saved } }`; `PUT /api/me/saved` accepts `{ symbol, saved }` for an indexed token. Both account routes require `Authorization: Bearer <Privy access token>`. The account record holds a Privy ID and saved symbols; it does not store wallet keys, credentials, or a fabricated balance. Card deposit records are stored separately in the same per-user Durable Object. The wallet and its balances come from Privy and BNB Smart Chain. General transaction history and USD portfolio valuation remain separate integrations.
+The shared API uses Privy's ES256 verification key, issuer and app audience to validate the access token before accessing that user's account store: Upstash Redis on Vercel, or a Durable Object on Cloudflare. `GET /api/health` is public. `GET /api/me` returns `{ account: { id, createdAt, lastSeenAt, saved } }`; `PUT /api/me/saved` accepts `{ symbol, saved }` for an indexed token. Both account routes require `Authorization: Bearer <Privy access token>`. The account record holds a Privy ID and saved symbols; it does not store wallet keys, credentials, or a fabricated balance. Card deposit records are kept in the same private per-user store. The wallet and its balances come from Privy and BNB Smart Chain. General transaction history and USD portfolio valuation remain separate integrations.
 
 ## Check an Ondo trading route without an Ondo API key
 
