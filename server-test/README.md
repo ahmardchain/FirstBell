@@ -35,4 +35,8 @@ The function is disabled unless all three server values are configured. It requi
 
 Validate from the parent repository with `node --test tests/binance-local-check.test.mjs tests/binance-server-test.test.mjs`. These tests mock Binance; they do not establish live hosting acceptance. There are no added npm dependencies, wallet calls, order endpoints or payments.
 
-This package was prepared without a new live deployment: automatic deployment review rejected the connected unrelated Vercel target. Create/select the intended new test project before deploying; do not reuse another product's project by accident.
+## Observed hosted comparison
+
+On 2026-10-02 the builder deployed a separate `firstbell-server-test` project and supplied its report, started at `19:21:50.567Z`. Both configured and reported runtime regions were `fra1`. Candles returned HTTP 200/code 0 with 100 entries in 375 ms; price-info returned HTTP 200/code 0 with one entry in 248 ms. This is builder-provided live evidence, not a request independently observed by the agent. It establishes acceptance of these two requests on that deployment, not the freshness or validity of the omitted market data, a general hosting policy, or a connected FirstBell chart. See the [evidence log](../docs/developer-experience-report.md) for the timestamps and comparison limits.
+
+Initial automatic deployment review rejected the connected unrelated Vercel target; no deployment was made there. Later connector access to the builder's new project was denied, and the browser required Vercel sign-in. The builder supplied the successful report before that sign-in completed. This service still returns diagnostics only; production market routing has not been enabled.
