@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ArrowUpRight, Check, CreditCard, LoaderCircle, RefreshCw, X } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, Check, Copy, CreditCard, Landmark, LoaderCircle, QrCode, RefreshCw, X } from 'lucide-react'
 import { checkoutAsset, isDepositTerminal, sessionAsset, type DepositSession } from '../lib/funding'
 import { displayQuantity } from './wallet-balances'
 import type { DepositController } from './deposits-api'
@@ -183,6 +183,79 @@ export function DepositDialog({ open, onClose, controller, address, language }: 
   </dialog>
 }
 
+export function DepositPage({ address, language, onBack, onCard }: {
+  address: string; language: Language; onBack: () => void; onCard: () => void
+}) {
+  const t = language === 'zh' ? {
+    title: '充值', back: '返回', manual: '手动转入', exchange: '从交易所充值', card: '添加资金',
+    last: '上次使用', network: 'BNB 智能链', cardHint: '借记卡或信用卡', receive: '接收 USDT 或 BNB',
+    address: '钱包地址', copy: '复制地址', copied: '已复制', copyError: '无法复制，请选中地址后复制。',
+    note: '请使用 BNB 智能链（BEP20）转入 USDT 或 BNB。', exchangeNote: '在交易所选择提现，使用 BNB 智能链（BEP20）和下方地址。',
+    qr: '钱包地址二维码', qrError: '二维码暂不可用，请复制下方地址。',
+  } : {
+    title: 'Deposit', back: 'Back', manual: 'Transfer Manually', exchange: 'Deposit from Exchange', card: 'Add Money',
+    last: 'Last Used', network: 'BNB Smart Chain', cardHint: 'Debit or credit card', receive: 'Receive USDT or BNB',
+    address: 'Wallet address', copy: 'Copy address', copied: 'Copied', copyError: 'Could not copy. Select the address to copy it.',
+    note: 'Send USDT or BNB using BNB Smart Chain (BEP20).', exchangeNote: 'Choose Withdraw in your exchange, then select BNB Smart Chain (BEP20) and use this address.',
+    qr: 'Wallet address QR code', qrError: 'QR unavailable. Copy the address below.',
+  }
+  const [method, setMethod] = React.useState<'methods' | 'manual' | 'exchange'>('methods')
+  const [lastUsed, setLastUsed] = React.useState(() => { try { return localStorage.getItem(`firstbell-deposit-method:${address}`) } catch { return null } })
+  const [qr, setQr] = React.useState('')
+  const [qrFailed, setQrFailed] = React.useState(false)
+  const [copied, setCopied] = React.useState(false)
+  const [copyFailed, setCopyFailed] = React.useState(false)
+  const addressInput = React.useRef<HTMLInputElement>(null)
+  React.useEffect(() => {
+    if (method === 'methods') return
+    let active = true
+    setQr(''); setQrFailed(false)
+    void import('qrcode').then(module => module.toDataURL(address, { width: 512, margin: 4, errorCorrectionLevel: 'M' }))
+      .then(data => { if (active) setQr(data) }).catch(() => { if (active) setQrFailed(true) })
+    return () => { active = false }
+  }, [address, method])
+  const choose = (next: 'manual' | 'exchange' | 'card') => {
+    setLastUsed(next); setCopied(false); setCopyFailed(false)
+    try { localStorage.setItem(`firstbell-deposit-method:${address}`, next) } catch { /* Optional preference only. */ }
+    if (next === 'card') onCard()
+    else setMethod(next)
+  }
+  const copyAddress = async () => {
+    try {
+      if (navigator.clipboard) await navigator.clipboard.writeText(address)
+      else {
+        addressInput.current?.select()
+        if (!document.execCommand('copy')) throw new Error('Clipboard unavailable')
+      }
+      setCopied(true); setCopyFailed(false)
+    }
+    catch { setCopyFailed(true) }
+  }
+  const badges = (kind: 'crypto' | 'exchange' | 'card') => <span className="funding-badges" aria-hidden="true">{(kind === 'crypto' ? ['usdt', 'bnb'] : kind === 'exchange' ? ['coinbase', 'binance'] : ['visa', 'mastercard']).map(mark => <span key={mark} className={`funding-badge funding-badge--${mark}`}><img src={mark === 'coinbase' ? '/assets/marks/coinbase.svg' : `/assets/funding/${mark}.svg`} alt="" /></span>)}</span>
+  return <div className="funding-page">
+    <div className="funding-page-head"><button type="button" aria-label={t.back} onClick={() => method === 'methods' ? onBack() : setMethod('methods')}><ArrowLeft size={21} /></button><h1>{method === 'methods' ? t.title : method === 'exchange' ? t.exchange : t.manual}</h1></div>
+    {method === 'methods' ? <div className="funding-options">
+      {([
+        { id: 'manual', title: t.manual, icon: QrCode, badges: 'crypto', hint: t.network },
+        { id: 'exchange', title: t.exchange, icon: Landmark, badges: 'exchange', hint: t.network },
+        { id: 'card', title: t.card, icon: CreditCard, badges: 'card', hint: t.cardHint },
+      ] as const).map(item => <button type="button" className="funding-method" key={item.id} onClick={() => choose(item.id)}>
+        <span className="funding-method-icon"><item.icon size={22} strokeWidth={1.8} /></span>
+        <span className="funding-method-content"><span className="funding-method-title">{item.title}</span><span className="funding-method-meta">{badges(item.badges)}<span>{item.hint}</span></span></span>
+        {lastUsed === item.id && <span className="funding-last-used">{t.last}</span>}
+      </button>)}
+    </div> : <div className="funding-receive">
+      <h2>{t.receive}</h2><p>{method === 'exchange' ? t.exchangeNote : t.note}</p>
+      <div className="funding-qr">{qr ? <img src={qr} alt={t.qr} /> : qrFailed ? <p>{t.qrError}</p> : <LoaderCircle className="deposit-spinner" size={25} />}</div>
+      <span className="funding-network">{badges('crypto')}{t.network}</span>
+      <label className="funding-address"><span>{t.address}</span><input ref={addressInput} readOnly value={address} aria-label={t.address} onFocus={event => event.currentTarget.select()} /></label>
+      <button type="button" className="deposit-primary" onClick={() => void copyAddress()}>{copied ? <Check size={18} /> : <Copy size={18} />}{copied ? t.copied : t.copy}</button>
+      <span className="sr-only" role="status">{copied ? t.copied : ''}</span>
+      {copyFailed && <p className="deposit-error" role="alert">{t.copyError}</p>}
+    </div>}
+  </div>
+}
+
 export function DepositStatusCard({ controller, language, onOpen }: { controller: DepositController; language: Language; onOpen: (id: string) => void }) {
   const session = controller.sessions.find(item => !isDepositTerminal(item.status)) ?? controller.sessions[0]
   if (!session) return null
@@ -193,11 +266,12 @@ export function DepositStatusCard({ controller, language, onOpen }: { controller
   </button>
 }
 
-export function DepositHistory({ controller, language, onOpen }: { controller: DepositController; language: Language; onOpen: (id: string) => void }) {
+export function DepositHistory({ controller, language, onOpen, search = '' }: { controller: DepositController; language: Language; onOpen: (id: string) => void; search?: string }) {
   const t = copy[language]
-  return <div className="deposit-history"><h2 className="app-label">{t.history.toUpperCase()}</h2>
-    {controller.loading ? <p role="status">{t.loading}</p> : controller.sessions.length ? <div className="deposit-history-rows">{controller.sessions.map((session: DepositSession) =>
+  const sessions = controller.sessions.filter(session => `${session.amount} ${session.fiatCurrency} ${t.statuses[session.status]}`.toLowerCase().includes(search.trim().toLowerCase()))
+  return <div className="deposit-history">
+    {controller.loading ? <div className="portfolio-content-empty" role="status">{t.loading}</div> : sessions.length ? <div className="deposit-history-rows">{sessions.map((session: DepositSession) =>
       <button type="button" key={session.id} onClick={() => onOpen(session.id)}><CreditCard size={20} /><span><strong>{session.amount} {session.fiatCurrency.toUpperCase()}</strong><small>{new Date(session.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en', { month: 'short', day: 'numeric' })}{session.mode === 'sandbox' ? ' / TEST' : ' / BNB Smart Chain'}</small></span><span className="deposit-history-status">{t.statuses[session.status]}</span><ArrowUpRight size={15} /></button>
-    )}</div> : <div className="portfolio-content-empty"><CreditCard size={25} /><h2>{t.historyEmpty}</h2><p>{controller.error ? depositErrorMessage(controller.error, language) : t.historyHint}</p></div>}
+    )}</div> : <div className="portfolio-content-empty" role="status">{controller.error ? depositErrorMessage(controller.error, language) : language === 'zh' ? '暂无活动' : 'No activity yet'}</div>}
   </div>
 }

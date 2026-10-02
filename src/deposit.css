@@ -60,3 +60,40 @@
 @keyframes deposit-enter { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 @media(max-width:420px) { .deposit-dialog { padding:21px; } .deposit-dialog h2 { font-size:27px; } .deposit-history-rows>button { gap:9px; padding:13px; } .deposit-history-status { max-width:90px; font-size:11px; } }
 @media(prefers-reduced-motion:reduce) { .deposit-dialog[open],.deposit-spinner { animation:none; } .deposit-primary,.deposit-secondary { transition:none; } }
+
+/* Funding method screen, matched to the supplied mobile reference. */
+.funding-page { min-height:480px; }
+.funding-page-head { display:flex; align-items:center; gap:12px; margin:-5px 0 18px; }
+.funding-page-head>button { display:grid; place-items:center; flex:none; width:44px; height:44px; padding:0; border:0; border-radius:50%; background:var(--hover); color:var(--muted); }
+.funding-page-head h1 { margin:0; font-size:21px; font-weight:400; }
+.funding-options { display:flex; flex-direction:column; gap:12px; padding-inline:9px; }
+.funding-method { position:relative; display:flex; align-items:center; gap:12px; width:100%; min-height:66px; padding:10px 11px; border:1px solid transparent; border-radius:999px; background:var(--hover); text-align:left; transition:background .15s,transform .15s; }
+.funding-method:hover { background:var(--panel); }
+.funding-method:active { transform:scale(.99); }
+.funding-method-icon { display:grid; place-items:center; flex:none; width:43px; height:43px; border-radius:50%; background:color-mix(in srgb,var(--foreground) 10%,transparent); color:var(--muted); }
+.funding-method-content { display:flex; min-width:0; flex:1; flex-direction:column; gap:5px; }
+.funding-method-title { font-size:18px; font-weight:400; line-height:1.2; }
+.funding-method-meta { display:flex; align-items:center; gap:9px; color:var(--muted); font-size:13px; line-height:1.25; }
+.funding-badges { display:inline-flex; flex:none; align-items:center; padding-left:2px; }
+.funding-badge { display:grid; place-items:center; width:20px; height:20px; margin-left:-2px; padding:0; border-radius:50%; background:var(--background); }
+.funding-badge>img { display:block; width:100%; height:100%; object-fit:contain; }
+.funding-badge--coinbase { background:#0052ff; padding:4px; }
+.funding-badge--coinbase>img { filter:brightness(0) invert(1); }
+.funding-badge--binance { background:#f3ba2f; padding:4px; }
+.funding-badge--visa { background:#fff; padding:3px; }
+.funding-badge--mastercard { background:#fff; padding:2px; }
+.funding-last-used { align-self:flex-start; flex:none; margin:3px 0 0 auto; padding:3px 5px; border-radius:5px; background:var(--background); color:var(--muted); font-size:10px; line-height:1.2; }
+.funding-receive { max-width:460px; margin:0 auto; text-align:center; }
+.funding-receive h2 { margin:24px 0 10px; font-size:23px; font-weight:400; }
+.funding-receive>p { max-width:360px; margin:0 auto; color:var(--muted); font-size:14px; line-height:1.5; }
+.funding-qr { display:grid; place-items:center; width:204px; height:204px; margin:24px auto 18px; border-radius:18px; background:#fff; color:#111; overflow:hidden; }
+.funding-qr>img { width:100%; height:100%; object-fit:contain; }
+.funding-qr>p { padding:12px; font-size:13px; }
+.funding-network { display:flex; align-items:center; justify-content:center; gap:8px; color:var(--muted); font-size:14px; }
+.funding-address { display:flex; flex-direction:column; gap:10px; margin:23px 0 18px; text-align:left; }
+.funding-address>span { color:var(--muted); font-size:13px; }
+.funding-address>input { width:100%; min-height:48px; padding:10px 13px; border:1px solid var(--line); border-radius:14px; background:var(--hover); color:var(--foreground); font:11px var(--mono,monospace); }
+[data-theme=dark] .app-shell[data-tab=portfolio]:has(.funding-page) { --background:#181f22; --hover:#23292c; --panel:#323a3e; }
+[data-theme=light] .app-shell[data-tab=portfolio]:has(.funding-page) { --background:#fff; --hover:#f1f1f1; --panel:#e8e8e8; }
+@media(max-width:390px) { .funding-method-title { font-size:17px; } .funding-method-meta { gap:7px; font-size:12px; } .funding-last-used { position:absolute; top:4px; right:17px; margin:0; font-size:9px; } }
+@media(prefers-reduced-motion:reduce) { .funding-method { transition:none; } }

@@ -4,6 +4,7 @@ import path from 'node:path'
 
 export default defineConfig({
   plugins: [react()],
+  server: { host: '0.0.0.0', allowedHosts: ['terminal.local'] },
   resolve: { alias: { '@': path.resolve(__dirname, '.') } },
   build: { rollupOptions: { input: { main: path.resolve(__dirname, 'index.html'), app: path.resolve(__dirname, 'app/index.html') } } },
 })

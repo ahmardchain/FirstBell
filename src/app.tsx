@@ -195,7 +195,7 @@ export default function FirstBellApp() {
       <Bookmark size={17} fill={saved.includes(asset.symbol) ? 'currentColor' : 'none'} />
     </button>} />
 
-  return <div className="app-shell">
+  return <div className="app-shell" data-tab={tab}>
     <header className="app-header">
       <a href="/" className="app-brand" aria-label={t.back}><img src="/assets/firstbell-mark.svg" alt="" />FirstBell</a>
       <nav className="app-desktop-nav" aria-label="App navigation">{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-desktop-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={16} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
@@ -227,7 +227,7 @@ export default function FirstBellApp() {
           note={t.agentNote} sourceHref={manifest.sourceTokenList} sourceLabel={t.tokenList}
           icon={<img src="/assets/firstbell-mark.svg" alt="" />} onSend={answer} onReset={() => setMessages([])} />
       </section>}
-      {tab === 'portfolio' && <PortfolioWorkspace assets={assets} saved={saved} language={language} onExplore={() => switchTab('home')} onInspect={setSelected} onToggleSaved={toggleSaved} />}
+      {tab === 'portfolio' && <PortfolioWorkspace assets={assets} language={language} onInspect={setSelected} />}
       </motion.div></AnimatePresence>
     </main>
     <footer className="app-footer"><div><a href="/" className="app-brand"><img src="/assets/firstbell-mark.svg" alt="" />FirstBell</a><p>{t.footer}</p></div><div><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={14} /></a><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github}<ArrowUpRight size={14} /></a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x}<ArrowUpRight size={14} /></a></div><small>© 2026 FIRSTBELL / BNB SMART CHAIN</small></footer>
