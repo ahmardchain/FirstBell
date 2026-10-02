@@ -29,6 +29,10 @@ The script makes exactly two read-only requests from your computer to Binance: N
 
 Compare the output with the deployed `/api/market/NVDAon?frame=15m` response using the same credentials around the same time. Local acceptance with Worker rejection narrows investigation to hosting or request-path differences; it does not identify a particular IP rule or prove a VPS will solve it. The same compliance error locally shows the failure also occurs outside the Worker. On 2026-10-01 the builder reported accepted local calls with 100 candle entries and one trading-info entry, followed by another deployed `40304` response. Raw data validity and the saved Worker credential pair remain unverified. Save the sanitized reports for Binance Web3 API technical support; the [field log](docs/developer-experience-report.md) retains the results and their limits.
 
+### Compare with a separate hosted server
+
+The isolated [server-test package](server-test/README.md) reuses the direct checker in a protected Node.js function. Deploy it as a new `firstbell-binance-test` Vercel project with Root Directory `server-test`. Its setup guide covers the three server variables, report interpretation and the limits of a hosting comparison. No production relay or Cloudflare hosting change is enabled.
+
 ### Run the app and Worker together locally
 
 `npm run dev` runs the Vite frontend alone; this repository does not configure a Vite proxy for `/api/*`. To test the actual Worker market parser and chart from your computer, follow the [Cloudflare local development](https://developers.cloudflare.com/workers/local-development/) and [local secrets](https://developers.cloudflare.com/workers/local-development/environment-variables/) workflow:

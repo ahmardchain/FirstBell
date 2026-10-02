@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>FirstBell — Binance server test</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <p class="label">FIRSTBELL / SERVER TEST</p>
+    <h1>Check Binance from this server.</h1>
+    <p>Run the same two NVDAon market requests that succeeded on your computer. This test checks candles and prices on BNB Smart Chain.</p>
+    <form id="test-form">
+      <label for="access-token">Test access token</label>
+      <input id="access-token" type="password" required minlength="32" maxlength="128" pattern="[A-Za-z0-9_-]{32,128}" autocomplete="off" spellcheck="false" aria-describedby="token-help">
+      <small id="token-help">Use BINANCE_TEST_TOKEN from this project's settings. Keep your Binance API Key and Secret Key in the server settings.</small>
+      <button id="run" type="submit">Run server test</button>
+    </form>
+    <p id="status" role="status" aria-live="polite">Ready to test.</p>
+    <pre id="report" aria-label="Server test report" hidden></pre>
+    <p class="note">Two read-only market requests. No wallet or stock order. A successful response does not prove that the returned market data is current or usable. Function region does not identify the outgoing IP Binance sees.</p>
+  </main>
+  <script type="module" src="/test.js"></script>
+</body>
+</html>
