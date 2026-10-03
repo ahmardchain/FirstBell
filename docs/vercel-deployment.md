@@ -35,7 +35,7 @@ Use **Project → Settings → Environment Variables**. Configure Production, an
 | --- | --- |
 | `BINANCE_WEB3_API_KEY` | Existing Binance Web3 Developer Portal API Key; required for Binance market feeds and route checks |
 | `BINANCE_WEB3_SECRET_KEY` | Its matching Secret Key; server signing only |
-| `PRIVY_VERIFICATION_KEY` | Privy dashboard **verification public key**, in PEM format; required by authenticated API routes; this is not the Privy App Secret |
+| `PRIVY_VERIFICATION_KEY` | Optional Privy dashboard **verification public key**, in PEM format. Valid keys verify locally; missing, stale or malformed keys use Privy's app-specific published keys. This is not the Privy App Secret. |
 | `UPSTASH_REDIS_REST_URL` | REST endpoint of your persistent Upstash Redis database; required for account features |
 | `UPSTASH_REDIS_REST_TOKEN` | Matching read/write REST token; server only |
 | `MOONPAY_PUBLISHABLE_KEY` | Optional test publishable key for sandbox card checkout |
@@ -44,11 +44,11 @@ Use **Project → Settings → Environment Variables**. Configure Production, an
 | `LEGACY_ACCOUNTS_ORIGIN` | Optional `https://firstbell.ahmardchain.workers.dev` to import existing account history; see step 3 before enabling the new app |
 | `ONDO_API_KEY` | Optional Ondo primary-market fallback and legacy indicative quote service; not needed for Binance charts |
 
-FirstBell defaults to public Privy App ID `cmun7bqhg00070ck6mdyqp888`. If you use a different Privy app, set the same ID in both `VITE_PRIVY_APP_ID` (frontend build) and `PRIVY_APP_ID` (API). The verification key must belong to that app. Only the public App ID uses a `VITE_` variable; signing keys and Redis credentials must stay server-side.
+FirstBell defaults to public Privy App ID `cmun7bqhg00070ck6mdyqp888`. If you use a different Privy app, set the same ID in both `VITE_PRIVY_APP_ID` (frontend build) and `PRIVY_APP_ID` (API). An optional verification key must belong to that app. The API uses `https://auth.privy.io/api/v1/apps/{PRIVY_APP_ID}/jwks.json` when the local key cannot verify a signature. It caches these keys and still requires ES256, issuer `privy.io`, the configured app audience, an unexpired token and a Privy user ID. Token-supplied key URLs are ignored. Both access and identity tokens use this verification; checkout still requires the exact embedded wallet to belong to the authenticated user. Only the public App ID uses a `VITE_` variable; signing keys and Redis credentials must stay server-side.
 
 Create/connect a persistent **Upstash Redis** database through Vercel's Storage/Marketplace integration or the Upstash console. Use its HTTPS REST endpoint and read/write token, not a TCP `REDIS_URL` or read-only token. If the integration supplies `KV_REST_API_URL` and `KV_REST_API_TOKEN`, the adapter also accepts those names. Choose a database without an expiry or an eviction policy that would remove account records; review the provider's plan before purchasing anything. The application does not provision a database automatically.
 
-The public website, health route and market routes can run without Redis. Saved stocks, deposit history and rate-limited account operations return an explicit unavailable result until the account store and verification key are configured. They do not silently fall back to temporary server memory.
+The public website, health route and market routes can run without Redis. Saved stocks, deposit history and rate-limited account operations return an explicit unavailable result until the account store is configured. They do not silently fall back to temporary server memory. Signing-key lookup failures reject authentication and produce a private `PRIVY_AUTH` log with a bounded error category, never the token or credentials.
 
 `BINANCE_TEST_TOKEN` protects the separate diagnostic package only. The full app does not use it. `BINANCE_SUPPORT_CAPTURE_UNTIL` is not enabled by the Vercel adapter.
 
@@ -86,7 +86,8 @@ Record the new deployment URL, exact signed request times, provider codes, respo
 | --- | --- |
 | Diagnostic page still appears | Root Directory is still `server-test`, or an old deployment URL is open |
 | App works but `/api/*` serves HTML | Deploy the root `vercel.json` and verify the API function was built |
-| `account_not_configured` | Add the Privy verification public key and redeploy |
+| `account_not_configured` | Configure a valid Privy App ID matching the frontend and redeploy |
+| HTTP 401 on `/api/deposits/config` | The sign-in token was rejected before MoonPay. Check private `PRIVY_AUTH` logs, matching frontend/server App IDs and session expiry. A missing or stale PEM can fall back to Privy's published keys; wallet ownership remains required for checkout. |
 | `account_storage_not_configured` | Add the Redis REST URL/token pair and redeploy |
 | `account_storage_unavailable` | Check database availability, limits and write-token permissions in the provider console |
 | `account_import_unavailable` | Keep the exact original Worker reachable with its matching Privy configuration; do not disable import merely to create an empty account over existing history |

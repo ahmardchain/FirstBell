@@ -28,6 +28,7 @@ const copy = {
     unavailable: 'Card checkout is temporarily unavailable. Try again shortly.',
     retry: 'Try again', invalid: 'Enter a whole amount within the displayed limits.', limits: 'Available range',
     verify: 'Your wallet could not be verified. Sign in again and retry.',
+    session: 'Your sign-in session could not be verified. Refresh the page and try again.',
     identity: 'Wallet verification is not enabled yet. Card checkout needs the account setup to be completed.',
     connection: 'Your connection could not be verified. Reopen checkout on the same network.',
     limited: 'Please wait a minute before opening another checkout.',
@@ -63,6 +64,7 @@ const copy = {
     sandboxUnavailable: '此接入尚未启用 MoonPay 测试 ETH。请在 MoonPay 启用以太坊后重试。',
     unavailable: '银行卡支付暂时不可用，请稍后重试。', retry: '重试', invalid: '请输入范围内的整数金额。', limits: '可用金额范围',
     verify: '无法验证钱包，请重新登录后重试。', identity: '钱包验证尚未启用。完成账户配置后才能使用银行卡充值。',
+    session: '无法验证登录状态，请刷新页面后重试。',
     connection: '无法验证网络连接，请在同一网络下重新打开支付页面。', limited: '请等待一分钟后再打开支付页面。',
     check: '检查状态', checked: '上次检查', resume: '返回支付页面', new: '再次充值', history: '银行卡充值记录',
     historyEmpty: '还没有银行卡支付', historyHint: '真实充值和标注为沙盒的测试支付会显示在这里。',
@@ -81,7 +83,8 @@ export function depositErrorMessage(reason: string | null | undefined, language:
   if (['not_configured', 'invalid_configuration', 'account_not_configured'].includes(reason ?? '')) return t.setup
   if (reason === 'sandbox_asset_unavailable') return t.sandboxUnavailable
   if (reason === 'identity_token_unavailable') return t.identity
-  if (['wallet_not_verified', 'unauthorized'].includes(reason ?? '')) return t.verify
+  if (reason === 'unauthorized') return t.session
+  if (reason === 'wallet_not_verified') return t.verify
   if (['connection_unverified', 'https_required'].includes(reason ?? '')) return t.connection
   if (['rate_limited', 'too_many_pending'].includes(reason ?? '')) return t.limited
   if (reason === 'invalid_amount') return t.invalid

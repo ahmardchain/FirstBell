@@ -13,7 +13,7 @@ await build({
     outDir: fileURLToPath(new URL('../api', import.meta.url)),
     emptyOutDir: false,
     target: 'node24',
-    minify: false,
+    minify: 'esbuild',
     sourcemap: false,
     rollupOptions: { output: { entryFileNames: 'index.mjs', inlineDynamicImports: true } },
   },

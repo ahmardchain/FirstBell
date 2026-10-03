@@ -1,5 +1,5 @@
 import type { ApiEnv } from './env.ts'
-import { importSPKI, jwtVerify } from 'jose'
+import { privyAuthConfigured, verifyPrivyToken } from './privy-auth.ts'
 import { isFrame, isSymbol, marketSnapshot, parseQuantity, softQuote } from './market.ts'
 import { getRwaContext } from './binance-rwa.ts'
 import { binanceFailure } from './binance-api.ts'
@@ -40,17 +40,9 @@ async function readSmallBody(request: Request): Promise<string | null> {
 
 async function getUserId(request: Request, env: ApiEnv): Promise<string | null> {
   const authorization = request.headers.get('Authorization')
-  if (!authorization?.startsWith('Bearer ') || !env.PRIVY_VERIFICATION_KEY) return null
-  try {
-    const key = await importSPKI(env.PRIVY_VERIFICATION_KEY.replace(/\\n/g, '\n'), 'ES256')
-    const { payload } = await jwtVerify(authorization.slice(7), key, {
-      issuer: 'privy.io', audience: env.PRIVY_APP_ID, algorithms: ['ES256'],
-    })
-    return typeof payload.sub === 'string' && /^did:privy:[a-zA-Z0-9_-]{3,128}$/.test(payload.sub)
-      ? payload.sub : null
-  } catch {
-    return null
-  }
+  if (!authorization?.startsWith('Bearer ')) return null
+  const payload = await verifyPrivyToken(authorization.slice(7), env)
+  return typeof payload?.sub === 'string' ? payload.sub : null
 }
 
 export async function handleApiRequest(request: Request, env: ApiEnv): Promise<Response> {
@@ -58,13 +50,13 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
   if (!pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
   if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok' })
   if (pathname === '/api/deposits' || pathname.startsWith('/api/deposits/')) {
-    if (!env.PRIVY_VERIFICATION_KEY) return json({ error: 'account_not_configured' }, 503)
+    if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
     const id = await getUserId(request, env)
     if (!id) return json({ error: 'unauthorized' }, 401)
     return handleDepositRequest(request, env, id)
   }
   if (pathname === '/api/trade/route') {
-    if (!env.PRIVY_VERIFICATION_KEY) return json({ error: 'account_not_configured' }, 503)
+    if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
     const id = await getUserId(request, env)
     if (!id) return json({ error: 'unauthorized' }, 401)
     return handleTradingRoute(request, env, id)
@@ -104,7 +96,7 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
     const origin = request.headers.get('Origin')
     if (origin && origin !== new URL(request.url).origin) return json({ error: 'Invalid origin' }, 403)
     if (Number(request.headers.get('Content-Length') || 0) > maxBodyBytes) return json({ error: 'Request too large' }, 413)
-    if (!env.PRIVY_VERIFICATION_KEY || !env.ONDO_API_KEY) return json({ error: 'Trade quote service is not configured' }, 503)
+    if (!privyAuthConfigured(env) || !env.ONDO_API_KEY) return json({ error: 'Trade quote service is not configured' }, 503)
     const id = await getUserId(request, env)
     if (!id) return json({ error: 'Unauthorized' }, 401)
     const body = await readSmallBody(request)
@@ -123,7 +115,7 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
     } catch { return json({ error: 'Ondo quote unavailable right now' }, 503) }
   }
   if (pathname !== '/api/me' && pathname !== '/api/me/saved') return json({ error: 'Not found' }, 404)
-  if (!env.PRIVY_VERIFICATION_KEY) return json({ error: 'Account service is not configured' }, 503)
+  if (!privyAuthConfigured(env)) return json({ error: 'Account service is not configured' }, 503)
   if (pathname === '/api/me' && request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
   if (pathname === '/api/me/saved' && request.method !== 'PUT') return json({ error: 'Method not allowed' }, 405)
 

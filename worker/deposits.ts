@@ -1,5 +1,5 @@
 import type { AccountNamespace } from './env.ts'
-import { importSPKI, jwtVerify } from 'jose'
+import { verifyPrivyToken } from './privy-auth.ts'
 import { isAddress } from 'viem'
 import { BSC_USDT, checkoutAsset, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding.ts'
 import { checkDeposit, createCheckoutUrl, customerIp, FundingError, getFiatOptions, getMoonPayCredentials, hmac, validateFiatAmount, type FundingEnv } from './moonpay.ts'
@@ -13,11 +13,10 @@ const json = (body: unknown, status = 200) => Response.json(body, { status, head
 const validId = (value: string) => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value)
 
 export async function verifyWalletIdentity(token: string | null, env: FundingEnv, userId: string, address: string): Promise<boolean> {
-  if (!token || !env.PRIVY_VERIFICATION_KEY || !isAddress(address)) return false
+  if (!token || !isAddress(address)) return false
   try {
-    const key = await importSPKI(env.PRIVY_VERIFICATION_KEY.replace(/\\n/g, '\n'), 'ES256')
-    const { payload } = await jwtVerify(token, key, { issuer: 'privy.io', audience: env.PRIVY_APP_ID, algorithms: ['ES256'] })
-    if (payload.sub !== userId || typeof payload.exp !== 'number' || typeof payload.linked_accounts !== 'string') return false
+    const payload = await verifyPrivyToken(token, env)
+    if (!payload || payload.sub !== userId || typeof payload.linked_accounts !== 'string') return false
     const accounts: unknown = JSON.parse(payload.linked_accounts)
     return Array.isArray(accounts) && accounts.some(account => account && account.type === 'wallet'
       && account.chain_type === 'ethereum' && ['privy', 'privy_v2'].includes(account.wallet_client_type)
