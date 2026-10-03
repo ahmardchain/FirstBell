@@ -2,8 +2,9 @@ import type { AccountNamespace } from './env.ts'
 import { verifyWalletIdentity, WalletVerificationError } from './wallet-verification.ts'
 export { verifyWalletIdentity } from './wallet-verification.ts'
 import { isAddress } from 'viem'
-import { BSC_USDT, checkoutAsset, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding.ts'
+import { BSC_USDT, checkoutAsset, depositProvider, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding.ts'
 import { checkDeposit, createCheckoutUrl, customerIp, FundingError, getFiatOptions, getMoonPayCredentials, hmac, validateFiatAmount, type FundingEnv } from './moonpay.ts'
+import { applyOnramperEvent, checkOnramperDeposit, createOnramperCheckoutUrl, createPartnerContext, getOnramperCredentials } from './onramper.ts'
 
 type Store = {
   get<T>(key: string): Promise<T | undefined>
@@ -48,10 +49,17 @@ export async function handleDepositRequest(request: Request, env: Env, userId: s
       if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405)
       let config: DepositConfig
       try {
-        const credentials = getMoonPayCredentials(env)
-        config = { ready: true, mode: credentials.mode, reason: null, fiatCurrencies: await getFiatOptions(credentials) }
+        if (env.CARD_FUNDING_PROVIDER === 'moonpay') {
+          const credentials = getMoonPayCredentials(env)
+          config = { ready: true, mode: credentials.mode, reason: null, fiatCurrencies: await getFiatOptions(credentials) }
+        } else {
+          const credentials = await getOnramperCredentials(env)
+          config = { provider: 'onramper', ready: true, mode: credentials.mode, reason: null, fiatCurrencies: [] }
+        }
       } catch (error) {
-        config = { ready: false, mode: env.MOONPAY_ENVIRONMENT === 'live' ? 'live' : env.MOONPAY_ENVIRONMENT === 'sandbox' ? 'sandbox' : null,
+        const legacy = env.CARD_FUNDING_PROVIDER === 'moonpay'
+        const mode = legacy ? env.MOONPAY_ENVIRONMENT : env.ONRAMPER_ENVIRONMENT
+        config = { ...(legacy ? {} : { provider: 'onramper' as const }), ready: false, mode: mode === 'live' ? 'live' : mode === 'sandbox' ? 'sandbox' : null,
           reason: error instanceof FundingError ? error.reason : 'provider_unavailable', fiatCurrencies: [] }
       }
       return json(config)
@@ -61,17 +69,20 @@ export async function handleDepositRequest(request: Request, env: Env, userId: s
     if (match && validId(match[1]) && request.method === 'GET') return stub.fetch(new Request(`https://account.internal/deposits/${match[1]}`, { headers: { 'X-Privy-DID': userId } }))
     if (path !== '/api/deposits/checkout') return json({ error: 'not_found' }, 404)
     if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
-    const credentials = getMoonPayCredentials(env)
+    const provider = env.CARD_FUNDING_PROVIDER === 'moonpay' ? 'moonpay' : 'onramper'
+    const credentials = provider === 'moonpay' ? getMoonPayCredentials(env) : null
+    if (provider === 'onramper') await getOnramperCredentials(env)
     const input = await body(request)
     if (typeof input.walletAddress !== 'string' || !isAddress(input.walletAddress)) throw new FundingError('invalid_wallet', 400)
     if (!await verifyWalletIdentity(request.headers.get('privy-id-token'), env, userId, input.walletAddress)) throw new FundingError('wallet_not_verified', 403)
     const ip = customerIp(request)
-    if (!ip) throw new FundingError('connection_unverified', 400)
+    if (provider === 'moonpay' && !ip) throw new FundingError('connection_unverified', 400)
     if (url.protocol !== 'https:') throw new FundingError('https_required')
-    const options = await getFiatOptions(credentials)
+    const options = credentials ? await getFiatOptions(credentials) : []
     if (input.sessionId !== undefined && (typeof input.sessionId !== 'string' || !validId(input.sessionId))) throw new FundingError('invalid_session', 400)
+    if (provider === 'onramper' && (input.amount !== undefined || input.fiatCurrency !== undefined)) throw new FundingError('invalid_request', 400)
     const amount = input.sessionId ? {} : input.amount === undefined && input.fiatCurrency === undefined
-      ? { amount: '', fiatCurrency: '', amountSelection: 'moonpay' }
+      ? { amount: '', fiatCurrency: '', amountSelection: provider }
       : validateFiatAmount(input.amount, input.fiatCurrency, options)
     // The stable external customer ID is pseudonymous, not a raw Privy DID.
     const customerId = (await hmac(userId, env.PRIVY_APP_ID)).replace(/[^a-zA-Z0-9]/g, '')
@@ -93,24 +104,39 @@ export async function handleStoredDeposits(request: Request, env: FundingEnv, st
     const path = new URL(request.url).pathname
     const sessions = await storage.get<DepositSession[]>('deposits') ?? []
     if (path === '/deposits' && request.method === 'GET') return json({ sessions })
-    const credentials = getMoonPayCredentials(env)
+    if (path === '/deposits/onramper-event' && request.method === 'POST') {
+      const input = await request.json() as { sessionId: string; event: Record<string, unknown> }
+      const session = sessions.find(item => item.id === input.sessionId)
+      if (!session) throw new FundingError('invalid_session', 404)
+      const updated = applyOnramperEvent(session, input.event, env.ONRAMPER_API_KEY?.trim() ?? '')
+      if (updated.transactionHash && sessions.some(item => item.id !== updated.id && item.transactionHash === updated.transactionHash)) throw new FundingError('transaction_mismatch', 409)
+      await storage.put('deposits', sessions.map(item => item.id === updated.id ? updated : item))
+      return json({ received: true })
+    }
     if (path === '/deposits/checkout' && request.method === 'POST') {
+      const provider = env.CARD_FUNDING_PROVIDER === 'moonpay' ? 'moonpay' : 'onramper'
+      const onramper = provider === 'onramper' ? await getOnramperCredentials(env) : null
+      const credentials = provider === 'moonpay' ? getMoonPayCredentials(env) : null
+      const mode = onramper?.mode ?? credentials!.mode
       const times = (await storage.get<number[]>('depositTimes') ?? []).filter(time => time > Date.now() - 60_000)
       if (times.length >= 3) throw new FundingError('rate_limited', 429)
-      const input = await request.json() as { sessionId?: string; walletAddress: string; amount: string; fiatCurrency: string; amountSelection?: 'moonpay'; customerId: string; ip: string; origin: string; theme: 'dark' | 'light' }
+      const input = await request.json() as { sessionId?: string; walletAddress: string; amount: string; fiatCurrency: string; amountSelection?: 'moonpay' | 'onramper'; customerId: string; ip: string; origin: string; theme: 'dark' | 'light' }
       let session = input.sessionId ? sessions.find(item => item.id === input.sessionId) : undefined
       if (input.sessionId && (!session || isDepositTerminal(session.status) || session.walletAddress.toLowerCase() !== input.walletAddress.toLowerCase()
-        || session.mode !== credentials.mode || (session.currencyCode ?? BSC_USDT.currencyCode) !== checkoutAsset(credentials.mode).currencyCode
+        || depositProvider(session) !== provider || session.mode !== mode || (session.currencyCode ?? BSC_USDT.currencyCode) !== checkoutAsset(mode, provider).currencyCode
         || session.customerId !== input.customerId)) throw new FundingError('invalid_session', 409)
       if (!session) {
         if (sessions.filter(item => !isDepositTerminal(item.status)).length >= 10) throw new FundingError('too_many_pending', 409)
         session = { id: crypto.randomUUID(), customerId: input.customerId, walletAddress: input.walletAddress, amount: input.amount, fiatCurrency: input.fiatCurrency,
-          mode: credentials.mode, currencyCode: checkoutAsset(credentials.mode).currencyCode,
-          ...(input.amountSelection === 'moonpay' ? { amountSelection: 'moonpay' as const } : {}),
+          mode, currencyCode: checkoutAsset(mode, provider).currencyCode,
+          ...(provider === 'onramper' ? { provider: 'onramper' as const, providerCryptoId: onramper!.cryptoId, amountSelection: 'onramper' as const }
+            : input.amountSelection === 'moonpay' ? { amountSelection: 'moonpay' as const } : {}),
           status: 'awaiting_payment', createdAt: new Date().toISOString(), checkedAt: null,
           transactionId: null, transactionHash: null, receivedAmount: null }
+        if (onramper) session.partnerContext = await createPartnerContext(request.headers.get('X-Privy-DID') ?? '', session.id, onramper.webhookSecret)
       }
-      const checkoutUrl = await createCheckoutUrl(credentials, session, input.origin, input.ip, input.theme)
+      const checkoutUrl = onramper ? await createOnramperCheckoutUrl(onramper, session, input.origin, input.theme)
+        : await createCheckoutUrl(credentials!, session, input.origin, input.ip, input.theme)
       if (!input.sessionId) {
         sessions.unshift(session)
         // Retain pending/expired sessions plus 20 finalized payment records.
@@ -129,7 +155,7 @@ export async function handleStoredDeposits(request: Request, env: FundingEnv, st
     const checkTimes = (await storage.get<number[]>('depositCheckTimes') ?? []).filter(time => time > Date.now() - 60_000)
     if (checkTimes.length >= 12) throw new FundingError('rate_limited', 429)
     await storage.put('depositCheckTimes', [...checkTimes, Date.now()])
-    const updated = await checkDeposit(session, credentials)
+    const updated = depositProvider(session) === 'onramper' ? await checkOnramperDeposit(session) : await checkDeposit(session, getMoonPayCredentials(env))
     await storage.put('deposits', sessions.map(item => item.id === updated.id ? updated : item))
     return json({ session: updated })
   } catch (error) {

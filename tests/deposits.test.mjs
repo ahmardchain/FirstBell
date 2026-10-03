@@ -12,7 +12,7 @@ after(() => { globalThis.fetch = originalFetch })
 const wallet = '0x1111111111111111111111111111111111111111'
 const otherWallet = '0x2222222222222222222222222222222222222222'
 const hash = `0x${'ab'.repeat(32)}`
-const env = { PRIVY_APP_ID: 'app-test', MOONPAY_ENVIRONMENT: 'live', MOONPAY_PUBLISHABLE_KEY: 'pk_live_fixture', MOONPAY_SECRET_KEY: 'sk_live_fixture' }
+const env = { CARD_FUNDING_PROVIDER: 'moonpay', PRIVY_APP_ID: 'app-test', MOONPAY_ENVIRONMENT: 'live', MOONPAY_PUBLISHABLE_KEY: 'pk_live_fixture', MOONPAY_SECRET_KEY: 'sk_live_fixture' }
 const session = { id: 'd228e63d-627e-4e3c-8dfb-b916a8950ff0', customerId: 'pseudonymous-user', walletAddress: wallet,
   amount: '50', fiatCurrency: 'usd', mode: 'live', status: 'awaiting_payment', createdAt: new Date().toISOString(),
   checkedAt: null, transactionId: null, transactionHash: null, receivedAmount: null }

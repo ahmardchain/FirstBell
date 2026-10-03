@@ -71,7 +71,7 @@ test('missing secret and upstream failures have fixed setup/error categories wit
 test('Vercel receives only verified access identity before a no-identity checkout lookup', async () => {
   const pair = await generateKeyPair('ES256'), appId = 'adapter-lookup-fixture'
   const env = { VERCEL: '1', PRIVY_APP_ID: appId, PRIVY_VERIFICATION_KEY: await exportSPKI(pair.publicKey), PRIVY_APP_SECRET: secret,
-    MOONPAY_ENVIRONMENT: 'sandbox', MOONPAY_PUBLISHABLE_KEY: 'pk_test_lookup_fixture', MOONPAY_SECRET_KEY: 'sk_test_lookup_fixture' }
+    CARD_FUNDING_PROVIDER: 'moonpay', MOONPAY_ENVIRONMENT: 'sandbox', MOONPAY_PUBLISHABLE_KEY: 'pk_test_lookup_fixture', MOONPAY_SECRET_KEY: 'sk_test_lookup_fixture' }
   let calls = 0
   globalThis.fetch = async (url, init) => {
     calls++

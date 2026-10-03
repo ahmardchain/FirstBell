@@ -34,6 +34,12 @@ export function createVercelHandler(environment: Record<string, string | undefin
       MOONPAY_PUBLISHABLE_KEY: environment.MOONPAY_PUBLISHABLE_KEY,
       MOONPAY_SECRET_KEY: environment.MOONPAY_SECRET_KEY,
       MOONPAY_ENVIRONMENT: environment.MOONPAY_ENVIRONMENT,
+      CARD_FUNDING_PROVIDER: environment.CARD_FUNDING_PROVIDER,
+      ONRAMPER_API_KEY: environment.ONRAMPER_API_KEY,
+      ONRAMPER_SIGNING_PRIVATE_KEY: environment.ONRAMPER_SIGNING_PRIVATE_KEY,
+      ONRAMPER_WEBHOOK_SECRET: environment.ONRAMPER_WEBHOOK_SECRET,
+      ONRAMPER_ENVIRONMENT: environment.ONRAMPER_ENVIRONMENT,
+      ONRAMPER_BSC_USDT_ID: environment.ONRAMPER_BSC_USDT_ID,
     }
     const env: ApiEnv = { ...config, ACCOUNTS: createAccountNamespace({ ...config,
       UPSTASH_REDIS_REST_URL: environment.UPSTASH_REDIS_REST_URL,

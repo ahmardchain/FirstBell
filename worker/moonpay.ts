@@ -3,6 +3,12 @@ import { bsc } from 'viem/chains'
 import { BSC_USDT, checkoutAsset, type DepositSession, type FiatOption, type FundingMode } from '../lib/funding.ts'
 
 export type FundingEnv = {
+  CARD_FUNDING_PROVIDER?: string
+  ONRAMPER_API_KEY?: string
+  ONRAMPER_SIGNING_PRIVATE_KEY?: string
+  ONRAMPER_WEBHOOK_SECRET?: string
+  ONRAMPER_ENVIRONMENT?: string
+  ONRAMPER_BSC_USDT_ID?: string
   MOONPAY_PUBLISHABLE_KEY?: string
   MOONPAY_SECRET_KEY?: string
   MOONPAY_ENVIRONMENT?: string

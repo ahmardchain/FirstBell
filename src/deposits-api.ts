@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { getIdentityToken, useIdentityToken } from '@privy-io/react-auth'
-import { checkoutAsset, sessionAsset, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding'
+import { checkoutAsset, depositProvider, isCheckoutUrl, sessionAsset, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding'
 import { WalletSessionError, withWalletSession } from '../lib/wallet-session'
 
 type GetAccessToken = () => Promise<string | null>
@@ -70,11 +70,12 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
 
   const selectedSession = sessions.find(session => session.id === selectedId)
   const matchesConfiguration = (session: DepositSession) => session.mode === config?.mode
-    && sessionAsset(session).currencyCode === checkoutAsset(config?.mode).currencyCode
+    && depositProvider(session) === (config?.provider ?? 'moonpay')
+    && sessionAsset(session).currencyCode === checkoutAsset(config?.mode, config?.provider).currencyCode
   const pendingId = selectedSession && matchesConfiguration(selectedSession) && (!isDepositTerminal(selectedSession.status) || selectedSession.status === 'expired')
     ? selectedSession.id : sessions.find(session => matchesConfiguration(session) && !isDepositTerminal(session.status))?.id
   React.useEffect(() => {
-    if (!pendingId || !address || !config?.ready) return
+    if (!pendingId || !address) return
     const abort = new AbortController()
     let running = false
     const poll = async () => {
@@ -105,8 +106,8 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
         })
       })
       if (activeAddress.current !== address) return
-      const url = new URL(result.checkoutUrl ?? '')
-      if (url.protocol !== 'https:' || !['buy.moonpay.com', 'buy-sandbox.moonpay.com'].includes(url.hostname)) throw new DepositRequestError('provider_unavailable')
+      if (!isCheckoutUrl(result.checkoutUrl ?? '', result.session)) throw new DepositRequestError('provider_unavailable')
+      const url = new URL(result.checkoutUrl!)
       setSessions(current => [result.session, ...current.filter(session => session.id !== result.session.id)])
       setSelectedId(result.session.id)
       // Same-tab navigation avoids blocked popups on mobile. Status is durable

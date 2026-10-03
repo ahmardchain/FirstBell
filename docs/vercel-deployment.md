@@ -1,6 +1,6 @@
 # Deploy FirstBell to Vercel
 
-The repository supports the full landing page and app on Vercel. Its Node API reuses FirstBell's Binance signing, market validation, Privy authentication and MoonPay handlers. Upstash Redis replaces Cloudflare Durable Objects for saved stocks, deposit sessions and account rate limits. Browser calls remain on the same origin under `/api/`.
+The repository supports the full landing page and app on Vercel. Its Node API reuses FirstBell's Binance signing, market validation, Privy authentication and card funding handlers. Upstash Redis replaces Cloudflare Durable Objects for saved stocks, deposit sessions and account rate limits. Browser calls remain on the same origin under `/api/`.
 
 The builder's separate diagnostic accepted both Binance NVDAon requests in `fra1` on 2026-10-02. The migration builds a self-contained API in `api/index.mjs` to avoid missing TypeScript imports in Vercel. Live Redis persistence still needs verification. Diagnostic acceptance does not establish usable live candles, account migration, a static outgoing IP or approval of every API operation.
 
@@ -38,9 +38,11 @@ Use **Project → Settings → Environment Variables**. Configure Production, an
 | `PRIVY_VERIFICATION_KEY` | Optional Privy dashboard **verification public key**, in PEM format. Valid keys verify locally; missing, stale or malformed keys use Privy's app-specific published keys. This is not the Privy App Secret. |
 | `UPSTASH_REDIS_REST_URL` | REST endpoint of your persistent Upstash Redis database; required for account features |
 | `UPSTASH_REDIS_REST_TOKEN` | Matching read/write REST token; server only |
-| `MOONPAY_PUBLISHABLE_KEY` | Optional test publishable key for sandbox card checkout |
-| `MOONPAY_SECRET_KEY` | Matching optional MoonPay test signing key |
-| `MOONPAY_ENVIRONMENT` | `sandbox` for the hackathon test checkout |
+| `ONRAMPER_API_KEY` | Matching Onramper `pk_test_…` or `pk_prod_…` publishable key |
+| `ONRAMPER_SIGNING_PRIVATE_KEY` | Ed25519 PKCS8 PEM; register its public key with Onramper |
+| `ONRAMPER_WEBHOOK_SECRET` | HMAC secret issued during webhook registration |
+| `ONRAMPER_BSC_USDT_ID` | Exact account-enabled BSC USDT Onramper ID |
+| `ONRAMPER_ENVIRONMENT` | `sandbox` or `live`, matching the API key |
 | `LEGACY_ACCOUNTS_ORIGIN` | Optional `https://firstbell.ahmardchain.workers.dev` to import existing account history; see step 3 before enabling the new app |
 | `ONDO_API_KEY` | Optional Ondo primary-market fallback and legacy indicative quote service; not needed for Binance charts |
 
@@ -66,7 +68,7 @@ If there are no account records to preserve, omit `LEGACY_ACCOUNTS_ORIGIN` and i
 
 Add your new Vercel deployment origin to the configured Privy app's allowed domains. Keep Google/email login enabled. For checkout and ownership checks, retain Privy's **Return user data in an identity token** setting and sign in again if you change it.
 
-If using MoonPay sandbox, add the new origin to the integration's allowed domains and enable Ethereum for test delivery. Existing test checkout is **ETH on Ethereum Sepolia**, separately labelled from the BSC portfolio; it does not deliver real BSC USDT. Production card checkout still depends on MoonPay approval and live integration configuration. Trading remains a read-only route check; deploying to Vercel does not implement stock order execution.
+Follow [Onramper activation](onramper-setup.md): register the application domain and V2 public key, confirm the BSC USDT ID, and register `/api/onramper/webhook`. Onramper sandbox is simulated and does not settle on any blockchain. Historical MoonPay test records remain separate. Production card checkout requires provider onboarding. Trading remains a read-only route check; deploying does not implement stock order execution.
 
 ## 5. Deploy and check the full app
 
@@ -76,7 +78,7 @@ Deploy the latest `main` commit with the root settings above. Use the new projec
 2. `/api/market/NVDAon?frame=15m` should return `status: "ready"` and `source: "binance-web3"`. Check that `priceUsd` is a positive number, `asOf` is current and `candles` contains valid OHLC rows. A ready response may contain only price or only candles; verify both before claiming that the chart is working.
 3. Open `/` and `/app/?tab=trade`. Confirm that styling loads and the Trade chart and price match the normalized API result. Test another timeframe and asset.
 4. Sign in with the same Privy identity. Verify the wallet address, save a stock, reload, and confirm that the saved choice persists. If importing, compare saved stocks and deposit history with the old site.
-5. If configured, run a clearly labelled MoonPay sandbox checkout and verify its returned session. Do not treat a mock test, test payment or accepted market request as a real stock purchase.
+5. If configured, run a clearly labelled Onramper sandbox checkout and verify its returned session. Do not treat a mock test, test payment or accepted market request as a real stock purchase.
 
 Record the new deployment URL, exact signed request times, provider codes, response validity, latency and account results in the [Developer Experience Report](developer-experience-report.md). Current code validation used mocked Binance/Redis requests and fixture JWTs; no new live full-app result is claimed.
 
@@ -87,7 +89,7 @@ Record the new deployment URL, exact signed request times, provider codes, respo
 | Diagnostic page still appears | Root Directory is still `server-test`, or an old deployment URL is open |
 | App works but `/api/*` serves HTML | Deploy the root `vercel.json` and verify the API function was built |
 | `account_not_configured` | Configure a valid Privy App ID matching the frontend and redeploy |
-| HTTP 401 on `/api/deposits/config` | The sign-in token was rejected before MoonPay. Check private `PRIVY_AUTH` logs, matching frontend/server App IDs and session expiry. A missing or stale PEM can fall back to Privy's published keys; wallet ownership remains required for checkout. |
+| HTTP 401 on `/api/deposits/config` | The sign-in token was rejected before the card provider. Check private `PRIVY_AUTH` logs, matching frontend/server App IDs and session expiry. A missing or stale PEM can fall back to Privy's published keys; wallet ownership remains required for checkout. |
 | `account_storage_not_configured` | Add the Redis REST URL/token pair and redeploy |
 | `account_storage_unavailable` | Check database availability, limits and write-token permissions in the provider console |
 | `account_import_unavailable` | Keep the exact original Worker reachable with its matching Privy configuration; do not disable import merely to create an empty account over existing history |

@@ -94,7 +94,7 @@ test('valid signed-in config request reaches MoonPay with no manually pasted ver
       { type: 'fiat', code: 'usd', name: 'US Dollar', minBuyAmount: 20, maxBuyAmount: 500 },
     ])
   }
-  const handler = createVercelHandler({ PRIVY_APP_ID: appId, MOONPAY_ENVIRONMENT: 'sandbox',
+  const handler = createVercelHandler({ PRIVY_APP_ID: appId, CARD_FUNDING_PROVIDER: 'moonpay', MOONPAY_ENVIRONMENT: 'sandbox',
     MOONPAY_PUBLISHABLE_KEY: 'pk_test_auth_fixture', MOONPAY_SECRET_KEY: 'sk_test_auth_fixture' })
   const request = token => new Request('https://firstbell.example/api/index?__fb_path=deposits/config', {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -112,7 +112,7 @@ test('sandbox checkout verifies access plus server wallet lookup or identity, pe
   const access = await keys('checkout-access'), identity = await keys('checkout-identity'), stale = await keys('old-key')
   const appId = 'full-checkout-fixture', origin = 'https://firstbell.example', ip = '203.0.113.42'
   const env = { VERCEL: '1', PRIVY_APP_ID: appId, PRIVY_APP_SECRET: 'fixture-app-secret', PRIVY_VERIFICATION_KEY: await exportSPKI(stale.publicKey),
-    MOONPAY_ENVIRONMENT: 'sandbox', MOONPAY_PUBLISHABLE_KEY: 'pk_test_full_checkout_fixture',
+    CARD_FUNDING_PROVIDER: 'moonpay', MOONPAY_ENVIRONMENT: 'sandbox', MOONPAY_PUBLISHABLE_KEY: 'pk_test_full_checkout_fixture',
     MOONPAY_SECRET_KEY: 'sk_test_full_checkout_fixture',
     UPSTASH_REDIS_REST_URL: 'https://checkout-fixture.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'fixture-redis-token' }
   const records = new Map(), commands = [], upstream = []
