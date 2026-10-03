@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHmac } from 'node:crypto'
 import { afterEach, test } from 'node:test'
 import { exportJWK, exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import { verifyPrivyToken } from '../worker/privy-auth.ts'
@@ -105,6 +106,113 @@ test('valid signed-in config request reaches MoonPay with no manually pasted ver
   assert.deepEqual(await response.json(), { ready: true, mode: 'sandbox', reason: null,
     fiatCurrencies: [{ code: 'usd', name: 'US Dollar', min: 20, max: 500 }] })
   assert.equal(calls.length, 2)
+})
+
+test('sandbox checkout verifies both Privy tokens, persists through Vercel instances and resumes only for its owner', async () => {
+  const access = await keys('checkout-access'), identity = await keys('checkout-identity'), stale = await keys('old-key')
+  const appId = 'full-checkout-fixture', origin = 'https://firstbell.example', ip = '203.0.113.42'
+  const env = { VERCEL: '1', PRIVY_APP_ID: appId, PRIVY_VERIFICATION_KEY: await exportSPKI(stale.publicKey),
+    MOONPAY_ENVIRONMENT: 'sandbox', MOONPAY_PUBLISHABLE_KEY: 'pk_test_full_checkout_fixture',
+    MOONPAY_SECRET_KEY: 'sk_test_full_checkout_fixture',
+    UPSTASH_REDIS_REST_URL: 'https://checkout-fixture.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'fixture-redis-token' }
+  const records = new Map(), commands = [], upstream = []
+  globalThis.fetch = async (url, init) => {
+    if (String(url) === env.UPSTASH_REDIS_REST_URL) {
+      assert.equal(init.method, 'POST'); assert.equal(init.redirect, 'error'); assert.ok(init.signal)
+      assert.equal(new Headers(init.headers).get('Authorization'), `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`)
+      const args = JSON.parse(init.body); commands.push(args)
+      assert.equal(args[0], 'EVAL'); assert.equal(args[2], 1)
+      const key = args[3]
+      if (args.length === 4) return Response.json({ result: records.get(key) ?? null })
+      assert.equal(args.length, 6)
+      assert.match(args[1], /redis.call\('GET'/); assert.match(args[1], /redis.call\('SET'/)
+      const same = (records.get(key) ?? '') === args[4]
+      if (same) records.set(key, args[5])
+      return Response.json({ result: same ? 1 : 0 })
+    }
+    upstream.push(String(url))
+    if (String(url) === `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`) {
+      assert.equal(init.redirect, 'manual')
+      return Response.json({ keys: [access.jwk, identity.jwk] })
+    }
+    const endpoint = new URL(url)
+    assert.equal(endpoint.origin, 'https://api.moonpay.com'); assert.equal(endpoint.pathname, '/v3/currencies')
+    assert.equal(endpoint.searchParams.get('show'), 'enabled')
+    assert.equal(endpoint.searchParams.get('apiKey'), env.MOONPAY_PUBLISHABLE_KEY)
+    return Response.json([
+      { type: 'crypto', code: 'eth', isSuspended: false, supportsTestMode: true,
+        metadata: { chainId: '1', networkCode: 'ethereum', contractAddress: '0x0000000000000000000000000000000000000000' } },
+      { type: 'fiat', code: 'usd', name: 'US Dollar', minBuyAmount: 20, maxBuyAmount: 500 },
+    ])
+  }
+  const accessToken = await sign(access, appId)
+  const identityToken = await sign(identity, appId, { linked_accounts: JSON.stringify([
+    { type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: wallet },
+  ]) })
+  const otherUser = 'did:privy:other456', otherAccess = await sign(access, appId, { sub: otherUser })
+  const otherIdentity = await sign(identity, appId, { sub: otherUser, linked_accounts: JSON.stringify([
+    { type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: wallet },
+  ]) })
+  const call = (path, input, changes = {}) => {
+    const headers = new Headers({ Authorization: `Bearer ${accessToken}`, 'privy-id-token': identityToken,
+      Origin: origin, 'Content-Type': 'application/json', 'x-vercel-forwarded-for': ip,
+      'CF-Connecting-IP': '198.51.100.5', 'True-Client-IP': '198.51.100.5' })
+    for (const [key, value] of Object.entries(changes)) value === null ? headers.delete(key) : headers.set(key, value)
+    // Each call creates a fresh server adapter; persistence must come from Redis.
+    return createVercelHandler(env)(new Request(`${origin}/api/index?__fb_path=${path}`, {
+      method: input ? 'POST' : 'GET', headers, ...(input ? { body: JSON.stringify(input) } : {}),
+    }))
+  }
+  assert.equal((await (await call('deposits/config')).json()).ready, true)
+  assert.equal(commands.length, 0, 'config does not initialize an account or a checkout')
+  const input = { walletAddress: wallet, amount: '50', fiatCurrency: 'usd', theme: 'dark' }
+  for (const [changes, body, status, reason] of [
+    [{ 'privy-id-token': null }, input, 403, 'wallet_not_verified'],
+    [{}, { ...input, walletAddress: '0x2222222222222222222222222222222222222222' }, 403, 'wallet_not_verified'],
+    [{ 'privy-id-token': otherIdentity }, input, 403, 'wallet_not_verified'],
+    [{ Origin: 'https://attacker.example' }, input, 403, 'invalid_origin'],
+    [{ 'x-vercel-forwarded-for': null }, input, 400, 'connection_unverified'],
+  ]) {
+    const rejected = await call('deposits/checkout', body, changes)
+    assert.equal(rejected.status, status); assert.deepEqual(await rejected.json(), { error: reason })
+  }
+  assert.equal(records.size, 0); assert.equal(commands.length, 0)
+  const response = await call('deposits/checkout', input)
+  assert.equal(response.status, 200); assert.equal(response.headers.get('Cache-Control'), 'no-store')
+  const checkout = await response.json(), session = checkout.session, url = new URL(checkout.checkoutUrl)
+  assert.equal(session.status, 'awaiting_payment'); assert.equal(session.mode, 'sandbox')
+  assert.equal(session.currencyCode, 'eth'); assert.equal(session.walletAddress, wallet)
+  assert.equal(session.amount, '50'); assert.equal(session.fiatCurrency, 'usd')
+  assert.equal(session.transactionHash, null); assert.equal(session.receivedAmount, null)
+  assert.equal(url.origin, 'https://buy-sandbox.moonpay.com')
+  const expected = { apiKey: env.MOONPAY_PUBLISHABLE_KEY, currencyCode: 'eth', walletAddress: wallet,
+    baseCurrencyCode: 'usd', baseCurrencyAmount: '50', lockAmount: 'true', paymentMethod: 'credit_debit_card',
+    externalTransactionId: session.id, externalCustomerId: session.customerId, theme: 'dark',
+    redirectURL: `${origin}/app/?tab=portfolio&deposit=${session.id}` }
+  for (const [key, value] of Object.entries(expected)) assert.equal(url.searchParams.get(key), value)
+  assert.notEqual(session.customerId, user)
+  const mac = value => createHmac('sha256', env.MOONPAY_SECRET_KEY).update(value).digest('base64')
+  assert.equal(url.searchParams.get('allowedIpAddress'), mac(ip), 'use the trusted Vercel IP, not supplied Cloudflare headers')
+  const signature = url.searchParams.get('signature'); url.searchParams.delete('signature')
+  assert.equal(signature, mac(url.search), 'sign the exact final query')
+  assert.equal(records.size, 1)
+  assert.deepEqual((await (await call('deposits')).json()).sessions, [session])
+  assert.deepEqual((await (await call('deposits', undefined, { Authorization: `Bearer ${otherAccess}` })).json()).sessions, [])
+  const stolen = await call('deposits/checkout', { ...input, sessionId: session.id }, {
+    Authorization: `Bearer ${otherAccess}`, 'privy-id-token': otherIdentity,
+  })
+  assert.equal(stolen.status, 409); assert.deepEqual(await stolen.json(), { error: 'invalid_session' })
+  const resumed = await call('deposits/checkout', { ...input, sessionId: session.id, amount: '99' })
+  assert.equal(resumed.status, 200)
+  const reopened = await resumed.json()
+  assert.deepEqual(reopened.session, session); assert.equal(reopened.checkoutUrl, checkout.checkoutUrl)
+  assert.deepEqual((await (await call('deposits')).json()).sessions, [session], 'resume does not duplicate the persisted session')
+  assert.equal(commands.filter(args => args.length === 6).length, 2, 'only create and owner resume write storage')
+  assert.equal(upstream.length, 2, 'one app JWKS fetch and one enabled-currency fetch; no payment or provider order')
+  const captured = JSON.stringify([checkout, reopened, ...records.values()])
+  for (const secret of [accessToken, identityToken, otherAccess, otherIdentity, env.MOONPAY_SECRET_KEY, env.UPSTASH_REDIS_REST_TOKEN]) {
+    assert.equal(captured.includes(secret), false)
+  }
 })
 
 test('redirected, malformed, oversized and unavailable key responses fail closed', async () => {
