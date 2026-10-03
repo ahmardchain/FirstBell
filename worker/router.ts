@@ -5,7 +5,7 @@ import { getRwaContext } from './binance-rwa.ts'
 import { binanceFailure } from './binance-api.ts'
 import { handleDepositRequest } from './deposits.ts'
 import { handleTradingRoute } from './trading.ts'
-import { handleOnramperWebhook } from './onramper.ts'
+import { getOnramperSetup, handleOnramperWebhook } from './onramper.ts'
 
 const maxBodyBytes = 512
 
@@ -51,8 +51,9 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
   if (!pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
   if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok',
     walletVerification: { serverLookupConfigured: Boolean(env.PRIVY_APP_SECRET?.trim()) },
-    cardFunding: { provider: env.CARD_FUNDING_PROVIDER === 'moonpay' ? 'moonpay' : 'onramper',
-      configured: Boolean(env.ONRAMPER_API_KEY?.trim() && env.ONRAMPER_SIGNING_PRIVATE_KEY?.trim() && env.ONRAMPER_WEBHOOK_SECRET?.trim() && env.ONRAMPER_BSC_USDT_ID?.trim()) } })
+    cardFunding: env.CARD_FUNDING_PROVIDER === 'moonpay'
+      ? { provider: 'moonpay', configured: Boolean(env.MOONPAY_PUBLISHABLE_KEY?.trim() && env.MOONPAY_SECRET_KEY?.trim()) }
+      : { provider: 'onramper', ...await getOnramperSetup(env) } })
   if (pathname === '/api/onramper/webhook') return handleOnramperWebhook(request, env)
   if (pathname === '/api/prices') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)

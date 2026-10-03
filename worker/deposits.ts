@@ -4,7 +4,7 @@ export { verifyWalletIdentity } from './wallet-verification.ts'
 import { isAddress } from 'viem'
 import { BSC_USDT, checkoutAsset, depositProvider, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding.ts'
 import { checkDeposit, createCheckoutUrl, customerIp, FundingError, getFiatOptions, getMoonPayCredentials, hmac, validateFiatAmount, type FundingEnv } from './moonpay.ts'
-import { applyOnramperEvent, checkOnramperDeposit, createOnramperCheckoutUrl, createPartnerContext, getOnramperCredentials } from './onramper.ts'
+import { applyOnramperEvent, checkOnramperDeposit, createOnramperCheckoutUrl, createPartnerContext, getOnramperCredentials, getOnramperMode } from './onramper.ts'
 
 type Store = {
   get<T>(key: string): Promise<T | undefined>
@@ -58,7 +58,7 @@ export async function handleDepositRequest(request: Request, env: Env, userId: s
         }
       } catch (error) {
         const legacy = env.CARD_FUNDING_PROVIDER === 'moonpay'
-        const mode = legacy ? env.MOONPAY_ENVIRONMENT : env.ONRAMPER_ENVIRONMENT
+        const mode = legacy ? env.MOONPAY_ENVIRONMENT : getOnramperMode(env)
         config = { ...(legacy ? {} : { provider: 'onramper' as const }), ready: false, mode: mode === 'live' ? 'live' : mode === 'sandbox' ? 'sandbox' : null,
           reason: error instanceof FundingError ? error.reason : 'provider_unavailable', fiatCurrencies: [] }
       }

@@ -15,14 +15,37 @@ const base64url = (value: Uint8Array) => base64(value).replace(/\+/g, '-').repla
 const decode = (value: string) => Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0))
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } })
 
+export function getOnramperMode(env: FundingEnv): FundingMode | null {
+  const declared = env.ONRAMPER_ENVIRONMENT?.trim()
+  if (declared === 'sandbox' || declared === 'live') return declared
+  if (declared) return null
+  // Test keys can only open the simulated .dev environment. Live use still
+  // requires an explicit environment choice; mismatched keys are rejected.
+  return env.ONRAMPER_API_KEY?.trim().startsWith('pk_test_') ? 'sandbox' : null
+}
+
+function missingConfiguration(env: FundingEnv): string[] {
+  const names = ['ONRAMPER_API_KEY', 'ONRAMPER_SIGNING_PRIVATE_KEY', 'ONRAMPER_WEBHOOK_SECRET', 'ONRAMPER_BSC_USDT_ID'] as const
+  const missing = names.filter(name => !env[name]?.trim()) as string[]
+  if (!env.ONRAMPER_ENVIRONMENT?.trim() && !getOnramperMode(env)) missing.push('ONRAMPER_ENVIRONMENT')
+  return missing
+}
+
+export async function getOnramperSetup(env: FundingEnv) {
+  let reason: string | null = null
+  try { await getOnramperCredentials(env) }
+  catch (error) { reason = error instanceof FundingError ? error.reason : 'invalid_configuration' }
+  return { mode: getOnramperMode(env), configured: reason === null, missing: missingConfiguration(env), reason }
+}
+
 // Onramper IDs are account catalog values, not MoonPay currency codes. Require
 // the exact USDT / BNB Smart Chain ID confirmed during partner onboarding.
 export async function getOnramperCredentials(env: FundingEnv): Promise<Credentials> {
   const apiKey = env.ONRAMPER_API_KEY?.trim(), pem = env.ONRAMPER_SIGNING_PRIVATE_KEY?.trim().replace(/\\n/g, '\n')
   const webhookSecret = env.ONRAMPER_WEBHOOK_SECRET?.trim(), cryptoId = env.ONRAMPER_BSC_USDT_ID?.trim()
-  if (!apiKey || !pem || !webhookSecret || !cryptoId) throw new FundingError('not_configured')
-  const mode = env.ONRAMPER_ENVIRONMENT
-  if (!['live', 'sandbox'].includes(mode ?? '') || !apiKey.startsWith(mode === 'live' ? 'pk_prod_' : 'pk_test_')
+  if (!apiKey || !pem || !webhookSecret || !cryptoId || missingConfiguration(env).length) throw new FundingError('not_configured')
+  const mode = getOnramperMode(env)
+  if (!mode || !apiKey.startsWith(mode === 'live' ? 'pk_prod_' : 'pk_test_')
     || !/^[a-z0-9][a-z0-9_-]{0,127}$/.test(cryptoId) || webhookSecret.length < 16) throw new FundingError('invalid_configuration')
   try {
     const privateKey = await importPKCS8(pem, 'EdDSA')

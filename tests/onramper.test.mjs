@@ -87,6 +87,38 @@ test('partner context hides the user and detects tampering or a different secret
   await assert.rejects(() => readPartnerContext(context, 'another-secret'), /invalid_webhook/)
 })
 
+test('test-key environment inference stays sandbox-only and rejects explicit live mismatches', async () => {
+  const inferred = { ...env, ONRAMPER_API_KEY: 'pk_test_fixture', ONRAMPER_ENVIRONMENT: undefined }
+  const credentials = await getOnramperCredentials(inferred)
+  assert.equal(credentials.mode, 'sandbox')
+  const url = new URL(await createOnramperCheckoutUrl(credentials, { ...session, mode: 'sandbox' }, 'https://firstbell.example', 'light'))
+  assert.equal(url.origin, 'https://buy.onramper.dev')
+  assert.equal(url.searchParams.get('onlyOnramps'), 'banxa')
+  await assert.rejects(() => getOnramperCredentials({ ...inferred, ONRAMPER_ENVIRONMENT: 'live' }), /invalid_configuration/)
+  await assert.rejects(() => getOnramperCredentials({ ...inferred, ONRAMPER_ENVIRONMENT: 'unknown' }), /invalid_configuration/)
+  await assert.rejects(() => getOnramperCredentials({ ...env, ONRAMPER_ENVIRONMENT: undefined }), /not_configured/)
+})
+
+test('setup diagnostics distinguish missing and invalid configuration without exposing credentials', async () => {
+  const request = () => new Request('https://firstbell.example/api/health')
+  const partial = { PRIVY_APP_ID: env.PRIVY_APP_ID, ONRAMPER_API_KEY: 'pk_test_sensitive_fixture', ONRAMPER_SIGNING_PRIVATE_KEY: privatePem }
+  const response = await handleApiRequest(request(), partial)
+  assert.equal(response.status, 200)
+  const text = await response.text(), result = JSON.parse(text)
+  assert.deepEqual(result.cardFunding, { provider: 'onramper', mode: 'sandbox', configured: false,
+    missing: ['ONRAMPER_WEBHOOK_SECRET', 'ONRAMPER_BSC_USDT_ID'], reason: 'not_configured' })
+  assert.equal(text.includes(partial.ONRAMPER_API_KEY), false)
+  assert.equal(text.includes('BEGIN PRIVATE KEY'), false)
+  const invalid = await (await handleApiRequest(request(), { ...env, ONRAMPER_SIGNING_PRIVATE_KEY: 'invalid-pem' })).json()
+  assert.equal(invalid.cardFunding.configured, false)
+  assert.deepEqual(invalid.cardFunding.missing, [])
+  assert.equal(invalid.cardFunding.reason, 'invalid_configuration')
+  const readyResponse = await handleApiRequest(request(), env), readyText = await readyResponse.text()
+  assert.equal(JSON.parse(readyText).cardFunding.configured, true)
+  for (const value of [env.ONRAMPER_API_KEY, env.ONRAMPER_WEBHOOK_SECRET, env.ONRAMPER_BSC_USDT_ID, privatePem])
+    assert.equal(readyText.includes(value), false)
+})
+
 test('verified provider updates pin order and fiat while rejecting wrong assets, recipients and contexts', () => {
   const first = applyOnramperEvent(session, event(), env.ONRAMPER_API_KEY)
   assert.equal(first.status, 'processing'); assert.equal(first.amount, '50'); assert.equal(first.fiatCurrency, 'usd')
