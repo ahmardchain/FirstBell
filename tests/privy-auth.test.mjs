@@ -108,10 +108,10 @@ test('valid signed-in config request reaches MoonPay with no manually pasted ver
   assert.equal(calls.length, 2)
 })
 
-test('sandbox checkout verifies both Privy tokens, persists through Vercel instances and resumes only for its owner', async () => {
+test('sandbox checkout verifies access plus server wallet lookup or identity, persists and resumes only for its owner', async () => {
   const access = await keys('checkout-access'), identity = await keys('checkout-identity'), stale = await keys('old-key')
   const appId = 'full-checkout-fixture', origin = 'https://firstbell.example', ip = '203.0.113.42'
-  const env = { VERCEL: '1', PRIVY_APP_ID: appId, PRIVY_VERIFICATION_KEY: await exportSPKI(stale.publicKey),
+  const env = { VERCEL: '1', PRIVY_APP_ID: appId, PRIVY_APP_SECRET: 'fixture-app-secret', PRIVY_VERIFICATION_KEY: await exportSPKI(stale.publicKey),
     MOONPAY_ENVIRONMENT: 'sandbox', MOONPAY_PUBLISHABLE_KEY: 'pk_test_full_checkout_fixture',
     MOONPAY_SECRET_KEY: 'sk_test_full_checkout_fixture',
     UPSTASH_REDIS_REST_URL: 'https://checkout-fixture.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'fixture-redis-token' }
@@ -136,6 +136,14 @@ test('sandbox checkout verifies both Privy tokens, persists through Vercel insta
       return Response.json({ keys: [access.jwk, identity.jwk] })
     }
     const endpoint = new URL(url)
+    if (endpoint.origin === 'https://api.privy.io') {
+      assert.equal(endpoint.pathname, `/v1/users/${encodeURIComponent(user)}`)
+      assert.equal(init.headers['privy-app-id'], appId)
+      assert.equal(init.headers.Authorization, `Basic ${Buffer.from(appId + ':' + env.PRIVY_APP_SECRET).toString('base64')}`)
+      return Response.json({ id: user, linked_accounts: [
+        { type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: wallet },
+      ] })
+    }
     assert.equal(endpoint.origin, 'https://api.moonpay.com'); assert.equal(endpoint.pathname, '/v3/currencies')
     assert.equal(endpoint.searchParams.get('show'), 'enabled')
     assert.equal(endpoint.searchParams.get('apiKey'), env.MOONPAY_PUBLISHABLE_KEY)
@@ -167,7 +175,7 @@ test('sandbox checkout verifies both Privy tokens, persists through Vercel insta
   assert.equal(commands.length, 0, 'config does not initialize an account or a checkout')
   const input = { walletAddress: wallet, theme: 'dark' }
   for (const [changes, body, status, reason] of [
-    [{ 'privy-id-token': null }, input, 403, 'wallet_not_verified'],
+    [{ 'privy-id-token': 'invalid-jwt' }, input, 403, 'wallet_not_verified'],
     [{}, { ...input, walletAddress: '0x2222222222222222222222222222222222222222' }, 403, 'wallet_not_verified'],
     [{ 'privy-id-token': otherIdentity }, input, 403, 'wallet_not_verified'],
     [{ Origin: 'https://attacker.example' }, input, 403, 'invalid_origin'],
@@ -177,7 +185,7 @@ test('sandbox checkout verifies both Privy tokens, persists through Vercel insta
     assert.equal(rejected.status, status); assert.deepEqual(await rejected.json(), { error: reason })
   }
   assert.equal(records.size, 0); assert.equal(commands.length, 0)
-  const response = await call('deposits/checkout', input)
+  const response = await call('deposits/checkout', input, { 'privy-id-token': null })
   assert.equal(response.status, 200); assert.equal(response.headers.get('Cache-Control'), 'no-store')
   const checkout = await response.json(), session = checkout.session, url = new URL(checkout.checkoutUrl)
   assert.equal(session.status, 'awaiting_payment'); assert.equal(session.mode, 'sandbox')
@@ -211,9 +219,9 @@ test('sandbox checkout verifies both Privy tokens, persists through Vercel insta
   assert.deepEqual(reopened.session, session); assert.equal(reopened.checkoutUrl, checkout.checkoutUrl)
   assert.deepEqual((await (await call('deposits')).json()).sessions, [session], 'resume does not duplicate the persisted session')
   assert.equal(commands.filter(args => args.length === 6).length, 2, 'only create and owner resume write storage')
-  assert.equal(upstream.length, 2, 'one app JWKS fetch and one enabled-currency fetch; no payment or provider order')
+  assert.equal(upstream.length, 3, 'one app JWKS fetch, one server wallet lookup and one currency fetch; no payment or order')
   const captured = JSON.stringify([checkout, reopened, ...records.values()])
-  for (const secret of [accessToken, identityToken, otherAccess, otherIdentity, env.MOONPAY_SECRET_KEY, env.UPSTASH_REDIS_REST_TOKEN]) {
+  for (const secret of [accessToken, identityToken, otherAccess, otherIdentity, env.PRIVY_APP_SECRET, env.MOONPAY_SECRET_KEY, env.UPSTASH_REDIS_REST_TOKEN]) {
     assert.equal(captured.includes(secret), false)
   }
 })

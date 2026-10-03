@@ -81,8 +81,11 @@ export async function getTradeQuote(symbol: string, side: 'buy' | 'sell', quanti
 
 export async function getTradingRoute(symbol: string, side: 'buy' | 'sell', amount: string, walletAddress: string,
   token: string, identityToken: string, signal: AbortSignal): Promise<TradingRoute> {
+  const timeout = AbortSignal.timeout(20_000)
+  const boundedSignal = AbortSignal.any([signal, timeout])
+  try {
   const response = await fetch('/api/trade/route', {
-    method: 'POST', cache: 'no-store', signal,
+    method: 'POST', cache: 'no-store', signal: boundedSignal,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'privy-id-token': identityToken },
     body: JSON.stringify({ symbol, side, amount, walletAddress }),
   })
@@ -96,4 +99,8 @@ export async function getTradingRoute(symbol: string, side: 'buy' | 'sell', amou
     || typeof route.outputAmount !== 'string' || !/^\d+(?:\.\d+)?$/.test(route.outputAmount)
     || typeof route.vendor !== 'string' || !Number.isFinite(Date.parse(route.refreshAt))) throw new Error('invalid_provider_response')
   return route
+  } catch (error) {
+    if (timeout.aborted && !signal.aborted) throw new Error('quote_timeout')
+    throw error
+  }
 }

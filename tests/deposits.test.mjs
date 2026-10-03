@@ -257,7 +257,9 @@ test('route rejects cross-origin checkout, unverified wallet and an oversized st
   const make = (input, origin = 'https://firstbell.example') => new Request('https://firstbell.example/api/deposits/checkout', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(input) })
   assert.equal((await handleDepositRequest(make({}, 'https://attacker.example'), routeEnv, 'did:privy:fixture123')).status, 403)
-  assert.equal((await handleDepositRequest(make({ walletAddress: wallet }), routeEnv, 'did:privy:fixture123')).status, 403)
+  const missingProof = await handleDepositRequest(make({ walletAddress: wallet }), routeEnv, 'did:privy:fixture123')
+  assert.equal(missingProof.status, 503)
+  assert.deepEqual(await missingProof.json(), { error: 'wallet_verification_not_configured' })
   assert.equal((await handleDepositRequest(make({ padding: 'x'.repeat(2000) }), routeEnv, 'did:privy:fixture123')).status, 413)
 })
 

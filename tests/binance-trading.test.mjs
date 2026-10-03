@@ -139,7 +139,9 @@ test('HTTP route checks require same origin, small valid input, ownership proof 
   assert.equal((await check({ ...input, extra: 'x'.repeat(600) })).status, 413)
   assert.equal((await check({ ...input, amount: '1e3' })).status, 400)
   assert.equal((await check({ ...input, walletAddress: other })).status, 403)
-  assert.equal((await check(input, { 'privy-id-token': '' })).status, 403)
+  const missingProof = await check(input, { 'privy-id-token': '' })
+  assert.equal(missingProof.status, 503)
+  assert.deepEqual(await missingProof.json(), { error: 'wallet_verification_not_configured' })
   assert.equal(rateCalls, 0)
   limited = true
   const limitedResponse = await check()
@@ -149,6 +151,8 @@ test('HTTP route checks require same origin, small valid input, ownership proof 
   limited = false
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url)
+    if (parsed.hostname === 'api.privy.io') return Response.json({ id: userId,
+      linked_accounts: [{ type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: wallet }] })
     if (parsed.hostname === 'bsc-dataseed.bnbchain.org') {
       const input = JSON.parse(options.body)
       return Response.json(Array.isArray(input) ? input.map(item => rpcResult(item)) : rpcResult(input))
@@ -160,4 +164,9 @@ test('HTTP route checks require same origin, small valid input, ownership proof 
   assert.equal(ready.headers.get('Cache-Control'), 'no-store')
   assert.equal((await ready.json()).route.executable, false)
   assert.equal(rateCalls, 2)
+  env.PRIVY_APP_SECRET = 'fixture-server-secret'
+  const noIdentity = await check(input, { 'privy-id-token': '' })
+  assert.equal(noIdentity.status, 200)
+  assert.equal((await noIdentity.json()).route.outputAmount, '0.025')
+  assert.equal(rateCalls, 3)
 })

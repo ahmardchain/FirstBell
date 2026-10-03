@@ -7,6 +7,7 @@ export type FundingEnv = {
   MOONPAY_SECRET_KEY?: string
   MOONPAY_ENVIRONMENT?: string
   PRIVY_APP_ID: string
+  PRIVY_APP_SECRET?: string
   PRIVY_VERIFICATION_KEY?: string
 }
 export type MoonPayCredentials = { publishableKey: string; secretKey: string; mode: FundingMode }

@@ -1,11 +1,11 @@
 import type { AccountNamespace } from './env.ts'
 import { isAddress } from 'viem'
 import { getTradingRoute, RouteError } from './binance-trading.ts'
-import { verifyWalletIdentity } from './deposits.ts'
+import { verifyWalletIdentity, WalletVerificationError } from './wallet-verification.ts'
 import { isSymbol, parseQuantity } from './market.ts'
 
 type Env = {
-  PRIVY_APP_ID: string; PRIVY_VERIFICATION_KEY?: string
+  PRIVY_APP_ID: string; PRIVY_VERIFICATION_KEY?: string; PRIVY_APP_SECRET?: string
   BINANCE_WEB3_API_KEY?: string; BINANCE_WEB3_SECRET_KEY?: string
   ACCOUNTS: AccountNamespace
 }
@@ -48,6 +48,7 @@ export async function handleTradingRoute(request: Request, env: Env, userId: str
       { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY })
     return json({ route })
   } catch (error) {
+    if (error instanceof WalletVerificationError) return json({ error: error.message }, error.status)
     return json({ error: error instanceof RouteError ? error.reason : 'provider_error' }, error instanceof RouteError ? error.status : 503)
   }
 }

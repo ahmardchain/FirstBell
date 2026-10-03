@@ -27,6 +27,7 @@ export function createVercelHandler(environment: Record<string, string | undefin
     const config: Omit<ApiEnv, 'ACCOUNTS'> = {
       PRIVY_APP_ID: environment.PRIVY_APP_ID?.trim() || environment.VITE_PRIVY_APP_ID?.trim() || 'cmun7bqhg00070ck6mdyqp888',
       PRIVY_VERIFICATION_KEY: environment.PRIVY_VERIFICATION_KEY,
+      PRIVY_APP_SECRET: environment.PRIVY_APP_SECRET,
       BINANCE_WEB3_API_KEY: environment.BINANCE_WEB3_API_KEY,
       BINANCE_WEB3_SECRET_KEY: environment.BINANCE_WEB3_SECRET_KEY,
       ONDO_API_KEY: environment.ONDO_API_KEY,

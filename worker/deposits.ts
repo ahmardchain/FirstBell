@@ -1,5 +1,6 @@
 import type { AccountNamespace } from './env.ts'
-import { verifyPrivyToken } from './privy-auth.ts'
+import { verifyWalletIdentity, WalletVerificationError } from './wallet-verification.ts'
+export { verifyWalletIdentity } from './wallet-verification.ts'
 import { isAddress } from 'viem'
 import { BSC_USDT, checkoutAsset, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding.ts'
 import { checkDeposit, createCheckoutUrl, customerIp, FundingError, getFiatOptions, getMoonPayCredentials, hmac, validateFiatAmount, type FundingEnv } from './moonpay.ts'
@@ -11,18 +12,6 @@ type Store = {
 type Env = FundingEnv & { ACCOUNTS: AccountNamespace }
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
 const validId = (value: string) => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value)
-
-export async function verifyWalletIdentity(token: string | null, env: FundingEnv, userId: string, address: string): Promise<boolean> {
-  if (!token || !isAddress(address)) return false
-  try {
-    const payload = await verifyPrivyToken(token, env)
-    if (!payload || payload.sub !== userId || typeof payload.linked_accounts !== 'string') return false
-    const accounts: unknown = JSON.parse(payload.linked_accounts)
-    return Array.isArray(accounts) && accounts.some(account => account && account.type === 'wallet'
-      && account.chain_type === 'ethereum' && ['privy', 'privy_v2'].includes(account.wallet_client_type)
-      && typeof account.address === 'string' && account.address.toLowerCase() === address.toLowerCase())
-  } catch { return false }
-}
 
 async function body(request: Request): Promise<Record<string, unknown>> {
   if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new FundingError('invalid_request', 400)
@@ -92,6 +81,7 @@ export async function handleDepositRequest(request: Request, env: Env, userId: s
         origin: url.origin, theme: input.theme === 'dark' ? 'dark' : 'light' }),
     }))
   } catch (error) {
+    if (error instanceof WalletVerificationError) return json({ error: error.message }, error.status)
     return json({ error: error instanceof FundingError ? error.reason : 'provider_unavailable' }, error instanceof FundingError ? error.status : 503)
   }
 }

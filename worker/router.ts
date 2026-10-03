@@ -48,7 +48,8 @@ async function getUserId(request: Request, env: ApiEnv): Promise<string | null> 
 export async function handleApiRequest(request: Request, env: ApiEnv): Promise<Response> {
   const pathname = new URL(request.url).pathname
   if (!pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
-  if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok' })
+  if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok',
+    walletVerification: { serverLookupConfigured: Boolean(env.PRIVY_APP_SECRET?.trim()) } })
   if (pathname === '/api/prices') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
     const symbols = new URL(request.url).searchParams.get('symbols')?.split(',') ?? []

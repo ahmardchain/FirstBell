@@ -11,7 +11,9 @@ const copy = {
     unavailable: 'MoonPay could not be opened. Please try again.', retry: 'Try again',
     verify: 'Your wallet could not be verified. Sign in again and retry.',
     session: 'Your sign-in session could not be verified. Refresh the page and try again.',
-    identity: 'Wallet verification is being connected. Please try again later.',
+    identity: 'Wallet verification needs to be enabled for this app.',
+    verificationUnavailable: 'Wallet verification is temporarily unavailable. Please try again.',
+    timeout: 'This request took too long. Please try again.',
     connection: 'Your connection could not be verified. Reopen MoonPay on the same network.',
     limited: 'Please wait a minute before opening another checkout.',
     check: 'Check status', checking: 'Checking…', resume: 'Open MoonPay', opening: 'Opening MoonPay…',
@@ -25,7 +27,7 @@ const copy = {
   zh: {
     setup: 'MoonPay 正在接入，请稍后重试。', unavailable: '无法打开 MoonPay，请重试。', retry: '重试',
     verify: '无法验证你的钱包，请重新登录后重试。', session: '无法验证登录状态，请刷新页面后重试。',
-    identity: '钱包验证正在接入，请稍后重试。', connection: '无法验证网络连接，请在同一网络上重新打开 MoonPay。',
+    identity: '此应用需要启用钱包验证。', verificationUnavailable: '钱包验证暂不可用，请重试。', timeout: '请求超时，请重试。', connection: '无法验证网络连接，请在同一网络上重新打开 MoonPay。',
     limited: '请等待一分钟后再打开支付页面。', check: '查看状态', checking: '正在检查…', resume: '打开 MoonPay', opening: '正在打开 MoonPay…',
     loading: '正在加载活动…', receipt: '查看凭证', changed: '此支付页面已不可用。',
     waiting: '请在 MoonPay 完成支付。', processing: 'MoonPay 正在处理支付。', confirming: '正在确认转账。',
@@ -37,7 +39,9 @@ const copy = {
 export function depositErrorMessage(reason: string | null | undefined, language: Language) {
   const t = copy[language]
   if (['not_configured', 'invalid_configuration', 'account_not_configured', 'sandbox_asset_unavailable', 'asset_unavailable'].includes(reason ?? '')) return t.setup
-  if (reason === 'identity_token_unavailable') return t.identity
+  if (['identity_token_unavailable', 'wallet_verification_not_configured'].includes(reason ?? '')) return t.identity
+  if (reason === 'wallet_verification_unavailable') return t.verificationUnavailable
+  if (['session_timeout', 'checkout_timeout'].includes(reason ?? '')) return t.timeout
   if (['unauthorized', 'session_unavailable', 'session_refresh_failed'].includes(reason ?? '')) return t.session
   if (reason === 'wallet_not_verified') return t.verify
   if (['connection_unverified', 'https_required'].includes(reason ?? '')) return t.connection

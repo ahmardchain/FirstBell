@@ -11,6 +11,7 @@ export interface AccountNamespace {
 export interface ApiEnv {
   ACCOUNTS: AccountNamespace
   PRIVY_APP_ID: string
+  PRIVY_APP_SECRET?: string
   PRIVY_VERIFICATION_KEY?: string
   ONDO_API_KEY?: string
   BINANCE_WEB3_API_KEY?: string

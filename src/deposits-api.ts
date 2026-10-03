@@ -93,13 +93,14 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
   const checkout = async (sessionId?: string) => {
     if (!address || busy) return
     setBusy(true); setError(null)
+    const timeout = AbortSignal.timeout(20_000)
     try {
       if (config && !config.ready) throw new DepositRequestError(config.reason ?? 'provider_unavailable')
       const result = await withWalletSession({ getAccessToken, getIdentityToken: () => identity.current,
         refreshIdentityToken: getIdentityToken }, ({ accessToken, identityToken: proof }) => {
         if (activeAddress.current !== address) throw new DepositRequestError('unauthorized')
         return request<DepositResponse>('/api/deposits/checkout', async () => accessToken, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'privy-id-token': proof },
+          method: 'POST', signal: timeout, headers: { 'Content-Type': 'application/json', 'privy-id-token': proof },
           body: JSON.stringify({ walletAddress: address, sessionId, theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light' }),
         })
       })
@@ -112,7 +113,8 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
       // and redirectURL returns to the authenticated Portfolio screen.
       window.location.assign(url.toString())
     } catch (reason) {
-      if (activeAddress.current === address) setError(reason instanceof DepositRequestError || reason instanceof WalletSessionError ? reason.message : 'provider_unavailable')
+      if (activeAddress.current === address) setError(timeout.aborted ? 'checkout_timeout'
+        : reason instanceof DepositRequestError || reason instanceof WalletSessionError ? reason.message : 'provider_unavailable')
     } finally { if (activeAddress.current === address) setBusy(false) }
   }
 
