@@ -1,13 +1,8 @@
 // Market data is read-only. Ondo primary-market and GeckoTerminal DEX pool prices
 // are deliberately labeled separately; neither is an executable order price.
 import { BinanceApiError, binanceFailure, signedBinanceRequest, type BinanceCredentials } from './binance-api.ts'
-export const assets = {
-  AAPLon: '0x390a684EF9cADE28A7AD0DFa61AB1Eb3842618c4',
-  TSLAon: '0x2494b603319d4D9F9715c9f4496d9E0364B59d93',
-  NVDAon: '0xA9eE28C80f960B889dFbd1902055218cBa016F75',
-  MSFTon: '0x6Bfe75D1ad432050eA973C3A3DcD88F02e2444C3',
-  AMZNon: '0x4553cFe1C09f37f38b12dC509F676964e392F8Fc',
-} as const
+import { tokenAddresses } from '../lib/asset-catalog.ts'
+export const assets = tokenAddresses
 
 export type Symbol = keyof typeof assets
 export type Frame = '15m' | '1h' | '4h' | '1D'
@@ -40,6 +35,42 @@ const positive = (value: unknown): number | null => {
 }
 const record = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+
+export type TokenPrice = { symbol: Symbol; priceUsd: number | null; change24hPct: number | null; asOf: string | null }
+const priceBatches = new Map<string, { until: number; data: TokenPrice[] }>()
+const pendingPriceBatches = new Map<string, Promise<TokenPrice[]>>()
+
+// The documented trading-info endpoint accepts up to 100 exact token contracts.
+// Home needs prices, not hundreds of separate chart-history requests.
+export async function tokenPrices(symbols: Symbol[], credentials: BinanceCredentials): Promise<TokenPrice[]> {
+  if (!symbols.length || symbols.length > 100 || symbols.some(symbol => !isSymbol(symbol))) throw new Error('Invalid token batch')
+  const unique = [...new Set(symbols)]
+  const key = `${credentials.apiKey}:${unique.slice().sort().join(',')}`
+  const cached = priceBatches.get(key)
+  if (cached && cached.until > Date.now()) return cached.data
+  const pending = pendingPriceBatches.get(key)
+  if (pending) return pending
+  const read = async () => {
+    const result = await signedBinanceRequest('POST', '/api/v1/dex/market/price-info', {}, credentials,
+      JSON.stringify(unique.map(symbol => ({ binanceChainId: '56', tokenContractAddress: assets[symbol] }))))
+    if (!Array.isArray(result.data)) throw new BinanceApiError('provider_error')
+    const records = result.data.map(record)
+    const data = unique.map(symbol => {
+      const exact = records.find(item => item && String(item.binanceChainId) === '56'
+        && typeof item.tokenContractAddress === 'string' && item.tokenContractAddress.toLowerCase() === assets[symbol].toLowerCase())
+      const at = finite(exact?.time)
+      const price = at !== null && at >= 1_500_000_000_000 && at <= Date.now() + 120_000 ? positive(exact?.price) : null
+      return { symbol, priceUsd: price, change24hPct: price !== null ? finite(exact?.priceChange24H) : null,
+        asOf: price !== null ? new Date(at!).toISOString() : null }
+    })
+    if (priceBatches.size >= 40) priceBatches.delete(priceBatches.keys().next().value!)
+    priceBatches.set(key, { until: Date.now() + 30_000, data })
+    return data
+  }
+  const task = read().finally(() => pendingPriceBatches.delete(key))
+  pendingPriceBatches.set(key, task)
+  return task
+}
 
 function candle(t: unknown, open: unknown, high: unknown, low: unknown, close: unknown, volume: unknown): Candle | null {
   const timestamp = finite(t), o = positive(open), h = positive(high), l = positive(low), c = positive(close)

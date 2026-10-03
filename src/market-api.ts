@@ -8,6 +8,27 @@ export type MarketData = {
   priceUsd: number | null; change24hPct: number | null; asOf: string; candles: Candle[];
   historyError?: { reason: MarketFailure; httpStatus?: number; providerCode?: number };
 }
+
+export type TokenPrice = { symbol: string; priceUsd: number | null; change24hPct: number | null; asOf: string | null }
+export async function getTokenPrices(symbols: string[], signal?: AbortSignal): Promise<TokenPrice[]> {
+  if (!symbols.length) return []
+  if (symbols.length > 100) throw new Error('Too many tokens')
+  const response = await fetch(`/api/prices?symbols=${encodeURIComponent(symbols.join(','))}`, { signal })
+  if (!response.ok) throw new Error('Token prices unavailable')
+  const raw: unknown = await response.json()
+  const body = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null
+  if (body?.status !== 'ready' || !Array.isArray(body.prices)) throw new Error('Invalid token prices')
+  const rows = body.prices as Partial<TokenPrice>[]
+  return symbols.map(symbol => {
+    const row = rows.find(item => item?.symbol === symbol)
+    const at = typeof row?.asOf === 'string' ? Date.parse(row.asOf) : NaN
+    const price = Number.isFinite(at) && at >= 1_500_000_000_000 && at <= Date.now() + 120_000
+      && typeof row?.priceUsd === 'number' && Number.isFinite(row.priceUsd) && row.priceUsd > 0 ? row.priceUsd : null
+    return { symbol, priceUsd: price,
+      change24hPct: price !== null && typeof row?.change24hPct === 'number' && Number.isFinite(row.change24hPct) ? row.change24hPct : null,
+      asOf: price !== null ? row!.asOf! : null }
+  })
+}
 export type MarketFailure = 'provider_auth_error' | 'rate_limited' | 'provider_error'
 export class MarketRequestError extends Error {
   reason: MarketFailure

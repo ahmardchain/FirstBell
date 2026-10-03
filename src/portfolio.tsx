@@ -4,14 +4,14 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, Eye, EyeOff, Pencil, Search } from 'lucide-react'
 import { displayQuantity, readWalletBalances, type WalletBalances } from './wallet-balances'
 import { PRIVY_APP_ID } from './privy-config'
-import { getMarket } from './market-api'
+import { getTokenPrices } from './market-api'
 import { useDeposits, type DepositController } from './deposits-api'
 import { DepositHistory, DepositPage } from './deposit'
 import { portfolioAvatar } from '../lib/portfolio-avatar'
+import { assetLogo, tokenLogoError, type CatalogAsset as Asset } from '../lib/asset-catalog'
 import './portfolio.css'
 
 type Language = 'en' | 'zh'
-type Asset = { symbol: string; company: string; mark: string; address: string; name: string; chainId: number; source: string; file: string }
 type Props = { assets: Asset[]; language: Language; onInspect: (asset: Asset) => void }
 type Account = {
   configured: boolean; ready: boolean; authenticated: boolean; email?: string; address?: string;
@@ -107,14 +107,16 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 15_000)
     setPrices({})
-    void Promise.allSettled((account.balances?.tokens ?? []).filter(token => token.raw > 0n).map(async token => {
-      let price: number | null = null
-      try {
-        const result = await getMarket(token.symbol, '15m', controller.signal)
-        if (result?.priceUsd != null && Number.isFinite(result.priceUsd) && result.priceUsd > 0) price = result.priceUsd
-      } catch { /* Missing prices must never become a zero valuation. */ }
-      if (active) setPrices(current => ({ ...current, [token.symbol]: price }))
-    })).finally(() => window.clearTimeout(timeout))
+    const symbols = (account.balances?.tokens ?? []).filter(token => token.raw > 0n).map(token => token.symbol)
+    void (async () => {
+      for (let start = 0; start < symbols.length && !controller.signal.aborted; start += 100) {
+        const batch = symbols.slice(start, start + 100)
+        let values: Record<string, number | null>
+        try { values = Object.fromEntries((await getTokenPrices(batch, controller.signal)).map(item => [item.symbol, item.priceUsd])) }
+        catch { values = Object.fromEntries(batch.map(symbol => [symbol, null])) }
+        if (active) setPrices(current => ({ ...current, ...values }))
+      }
+    })().finally(() => window.clearTimeout(timeout))
     return () => { active = false; controller.abort(); window.clearTimeout(timeout) }
   }, [account.balances])
   React.useEffect(() => {
@@ -178,7 +180,7 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
         <div className="portfolio-tabs" role="tablist" aria-label={t.title}>{(['positions', 'activity'] as const).map(id => <button type="button" role="tab" id={`portfolio-tab-${id}`} aria-controls="portfolio-results" key={id} aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => { setSection(id); setSearch('') }}>{t[id]}</button>)}</div>
         <label className="portfolio-search"><Search size={20} strokeWidth={2} /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
         <div id="portfolio-results" role="tabpanel" aria-labelledby={`portfolio-tab-${section}`}>
-          {section === 'activity' && account.deposits ? <DepositHistory controller={account.deposits} language={language} search={search} onOpen={openDeposit} /> : section === 'positions' && positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <button type="button" className="portfolio-position-row" key={asset.symbol} onClick={() => onInspect(asset)}><img className={`brand-mark brand-mark--${asset.mark}`} src={`/assets/marks/${asset.mark}.svg`} alt="" /><span><strong>{asset.symbol}</strong><small>{asset.company}</small></span><strong>{hidden ? '••••' : displayQuantity(quantity)}</strong></button>)}</div>
+          {section === 'activity' && account.deposits ? <DepositHistory controller={account.deposits} language={language} search={search} onOpen={openDeposit} /> : section === 'positions' && positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <button type="button" className="portfolio-position-row" key={asset.symbol} onClick={() => onInspect(asset)}><img className={`brand-mark brand-mark--${asset.mark}`} src={assetLogo(asset)} alt="" loading="lazy" onError={tokenLogoError} /><span><strong>{asset.symbol}</strong><small>{asset.company}</small></span><strong>{hidden ? '••••' : displayQuantity(quantity)}</strong></button>)}</div>
             : <div className="portfolio-content-empty" role="status">{section === 'positions' ? account.error ? t.error : account.loading || !account.address ? t.loading : t.noPositions : t.noActivity}</div>}
         </div>
       </motion.div>}

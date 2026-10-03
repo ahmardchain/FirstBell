@@ -1,22 +1,14 @@
 import * as React from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { getIdentityToken, usePrivy, useUser, useWallets } from '@privy-io/react-auth'
-import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, X } from 'lucide-react'
+import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, Search, X } from 'lucide-react'
+import { assetLogo, tokenLogoError, type CatalogAsset } from '../lib/asset-catalog'
 import { MarketChart } from '@/components/spectrumui/charts/market-chart'
 import { getMarket, getRwa, getTradingRoute, MarketRequestError, type MarketData, type MarketFailure, type RwaContext, type Timeframe, type TradingRoute } from './market-api'
 import { displayQuantity } from './wallet-balances'
 import './trade.css'
 
-export type TradeAsset = {
-  symbol: string
-  company: string
-  mark: string
-  address: string
-  chainId: number
-  name: string
-  source: string
-  file: string
-}
+export type TradeAsset = CatalogAsset
 
 type Side = 'buy' | 'sell'
 type Language = 'en' | 'zh'
@@ -46,7 +38,7 @@ const words = {
       provider_auth_error: 'Trading provider access needs to be checked.', rate_limited: 'Please wait a minute before checking another route.', stale_quote: 'The quote expired. Check the route again.' },
     rwaSource: 'BINANCE WEB3 / RWA DATA', rwaPrice: 'On-chain token price', rwaReference: 'Per-share reference', rwaSession: 'Underlying market', rwaPending: 'Binance Web3 API setup pending', rwaUnavailable: 'Binance RWA data unavailable', rwaAssetMissing: 'This asset is not verified in the Binance RWA response', rwaLoading: 'Loading RWA data', rwaNoSession: 'Market status unavailable', rwaNextOpen: 'Next open',
     rwaNote: 'The reference is a per-share conversion derived from the token price, not an official stock exchange quote or a trade fill.',
-    close: 'Close trade sheet', choose: 'Choose a tokenized equity',
+    close: 'Close trade sheet', choose: 'Choose a token', search: 'Search name or token', noTokens: 'No tokens found.',
   },
   zh: {
     label: 'FIRSTBELL / 交易', chart: '图表', market: '市场 / BNB 智能链',
@@ -72,14 +64,14 @@ const words = {
       provider_auth_error: '需要检查交易服务的访问配置。', rate_limited: '请等待一分钟后再次检查路线。', stale_quote: '报价已过期，请重新检查路线。' },
     rwaSource: 'BINANCE WEB3 / RWA 数据', rwaPrice: '链上代币价格', rwaReference: '每股参考价', rwaSession: '标的市场', rwaPending: 'Binance Web3 API 待配置', rwaUnavailable: 'Binance RWA 数据暂不可用', rwaAssetMissing: 'Binance RWA 响应中未核实此资产', rwaLoading: '正在加载 RWA 数据', rwaNoSession: '市场状态暂不可用', rwaNextOpen: '下次开市',
     rwaNote: '参考价由代币价格换算为每股价格，并非证券交易所官方报价或成交价。',
-    close: '关闭交易面板', choose: '选择代币化股票',
+    close: '关闭交易面板', choose: '选择代币', search: '搜索名称或代币', noTokens: '没有找到代币。',
   },
 }
 
 const sourceHref = (asset: TradeAsset) => `https://bscscan.com/token/${asset.address}`
 
 function TokenMark({ asset }: { asset: TradeAsset }) {
-  return <img src={`/assets/marks/${asset.mark}.svg`} className={`brand-mark brand-mark--${asset.mark}`} alt="" />
+  return <img src={assetLogo(asset)} className={`brand-mark brand-mark--${asset.mark}`} alt="" loading="lazy" onError={tokenLogoError} />
 }
 
 export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, language, initialSide = null }: {
@@ -92,6 +84,8 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
 }) {
   const t = words[language]
   const [selectorOpen, setSelectorOpen] = React.useState(false)
+  const [selectorQuery, setSelectorQuery] = React.useState('')
+  const matchingAssets = assets.filter(candidate => `${candidate.company} ${candidate.symbol}`.toLowerCase().includes(selectorQuery.trim().toLowerCase()))
   const reduceMotion = useReducedMotion()
   const [side, setSide] = React.useState<Side | null>(initialSide)
   const [amount, setAmount] = React.useState('')
@@ -248,8 +242,9 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <button type="button" className="trade-asset-trigger" onClick={() => setSelectorOpen(value => !value)} aria-expanded={selectorOpen} aria-controls="trade-asset-menu" aria-label={t.select}>
           <TokenMark asset={asset} /><span><strong id="trade-heading">{asset.symbol}</strong><small>{asset.company} · Ondo</small></span><ChevronDown size={20} aria-hidden="true" />
         </button>
-        <AnimatePresence>{selectorOpen && <motion.div id="trade-asset-menu" role="listbox" aria-label={t.choose} className="trade-asset-menu" initial={reduceMotion ? false : { opacity: 0, scale: .97, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .99, y: -4 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
-          {assets.map(candidate => <button type="button" role="option" aria-selected={asset.symbol === candidate.symbol} key={candidate.symbol} onClick={() => { onAssetChange(candidate); setSelectorOpen(false) }}><TokenMark asset={candidate} /><span><strong>{candidate.symbol}</strong><small>{candidate.company}</small></span>{candidate.symbol === asset.symbol && <Check size={17} />}</button>)}
+        <AnimatePresence>{selectorOpen && <motion.div id="trade-asset-menu" className="trade-asset-menu" initial={reduceMotion ? false : { opacity: 0, scale: .97, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .99, y: -4 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
+          <label className="trade-token-search"><Search size={16} /><input type="search" value={selectorQuery} onChange={event => setSelectorQuery(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
+          <div role="listbox" aria-label={t.choose} className="trade-token-options">{matchingAssets.length ? matchingAssets.map(candidate => <button type="button" role="option" aria-selected={asset.symbol === candidate.symbol} key={candidate.symbol} onClick={() => { onAssetChange(candidate); setSelectorOpen(false); setSelectorQuery('') }}><TokenMark asset={candidate} /><span><strong>{candidate.symbol}</strong><small>{candidate.company}</small></span>{candidate.symbol === asset.symbol && <Check size={17} />}</button>) : <p>{t.noTokens}</p>}</div>
         </motion.div>}</AnimatePresence>
       </div>
       <div className="trade-header-right"><span className="trade-network"><i /> BNB SMART CHAIN</span><div className="trade-price-pair"><span><small>{market?.priceUsd == null && rwa ? t.sourceBinanceRwa : t.lastPrice}</small><strong className={tokenPrice ? '' : 'trade-unavailable-value'}>{price}</strong></span><span><small>{t.change}</small><strong className={market?.change24hPct != null ? (market.change24hPct >= 0 ? 'trade-change-up' : 'trade-change-down') : 'trade-unavailable-value'}>{change}</strong></span></div></div>
@@ -266,7 +261,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
       </div>
 
       <aside className="trade-asset-record" aria-label={t.source}>
-        <div className="trade-record-head"><span>{t.source}</span><span>01 / 05</span></div>
+        <div className="trade-record-head"><span>{t.source}</span><span>{String(assets.indexOf(asset) + 1).padStart(2, '0')} / {assets.length}</span></div>
         <div className="trade-record-mark"><TokenMark asset={asset} /></div>
         <dl>
           <div><dt>{t.issuer}</dt><dd>Ondo Global Markets</dd></div>

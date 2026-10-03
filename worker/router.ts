@@ -1,6 +1,6 @@
 import type { ApiEnv } from './env.ts'
 import { privyAuthConfigured, verifyPrivyToken } from './privy-auth.ts'
-import { isFrame, isSymbol, marketSnapshot, parseQuantity, softQuote } from './market.ts'
+import { isFrame, isSymbol, marketSnapshot, parseQuantity, softQuote, tokenPrices } from './market.ts'
 import { getRwaContext } from './binance-rwa.ts'
 import { binanceFailure } from './binance-api.ts'
 import { handleDepositRequest } from './deposits.ts'
@@ -49,6 +49,21 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
   const pathname = new URL(request.url).pathname
   if (!pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
   if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok' })
+  if (pathname === '/api/prices') {
+    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
+    const symbols = new URL(request.url).searchParams.get('symbols')?.split(',') ?? []
+    if (!symbols.length || symbols.length > 100 || symbols.some(symbol => !isSymbol(symbol)))
+      return json({ error: 'Invalid token batch' }, 400)
+    if (!env.BINANCE_WEB3_API_KEY || !env.BINANCE_WEB3_SECRET_KEY)
+      return json({ status: 'unavailable', reason: 'not_configured' }, 503)
+    try {
+      const prices = await tokenPrices(symbols, { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY })
+      return json({ status: 'ready', source: 'binance-web3', prices })
+    } catch (error) {
+      console.warn('Binance price batch failed', error instanceof Error ? error.message : 'Unknown provider error')
+      return json({ status: 'unavailable', ...binanceFailure(error) }, 503)
+    }
+  }
   if (pathname === '/api/deposits' || pathname.startsWith('/api/deposits/')) {
     if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
     const id = await getUserId(request, env)
@@ -81,8 +96,7 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
     const frame = new URL(request.url).searchParams.get('frame') ?? '15m'
     if (!isSymbol(marketMatch[1]) || !isFrame(frame)) return json({ error: 'Unknown market or timeframe' }, 400)
     const credentials = env.BINANCE_WEB3_API_KEY && env.BINANCE_WEB3_SECRET_KEY
-      ? { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY,
-        supportCaptureUntil: env.BINANCE_SUPPORT_CAPTURE_UNTIL } : undefined
+      ? { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY } : undefined
     try {
       const result = await marketSnapshot(marketMatch[1], frame, env.ONDO_API_KEY, credentials)
       return json(result ? { status: 'ready', ...result } : { status: 'unavailable', symbol: marketMatch[1], candles: [] }, result ? 200 : 503)

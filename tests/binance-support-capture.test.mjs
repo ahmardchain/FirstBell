@@ -1,67 +1,45 @@
 import assert from 'node:assert/strict'
-import { afterEach, test } from 'node:test'
-import { signedBinanceRequest, binanceFailure } from '../worker/binance-api.ts'
+import { after, test } from 'node:test'
+import { signedBinanceRequest } from '../worker/binance-api.ts'
 
-const originalFetch = globalThis.fetch, originalLog = console.log, originalWarn = console.warn
-afterEach(() => { globalThis.fetch = originalFetch; console.log = originalLog; console.warn = originalWarn })
-const base = { apiKey: 'BX-support-private-key-123456', secretKey: 'support/secret+"quoted"' }
+const originalFetch = globalThis.fetch
+const originalLog = console.log
+const originalWarn = console.warn
+after(() => { globalThis.fetch = originalFetch; console.log = originalLog; console.warn = originalWarn })
+const base = { apiKey: 'fixture-public-id', secretKey: 'fixture-private-secret' }
 const body = '[{"binanceChainId":"56","tokenContractAddress":"0xA9eE28C80f960B889dFbd1902055218cBa016F75"}]'
-const path = '/api/v1/dex/market/price-info'
-const call = credentials => signedBinanceRequest('POST', path, {}, credentials, body)
-function setup(text = '{"code":40304,"msg":"Service not available due to compliance restriction"}') {
-  const logs = [], requests = []
-  console.log = (marker, entry) => { assert.equal(marker, 'BINANCE_CAPTURE'); logs.push(entry) }
-  console.warn = () => {}
-  globalThis.fetch = async (url, options) => {
-    requests.push({ url, options })
-    return new Response(text, { headers: { 'content-type': 'application/json', 'set-cookie': 'private-cookie' } })
+
+test('retired support flags cannot capture accepted requests, signatures or raw provider responses', async () => {
+  const logs = []
+  console.log = (...args) => logs.push(args)
+  console.warn = (...args) => logs.push(args)
+  globalThis.fetch = async () => Response.json({ code: 0, success: true, data: [] })
+  for (const supportCaptureUntil of [undefined, 'invalid', new Date(Date.now() - 1000).toISOString(), new Date(Date.now() + 600_000).toISOString()]) {
+    const response = await signedBinanceRequest('POST', '/api/v1/dex/market/price-info', {}, { ...base, supportCaptureUntil }, body)
+    assert.equal(response.code, 0)
   }
-  return { logs, requests }
-}
-test('capture stays disabled without a valid short-lived opt-in', async () => {
-  const { logs } = setup()
-  for (const supportCaptureUntil of [undefined, 'invalid', new Date(Date.now() - 1000).toISOString(), new Date(Date.now() + 86_400_000).toISOString()]) {
-    await assert.rejects(call({ ...base, supportCaptureUntil }))
-  }
-  assert.equal(logs.length, 0)
+  assert.deepEqual(logs, [])
 })
-test('capture contains actual signed request and unchanged raw response, once per isolate/window', async () => {
-  const { logs, requests } = setup()
-  const credentials = { ...base, supportCaptureUntil: new Date(Date.now() + 600_000).toISOString() }
-  const results = await Promise.allSettled([call(credentials), call(credentials)])
+
+test('provider rejection produces only the bounded diagnostic with credential echoes redacted', async () => {
+  const logs = []
+  let signature, nonce
+  console.log = (...args) => logs.push(args)
+  console.warn = (...args) => logs.push(args)
+  globalThis.fetch = async (_url, options) => {
+    signature = options.headers['X-OC-SIGN']
+    nonce = options.headers['X-OC-NONCE']
+    return Response.json({ code: 40304, success: false, msg: [base.apiKey, base.secretKey, signature, nonce].join(' '),
+      data: { secretField: 'RAW-PROVIDER-DATA-MUST-NOT-LOG' } })
+  }
+  await assert.rejects(() => signedBinanceRequest('POST', '/api/v1/dex/market/price-info', {},
+    { ...base, supportCaptureUntil: new Date(Date.now() + 600_000).toISOString() }, body),
+    error => error.providerCode === 40304)
   assert.equal(logs.length, 1)
-  const entry = logs[0], actual = requests.find(r => r.options.headers['X-OC-SIGN'] === entry.request.headers['X-OC-SIGN'])
-  assert.ok(actual)
-  assert.equal(entry.request.url, actual.url)
-  assert.equal(entry.request.body, actual.options.body)
-  for (const key of ['X-OC-SIGN', 'X-OC-NONCE', 'X-OC-TIMESTAMP']) assert.equal(entry.request.headers[key], actual.options.headers[key])
-  assert.equal(entry.response.text, '{"code":40304,"msg":"Service not available due to compliance restriction"}')
-  assert.equal(entry.response.credentialsRedacted, false)
-  assert.deepEqual(entry.response.omittedHeaders, ['set-cookie'])
-  assert.ok(!JSON.stringify(entry).includes(base.apiKey))
-  assert.ok(!JSON.stringify(entry).includes(base.secretKey))
-  for (const result of results) {
-    assert.equal(result.status, 'rejected')
-    assert.deepEqual(binanceFailure(result.reason), { reason: 'provider_error', httpStatus: 200, providerCode: 40304 })
+  assert.equal(logs[0][0], 'BINANCE_DIAG')
+  const serialized = JSON.stringify(logs)
+  for (const privateValue of [base.apiKey, base.secretKey, signature, nonce, body, 'RAW-PROVIDER-DATA-MUST-NOT-LOG']) {
+    assert.equal(serialized.includes(privateValue), false)
   }
-})
-test('response credential echoes are redacted and declared; other tokens never capture', async () => {
-  const { logs } = setup(JSON.stringify({ code: 40304, msg: base.apiKey + ' ' + base.secretKey + ' ' + encodeURIComponent(base.secretKey) }))
-  const credentials = { ...base, supportCaptureUntil: new Date(Date.now() + 601_000).toISOString() }
-  await assert.rejects(signedBinanceRequest('GET', '/api/v1/dex/market/candles', {}, credentials))
-  await assert.rejects(signedBinanceRequest('POST', path, {}, credentials, '[]'))
-  assert.equal(logs.length, 0)
-  await assert.rejects(call(credentials))
-  assert.equal(logs.length, 1)
-  assert.equal(logs[0].response.credentialsRedacted, true)
-  assert.ok(!JSON.stringify(logs).includes(base.apiKey))
-  assert.ok(!JSON.stringify(logs).includes(encodeURIComponent(base.secretKey)))
-})
-test('capture logger failures preserve the Binance business error', async () => {
-  setup()
-  console.log = () => { throw new Error(base.secretKey) }
-  await assert.rejects(call({ ...base, supportCaptureUntil: new Date(Date.now() + 602_000).toISOString() }), error => {
-    assert.deepEqual(binanceFailure(error), { reason: 'provider_error', httpStatus: 200, providerCode: 40304 })
-    return true
-  })
+  assert.ok(logs[0][1].msg.length <= 200)
 })

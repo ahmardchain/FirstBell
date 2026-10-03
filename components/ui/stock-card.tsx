@@ -3,6 +3,7 @@ import { motion, useReducedMotion, type HTMLMotionProps } from 'framer-motion'
 import { ArrowDownRight, ArrowUpRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { tokenLogoError } from '@/lib/asset-catalog'
 import './stock-card.css'
 
 export interface StockCardProps extends Omit<HTMLMotionProps<'div'>, 'children'> {
@@ -37,7 +38,7 @@ const StockCard = React.forwardRef<HTMLDivElement, StockCardProps>(
       style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
     }).format(price) : unavailableLabel
     const identity = <>
-      <img src={logoSrc} alt={`${name} logo`} width={40} height={40}
+      <img src={logoSrc} alt={`${name} logo`} width={40} height={40} loading="lazy" onError={tokenLogoError}
         className={cn('stock-card-logo h-10 w-10 shrink-0 object-contain', logoClassName)} />
       <span className="stock-card-name min-w-0">
         <span className="block truncate text-lg font-bold text-foreground">{ticker}</span>

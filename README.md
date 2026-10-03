@@ -1,6 +1,6 @@
 # FirstBell
 
-FirstBell is a landing page and research app for exploring tokenized equities on BNB Smart Chain. It presents issuer, network, token symbol, contract address, and public source links for five Ondo Global Markets assets. Market data and indicative quotes are available when their providers respond; order execution is not available yet.
+FirstBell is a landing page and research app for exploring tokenized assets on BNB Smart Chain. Home lists all 459 chain-56 tokens from the pinned Ondo token list, with names, symbols, contracts and public source links. This includes stocks, ETFs, portfolios and the issuer's other listed tokens. Market data and indicative quotes are available when their providers respond; order execution is not available yet.
 
 ## Hackathon report and integration requirement
 
@@ -76,19 +76,10 @@ npx --yes wrangler@4.144.0 tail firstbell --format json
 
 The timestamp matches the `X-OC-TIMESTAMP` used for that request. A generic message, missing message or `40304` alone does not establish an IP allowlist or specific compliance rule. On 2026-10-01 the builder captured a deployed price-info entry at `2026-10-01T08:59:44.995Z`: HTTP 200, code `40304`, message `Service not available due to compliance restriction`. This confirms the provider's compliance explanation for that endpoint, but not a particular rule or successful hosted market data. A matching candle diagnostic has not yet been supplied. Compare the entries with the accepted local diagnostic for Binance Web3 technical support.
 
-### Temporary Binance support capture (case #170818889)
+### Binance support capture retired
 
-The deployed signature and original response can only be collected after deploying this source. Capture is disabled by default. In Cloudflare, start **firstbell → Logs → Live**, then add the runtime variable `BINANCE_SUPPORT_CAPTURE_UNTIL` with an ISO UTC expiry approximately ten minutes ahead and save/deploy the configuration. Generate the value on your PC with:
+The temporary support-case capture was removed on 2026-10-03 after the original evidence had been collected. `BINANCE_SUPPORT_CAPTURE_UNTIL` no longer enables any capture. Requests never log signatures, nonces, partial API keys or raw provider responses. The bounded, redacted `BINANCE_DIAG` error record remains available for normal troubleshooting.
 
-```bash
-node -e "console.log(new Date(Date.now()+10*60*1000).toISOString())"
-```
-
-Open https://firstbell.ahmardchain.workers.dev/api/market/NVDAon?frame=15m. Copy only the private `BINANCE_CAPTURE` custom entry to your official Binance support case. Its `request.headers["X-OC-SIGN"]` is the actual outgoing signature; it also includes the matching timestamp, nonce, exact body, partial API-key identifier and original response text before parsing. Response cookies/auth headers are omitted; any actual full credential echoes are redacted and `credentialsRedacted` declares that modification. Entries larger than 24 KB are not emitted, rather than silently truncated. No capture data is returned by public API routes.
-
-The expiry must be valid and at most fifteen minutes ahead. Capture is limited to the exact NVDAon BSC 56 price-info request and once **per isolate per configured expiry**, not once across the deployment. Multiple isolates can emit entries. A healthy market cache may delay a fresh upstream call by 30 seconds. Start the log viewer before triggering. After collecting an entry, remove `BINANCE_SUPPORT_CAPTURE_UNTIL` and save/deploy. Changing the expiry explicitly allows another capture window. Temporary capture code can then be removed; normal sanitized `BINANCE_DIAG` logging is independent. No Cloudflare account deployment or live support capture has been verified by the coding agent.
-
-## Deploy the full app to Vercel
 
 Use the [Vercel deployment guide](docs/vercel-deployment.md). The repository root includes `vercel.json`, a bundled Node.js API function in `api/index.mjs`, and persistent Upstash Redis account storage. The landing page, `/app/`, market feeds, Privy verification and MoonPay API routes run in the same Vercel project. Configure Root Directory **`.`**, Framework **Vite**, Node **24.x**, the checked-in build command, and Output **`dist`**. The existing `firstbell-server-test` project can also retain Root Directory `server-test`: its configuration now builds and stages the full app from the repository root, preserving its existing server environment. Both root layouts retain the comparison page at `/server-test.html` and its protected `/api/check` function.
 
@@ -109,7 +100,7 @@ For Cloudflare Workers Builds connected to GitHub, use `npm run build` as the bu
 
 ## Login and wallets
 
-FirstBell uses Privy for Google and email one-time-code sign-in. The Privy modal creates an embedded EVM wallet for a new account; a returning account loads its existing wallet. Portfolio reads USDT, native BNB and five listed token balances from the BNB Smart Chain public RPC using viem. It displays quantities, not an invented USD valuation. On sign-in, `/api/me` verifies the Privy access token and creates or retrieves an account; saved assets sync through `/api/me/saved`. The browser retains local bookmarks when the API is unavailable. Card deposit checkout is implemented and requires the configuration below. Withdrawals and stock trade execution remain disabled.
+FirstBell uses Privy for Google and email one-time-code sign-in. The Privy modal creates an embedded EVM wallet for a new account; a returning account loads its existing wallet. Portfolio reads USDT, native BNB and all listed token balances in bounded multicalls from the BNB Smart Chain public RPC using viem. It reads on-chain quantities and uses verified token prices for holdings valuations; missing prices remain unavailable. On sign-in, `/api/me` verifies the Privy access token and creates or retrieves an account; saved assets sync through `/api/me/saved`. The browser retains local bookmarks when the API is unavailable. Card deposit checkout is implemented and requires the configuration below. Withdrawals and stock trade execution remain disabled.
 
 1. In the [Privy Dashboard](https://dashboard.privy.io/) for the configured App ID, enable **Email** and **Google** login, and allow your deployment origin (and localhost for development).
 2. The public App ID is in `src/privy-config.ts`; override it in a local `.env` as `VITE_PRIVY_APP_ID=...` to use another Privy app. Do not put a Privy App Secret in a Vite variable or in this repository.
@@ -121,7 +112,7 @@ The shared API uses Privy's ES256 verification key, issuer and app audience to v
 
 ## Check an Ondo trading route without an Ondo API key
 
-The existing five Ondo tokens remain the asset catalog. Trade's Buy/Sell sheet now checks the [Binance Web3 Trading API](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api), rather than requiring an Ondo primary-market soft quote. This is a read-only route check, not a purchase or sale.
+The full Ondo BSC catalog is shared by Home, Trade, Portfolio and the API contract allowlist. Trade's Buy/Sell sheet checks the [Binance Web3 Trading API](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api), rather than requiring an Ondo primary-market soft quote. A listed token does not guarantee available market data or an executable route. This is a read-only route check, not a purchase or sale.
 
 1. Configure the two Binance runtime secrets above, keep matching Privy App IDs, and enable Privy's identity-token setting described below. The optional `PRIVY_VERIFICATION_KEY` supports local verification; published app keys handle a missing or stale PEM. Deploy this source update to the Worker.
 2. Sign in to FirstBell and open **Trade → Buy**. Enter the amount of **BSC USDT to spend** and select **Check trading route**. For Sell, enter the selected stock token's quantity instead. Opening or switching sides keeps the units separate.

@@ -38,7 +38,8 @@ const icons: FloatingIconsHeroProps['icons'] = heroAssets.map((asset, index) => 
   icon: makeTokenIcon(asset.mark, asset.symbol),
   className: `tile-${index + 1}`,
 }))
-const assets = manifest.assets.map(asset => ({ ...asset, company: asset.name.split(' (Ondo')[0] }))
+// Keep the five-stock landing preview compact; the app contains the full catalog.
+const assets = manifest.assets.filter(asset => Object.hasOwn(markBySymbol, asset.symbol.toLowerCase())).map(asset => ({ ...asset, company: asset.name.split(' (Ondo')[0] }))
 type Asset = (typeof assets)[number]
 type Language = 'en' | 'zh'
 type Theme = 'dark' | 'light'

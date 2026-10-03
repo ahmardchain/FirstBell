@@ -3,21 +3,20 @@ import { usePrivy } from '@privy-io/react-auth'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, ArrowUpRight, Bookmark, ChevronDown, ExternalLink, Globe2, House, Menu, Moon, Search, Sparkles, Sun, X, ChartNoAxesCombined, ChartPie } from 'lucide-react'
 import manifest from '@/asset-sources.json'
+import { assetCatalog as assets, assetLogo, tokenLogoError, type CatalogAsset as Asset } from '../lib/asset-catalog'
 import { AIChatCard } from '@/components/spectrumui/ai-chat-card'
 import { StockCard } from '@/components/ui/stock-card'
 import { TradeWorkspace } from './trade'
 import { PortfolioWorkspace } from './portfolio'
 import { getAccount, setSavedAsset } from './account-api'
-import { getMarket, type MarketData } from './market-api'
+import { getTokenPrices, type TokenPrice } from './market-api'
 import './app.css'
 import './agent.css'
 
 type Language = 'en' | 'zh'
 type Theme = 'dark' | 'light'
 type Tab = 'home' | 'trade' | 'agent' | 'portfolio'
-const markBySymbol: Record<string, string> = { AAPLon: 'apple', TSLAon: 'tesla', NVDAon: 'nvidia', MSFTon: 'microsoft', AMZNon: 'amazon' }
-const assets = manifest.assets.map(asset => ({ ...asset, company: asset.name.split(' (Ondo')[0], mark: markBySymbol[asset.symbol] }))
-type Asset = (typeof assets)[number]
+const pageSize = 24
 const scan = (asset: Asset) => `https://bscscan.com/token/${asset.address}`
 const NAV: { id: Tab; icon: typeof House }[] = [
   { id: 'home', icon: House }, { id: 'trade', icon: ChartNoAxesCombined },
@@ -28,20 +27,16 @@ const copy = {
   en: {
     nav: { home: 'Home', trade: 'Trade', agent: 'Agent', portfolio: 'Portfolio' },
     back: 'Back to site', language: 'Language', theme: 'Toggle color theme',
-    live: 'ASSET INDEX / BNB SMART CHAIN', ticker: 'Five source-backed equities. One clear place to start.',
-    kicker: 'FIRSTBELL / DISCOVER', title: 'Find your next stock.',
-    heroOverline: 'A closer look at tokenized equities', heroTitle: 'A familiar name.\nA clearer story.',
-    heroBody: 'Explore the company, then inspect the token issuer and contract before you go further.',
-    heroButton: 'Explore NVIDIA',
-    browse: 'Explore assets', browseBody: 'Real token contracts on BNB Smart Chain, with issuer and source attached.',
-    search: 'Search company or token', all: 'All assets', saved: 'Saved', result: 'assets', noResults: 'No assets found.',
+    browse: 'Tokens', browseBody: 'Ondo · BNB Smart Chain',
+    search: 'Search name or token', all: 'All tokens', saved: 'Saved', result: 'tokens', noResults: 'No tokens found.',
+    previous: 'Previous', next: 'Next', pages: 'Token pages',
     emptySearch: 'Try a different company or symbol.', clear: 'Clear search',
     buy: 'Buy', loadingPrice: 'Loading…', unavailablePrice: 'Price unavailable', noChange: 'No data', priceCaption: 'TOKEN PRICE / USD · 24H',
     source: 'Source-backed token', issuer: 'Issuer', network: 'Network', contract: 'Contract', symbol: 'Symbol',
     open: 'Open asset file', save: 'Save asset', unsave: 'Remove saved asset',
-    detailKicker: 'ASSET FILE', detailIntro: 'A tokenized equity has its own issuer, contract and terms. Verify each one before making a decision.',
+    detailKicker: 'ASSET FILE', detailIntro: 'Each token has its own issuer, contract and terms. Verify each one before making a decision.',
     exploreContract: 'View on BscScan', tokenList: 'View token list', caution: 'Availability and rights depend on the issuer terms and your location.',
-    agentTitle: 'Asset guide', agentIntro: 'Source records for five tokenized equities.',
+    agentTitle: 'Asset guide', agentIntro: 'Source records for the Ondo token catalog.',
     agentGreeting: 'What would you like to verify?', agentHelp: 'Ask about an issuer, contract, or network. Include a company or token symbol.',
     agentPrompt: 'Ask about an asset…', agentSend: 'Send question', agentReset: 'Start a new conversation',
     quick: ['Who issues NVDAon?', 'What is the TSLAon contract?', 'Which network is MSFTon on?'],
@@ -57,19 +52,16 @@ const copy = {
   zh: {
     nav: { home: '首页', trade: '交易', agent: '助手', portfolio: '资产' },
     back: '返回网站', language: '语言', theme: '切换明暗主题',
-    live: '资产目录 / BNB 智能链', ticker: '五种有公开来源的代币化股票，从清晰的信息开始。',
-    kicker: 'FIRSTBELL / 发现', title: '发现你的下一只股票。',
-    heroOverline: '进一步了解代币化股票', heroTitle: '熟悉的公司。\n更清晰的信息。',
-    heroBody: '从公司入手，再查阅代币的发行方与合约，然后继续研究。', heroButton: '了解 NVIDIA',
-    browse: '探索资产', browseBody: 'BNB 智能链上的真实代币合约，附有发行方和公开来源。',
-    search: '搜索公司或代币', all: '全部资产', saved: '已收藏', result: '项资产', noResults: '没有找到资产。',
+    browse: '代币', browseBody: 'Ondo · BNB 智能链',
+    search: '搜索名称或代币', all: '全部代币', saved: '已收藏', result: '项代币', noResults: '没有找到代币。',
+    previous: '上一页', next: '下一页', pages: '代币分页',
     emptySearch: '试试其他公司或代币符号。', clear: '清除搜索',
     buy: '买入', loadingPrice: '加载中…', unavailablePrice: '价格暂不可用', noChange: '暂无数据', priceCaption: '代币价格 / USD · 24小时',
     source: '有公开来源的代币', issuer: '发行方', network: '网络', contract: '合约', symbol: '代币符号',
     open: '打开资产资料', save: '收藏资产', unsave: '取消收藏',
-    detailKicker: '资产资料', detailIntro: '代币化股票有自己的发行方、合约和条款。请核实这些信息后再作决定。',
+    detailKicker: '资产资料', detailIntro: '每项代币都有自己的发行方、合约和条款。请核实这些信息后再作决定。',
     exploreContract: '在 BscScan 查看', tokenList: '查看代币列表', caution: '可用地区和所代表的权益取决于发行方条款。',
-    agentTitle: '资产指南', agentIntro: '五种代币化股票的公开来源记录。',
+    agentTitle: '资产指南', agentIntro: 'Ondo 代币目录的公开来源记录。',
     agentGreeting: '你想核实什么？', agentHelp: '可以询问发行方、合约或网络，并注明公司或代币代码。',
     agentPrompt: '询问一项资产…', agentSend: '发送问题', agentReset: '开始新对话',
     quick: ['NVDAon 由谁发行？', 'TSLAon 的合约地址是什么？', 'MSFTon 在哪条链上？'],
@@ -85,7 +77,7 @@ const copy = {
 }
 
 function AssetMark({ asset, className = '' }: { asset: Asset; className?: string }) {
-  return <img className={`app-asset-mark brand-mark brand-mark--${asset.mark} ${className}`} src={`/assets/marks/${asset.mark}.svg`} alt="" />
+  return <img className={`app-asset-mark brand-mark brand-mark--${asset.mark} ${className}`} src={assetLogo(asset)} alt="" onError={tokenLogoError} />
 }
 
 export default function FirstBellApp() {
@@ -99,17 +91,21 @@ export default function FirstBellApp() {
   })
   const [query, setQuery] = React.useState('')
   const [filter, setFilter] = React.useState<'all' | 'saved'>('all')
+  const [page, setPage] = React.useState(0)
   const [saved, setSaved] = React.useState<string[]>(() => { try { const value = JSON.parse(localStorage.getItem('firstbell-saved') ?? '[]'); return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [] } catch { return [] } })
   const savedWrite = React.useRef(Promise.resolve())
   const [selected, setSelected] = React.useState<Asset | null>(null)
   const [workingAsset, setWorkingAsset] = React.useState<Asset>(assets.find(a => a.symbol === 'NVDAon')!)
   const [tradeEntry, setTradeEntry] = React.useState<'buy' | null>(() => tab === 'trade' && new URLSearchParams(window.location.search).get('side') === 'buy' ? 'buy' : null)
-  const [homeMarkets, setHomeMarkets] = React.useState<Record<string, MarketData | null>>({})
+  const [homeMarkets, setHomeMarkets] = React.useState<Record<string, TokenPrice | null>>({})
   const [messages, setMessages] = React.useState<{ id: number; role: 'user' | 'guide'; text: string }[]>([])
   const [mobileMenu, setMobileMenu] = React.useState(false)
   const dialogRef = React.useRef<HTMLElement>(null)
   const t = copy[language]
-  const visible = assets.filter(a => (filter === 'all' || saved.includes(a.symbol)) && `${a.company} ${a.symbol}`.toLowerCase().includes(query.trim().toLowerCase()))
+  const visible = React.useMemo(() => assets.filter(a => (filter === 'all' || saved.includes(a.symbol))
+    && `${a.company} ${a.symbol}`.toLowerCase().includes(query.trim().toLowerCase())), [filter, saved, query])
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(visible.length / pageSize) - 1))
+  const shown = React.useMemo(() => visible.slice(currentPage * pageSize, (currentPage + 1) * pageSize), [visible, currentPage])
 
   React.useEffect(() => { document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'; localStorage.setItem('firstbell-language', language) }, [language])
   React.useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('firstbell-theme', theme); document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#ffffff' : '#080808') }, [theme])
@@ -117,18 +113,26 @@ export default function FirstBellApp() {
   React.useEffect(() => {
     if (tab !== 'home') return
     let active = true
-    const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 15_000)
+    let controller: AbortController | undefined
+    let timeout: number | undefined
     setHomeMarkets({})
-    const update = (symbol: string, market: MarketData | null) => {
-      if (active) setHomeMarkets(current => ({ ...current, [symbol]: market }))
+    const refresh = async () => {
+      if (!shown.length) return
+      controller?.abort()
+      const request = new AbortController()
+      controller = request
+      timeout = window.setTimeout(() => request.abort(), 15_000)
+      try {
+        const prices = await getTokenPrices(shown.map(asset => asset.symbol), request.signal)
+        if (active && !request.signal.aborted) setHomeMarkets(Object.fromEntries(prices.map(price => [price.symbol, price])))
+      } catch {
+        if (active) setHomeMarkets(Object.fromEntries(shown.map(asset => [asset.symbol, null])))
+      } finally { window.clearTimeout(timeout) }
     }
-    void Promise.allSettled(assets.map(async asset => {
-      try { update(asset.symbol, await getMarket(asset.symbol, '15m', controller.signal)) }
-      catch { update(asset.symbol, null) }
-    })).then(() => window.clearTimeout(timeout))
-    return () => { active = false; window.clearTimeout(timeout); controller.abort() }
-  }, [tab])
+    const start = window.setTimeout(() => { void refresh() }, 250)
+    const poll = window.setInterval(() => { void refresh() }, 30_000)
+    return () => { active = false; window.clearTimeout(start); window.clearInterval(poll); window.clearTimeout(timeout); controller?.abort() }
+  }, [tab, shown])
   React.useEffect(() => {
     if (!ready || !authenticated || !user?.id) return
     let active = true
@@ -183,7 +187,7 @@ export default function FirstBellApp() {
   }
 
   const assetCard = (asset: Asset) => <StockCard key={asset.symbol} className="app-stock-card max-w-none"
-    logoSrc={`/assets/marks/${asset.mark}.svg`} logoClassName={`brand-mark brand-mark--${asset.mark}`}
+    logoSrc={assetLogo(asset)} logoClassName={`brand-mark brand-mark--${asset.mark}`}
     ticker={asset.symbol} name={asset.company} price={homeMarkets[asset.symbol]?.priceUsd ?? null}
     change={homeMarkets[asset.symbol]?.change24hPct ?? null} loading={homeMarkets[asset.symbol] === undefined}
     locale={language === 'zh' ? 'zh-CN' : 'en-US'} buyLabel={t.buy} inspectLabel={t.open}
@@ -210,13 +214,10 @@ export default function FirstBellApp() {
     <main className="app-main">
       <AnimatePresence mode="wait" initial={false}><motion.div key={tab} className="app-view" initial={reduceMotion ? false : { opacity: 0, x: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 1 } : { opacity: 0, x: -8, filter: 'blur(3px)' }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
       {tab === 'home' && <>
-        <div className="app-ticker"><span>{t.live}</span><span>{t.ticker}</span><span>FB / 001</span></div>
-        <section className="app-home-intro"><p className="app-label">{t.kicker}</p><h1>{t.title}</h1></section>
-        <section className="app-feature"><div className="app-feature-copy"><span className="app-label">01 / {t.heroOverline}</span><h2>{t.heroTitle}</h2><p>{t.heroBody}</p><button type="button" onClick={() => setSelected(assets.find(a => a.symbol === 'NVDAon')!)}>{t.heroButton}<ArrowUpRight size={19} /></button></div><div className="app-feature-art" aria-hidden="true"><span className="feature-cross">✳</span><span className="feature-frame"><AssetMark asset={assets[2]} /></span><span className="feature-caption">NVDAon / BSC</span></div></section>
-        <section className="app-browser" aria-labelledby="browse-title"><div className="app-section-heading"><div><p className="app-label">02 / INDEX</p><h2 id="browse-title">{t.browse}<span className="count">0{assets.length}</span></h2><p>{t.browseBody}</p></div><span className="app-index-caption">ISSUER / ONDO GLOBAL MARKETS<br />NETWORK / BNB SMART CHAIN</span></div>
-          <div className="app-browser-controls"><div className="app-filter" role="group" aria-label="Asset filter"><button type="button" className={filter === 'all' ? 'active' : ''} aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>{t.all}</button><button type="button" className={filter === 'saved' ? 'active' : ''} aria-pressed={filter === 'saved'} onClick={() => setFilter('saved')}>{t.saved}{saved.length > 0 && <sup>{saved.length}</sup>}</button></div><label className="app-search"><Search size={18} /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t.search} aria-label={t.search} /></label></div>
+        <section className="app-browser" aria-labelledby="browse-title"><div className="app-section-heading"><div><h1 id="browse-title">{t.browse}<span className="count">{assets.length}</span></h1><p>{t.browseBody}</p></div></div>
+          <div className="app-browser-controls"><div className="app-filter" role="group" aria-label="Asset filter"><button type="button" className={filter === 'all' ? 'active' : ''} aria-pressed={filter === 'all'} onClick={() => { setFilter('all'); setPage(0) }}>{t.all}</button><button type="button" className={filter === 'saved' ? 'active' : ''} aria-pressed={filter === 'saved'} onClick={() => { setFilter('saved'); setPage(0) }}>{t.saved}{saved.length > 0 && <sup>{saved.length}</sup>}</button></div><label className="app-search"><Search size={18} /><input type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(0) }} placeholder={t.search} aria-label={t.search} /></label></div>
           <div className="app-result-count app-stock-heading"><span>{String(visible.length).padStart(2, '0')} {t.result}</span><span>{t.priceCaption}</span></div>
-          {visible.length ? <div className="app-stock-list">{visible.map(assetCard)}</div> : <div className="app-empty"><Search size={26} strokeWidth={1.2} /><h3>{t.noResults}</h3><p>{filter === 'saved' && saved.length === 0 ? t.emptyBody : t.emptySearch}</p><button type="button" onClick={() => { setFilter('all'); setQuery('') }}>{t.clear}<ArrowRight size={16} /></button></div>}
+          {visible.length ? <><div className="app-stock-list">{shown.map(assetCard)}</div>{visible.length > pageSize && <nav className="app-token-pages" aria-label={t.pages}><button type="button" disabled={currentPage === 0} onClick={() => { setPage(currentPage - 1); window.scrollTo({ top: 0, behavior: 'instant' }) }}>{t.previous}</button><span aria-live="polite">{currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, visible.length)} / {visible.length}</span><button type="button" disabled={(currentPage + 1) * pageSize >= visible.length} onClick={() => { setPage(currentPage + 1); window.scrollTo({ top: 0, behavior: 'instant' }) }}>{t.next}<ArrowRight size={16} /></button></nav>}</> : <div className="app-empty"><Search size={26} strokeWidth={1.2} /><h3>{t.noResults}</h3><p>{filter === 'saved' && saved.length === 0 ? t.emptyBody : t.emptySearch}</p><button type="button" onClick={() => { setFilter('all'); setQuery(''); setPage(0) }}>{t.clear}<ArrowRight size={16} /></button></div>}
         </section>
       </>}
       {tab === 'trade' && <TradeWorkspace assets={assets} asset={workingAsset} onAssetChange={setWorkingAsset} onInspect={setSelected} language={language} initialSide={tradeEntry} />}

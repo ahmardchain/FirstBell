@@ -50,7 +50,7 @@ Create/connect a persistent **Upstash Redis** database through Vercel's Storage/
 
 The public website, health route and market routes can run without Redis. Saved stocks, deposit history and rate-limited account operations return an explicit unavailable result until the account store is configured. They do not silently fall back to temporary server memory. Signing-key lookup failures reject authentication and produce a private `PRIVY_AUTH` log with a bounded error category, never the token or credentials.
 
-`BINANCE_TEST_TOKEN` protects the separate diagnostic package only. The full app does not use it. `BINANCE_SUPPORT_CAPTURE_UNTIL` is not enabled by the Vercel adapter.
+`BINANCE_TEST_TOKEN` protects the separate diagnostic package only. The full app does not use it. The temporary `BINANCE_SUPPORT_CAPTURE_UNTIL` capture has been retired and is ignored.
 
 ## 3. Retain existing account history
 

@@ -15,7 +15,6 @@ export interface ApiEnv {
   ONDO_API_KEY?: string
   BINANCE_WEB3_API_KEY?: string
   BINANCE_WEB3_SECRET_KEY?: string
-  BINANCE_SUPPORT_CAPTURE_UNTIL?: string
   MOONPAY_PUBLISHABLE_KEY?: string
   MOONPAY_SECRET_KEY?: string
   MOONPAY_ENVIRONMENT?: string

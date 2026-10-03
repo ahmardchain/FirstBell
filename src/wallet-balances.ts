@@ -1,6 +1,6 @@
 import { createPublicClient, erc20Abi, formatUnits, http, isAddress, type Address } from 'viem'
 import { bsc } from 'viem/chains'
-import { BSC_USDT } from '../lib/funding'
+import { BSC_USDT } from '../lib/funding.ts'
 
 const client = createPublicClient({
   chain: bsc,
@@ -14,19 +14,30 @@ export async function readWalletBalances(walletAddress: string, tokens: { symbol
   if (!isAddress(walletAddress)) throw new Error('Invalid wallet address')
   if (tokens.some(token => !isAddress(token.address))) throw new Error('Invalid token contract')
   const owner = walletAddress as Address
-  const [native, usdt, ...tokenValues] = await Promise.all([
-    client.getBalance({ address: owner }),
-    client.readContract({ address: BSC_USDT.address, abi: erc20Abi, functionName: 'balanceOf', args: [owner] }),
-    ...tokens.map(async token => {
-      const address = token.address as Address
-      const [raw, decimals] = await Promise.all([
-        client.readContract({ address, abi: erc20Abi, functionName: 'balanceOf', args: [owner] }),
-        client.readContract({ address, abi: erc20Abi, functionName: 'decimals' }),
-      ])
-      return { symbol: token.symbol, address, raw, quantity: formatUnits(raw, decimals) }
-    }),
-  ])
-  return { bnb: formatUnits(native, 18), usdt: formatUnits(usdt, BSC_USDT.decimals), tokens: tokenValues, checkedAt: new Date() }
+  const contracts = [BSC_USDT, ...tokens].map(token => ({ address: token.address as Address,
+    abi: erc20Abi, functionName: 'balanceOf' as const, args: [owner] as const }))
+  const readBalances = async () => {
+    const values: bigint[] = []
+    // Bounded, sequential multicalls replace two RPCs for every catalog token.
+    // A failed contract read remains an error, never a fabricated zero holding.
+    for (let start = 0; start < contracts.length; start += 64) {
+      values.push(...await client.multicall({ contracts: contracts.slice(start, start + 64), allowFailure: false, batchSize: 32_768 }))
+    }
+    return values
+  }
+  const [native, values] = await Promise.all([client.getBalance({ address: owner }), readBalances()])
+  const held = tokens.filter((_, index) => values[index + 1] > 0n)
+  const decimals = held.length ? await client.multicall({
+    contracts: held.map(token => ({ address: token.address as Address, abi: erc20Abi, functionName: 'decimals' as const })),
+    allowFailure: false, batchSize: 32_768,
+  }) : []
+  const units = new Map(held.map((token, index) => [token.address.toLowerCase(), decimals[index]]))
+  const positions = tokens.map((token, index) => {
+    const raw = values[index + 1]
+    return { symbol: token.symbol, address: token.address as Address, raw,
+      quantity: raw > 0n ? formatUnits(raw, units.get(token.address.toLowerCase())!) : '0' }
+  })
+  return { bnb: formatUnits(native, 18), usdt: formatUnits(values[0], BSC_USDT.decimals), tokens: positions, checkedAt: new Date() }
 }
 
 export function displayQuantity(value: string, places = 6) {
