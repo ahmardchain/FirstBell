@@ -1,11 +1,12 @@
 import * as React from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { getIdentityToken, usePrivy, useUser, useWallets } from '@privy-io/react-auth'
+import { getIdentityToken, useIdentityToken, usePrivy, useWallets } from '@privy-io/react-auth'
 import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, Search, X } from 'lucide-react'
 import { assetLogo, tokenLogoError, type CatalogAsset } from '../lib/asset-catalog'
 import { MarketChart } from '@/components/spectrumui/charts/market-chart'
 import { getMarket, getRwa, getTradingRoute, MarketRequestError, type MarketData, type MarketFailure, type RwaContext, type Timeframe, type TradingRoute } from './market-api'
 import { displayQuantity } from './wallet-balances'
+import { withWalletSession } from '../lib/wallet-session'
 import './trade.css'
 
 export type TradeAsset = CatalogAsset
@@ -25,13 +26,13 @@ const words = {
     source: 'ASSET RECORD', issuer: 'Issuer', network: 'Network', contract: 'Contract',
     inspect: 'Inspect asset file', scan: 'View contract on BscScan',
     buy: 'Buy', sell: 'Sell', sheetTitle: 'Trade', buyAmount: 'Amount to spend', sellAmount: 'Token quantity',
-    receive: 'Estimated receive', unavailable: 'Quote unavailable', balance: 'Wallet balance unavailable', balanceLabel: 'Wallet balance', noPrice: 'Price unavailable', noChange: 'No data', noBalance: 'Not connected',
+    receive: 'Estimated receive', unavailable: 'Quote unavailable', enterAmount: 'Enter an amount', routePrompt: 'Check route for a quote', balance: 'Wallet balance unavailable', balanceLabel: 'Wallet balance', noPrice: 'Price unavailable', noChange: 'No data', noBalance: 'Not connected',
     sheetNote: 'Check a BSC trading route for your wallet. This check does not place an order. Stock purchase and sale are not available in FirstBell yet.',
     loading: 'Loading market data', retry: 'Retry', sourceOndo: 'Ondo primary-market data', sourceDex: 'GeckoTerminal DEX pool data', sourceBinance: 'Binance Web3 token-market data', sourceBinanceRwa: 'Binance RWA token price', marketPrice: 'Market price', updated: 'Updated',
     getQuote: 'Check trading route', gettingQuote: 'Checking route', login: 'Log In to check route', quoteDisclaimer: 'Route found · no order placed', quoteError: 'Trading route could not be checked. Try again.',
     route: 'Trading route', wallet: 'Receiving wallet', routeExpired: 'Quote expired. Check the route again.',
     errors: { not_configured: 'Trading quotes are not configured yet.', account_not_configured: 'Account verification is not configured yet.',
-      unauthorized: 'Sign in again to check this route.', wallet_not_verified: 'Your wallet could not be verified. Sign in again and retry.',
+      unauthorized: 'Sign in again to check this route.', session_unavailable: 'Your session could not be loaded. Refresh the page and retry.', session_refresh_failed: 'Your session could not be refreshed. Sign in again and retry.', wallet_not_verified: 'Your wallet could not be verified. Sign in again and retry.',
       wallet_loading: 'Your wallet is still being prepared. Try again shortly.', identity_token_unavailable: 'Wallet verification is not available yet. Sign in again and retry.',
       no_verified_route: 'No verified BSC route is available for this token and amount.', chain_unavailable: 'The trading provider is not offering BSC routes right now.',
       invalid_amount: 'This amount has too many decimal places for the token.', invalid_trade_request: 'Enter a valid amount and try again.',
@@ -51,13 +52,13 @@ const words = {
     source: '资产记录', issuer: '发行方', network: '网络', contract: '合约',
     inspect: '查看资产资料', scan: '在 BscScan 查看合约',
     buy: '买入', sell: '卖出', sheetTitle: '交易', buyAmount: '支付金额', sellAmount: '代币数量',
-    receive: '预计收到', unavailable: '暂无报价', balance: '暂无钱包余额', balanceLabel: '钱包余额', noPrice: '暂无报价', noChange: '暂无数据', noBalance: '未连接',
+    receive: '预计收到', unavailable: '暂无报价', enterAmount: '请输入金额', routePrompt: '检查路线以获取报价', balance: '暂无钱包余额', balanceLabel: '钱包余额', noPrice: '暂无报价', noChange: '暂无数据', noBalance: '未连接',
     sheetNote: '为你的钱包检查 BSC 交易路线。此检查不会下单，FirstBell 目前尚不能买入或卖出股票代币。',
     loading: '正在加载市场数据', retry: '重试', sourceOndo: 'Ondo 一级市场数据', sourceDex: 'GeckoTerminal 去中心化交易池数据', sourceBinance: 'Binance Web3 代币行情', sourceBinanceRwa: 'Binance RWA 代币价格', marketPrice: '市场价格', updated: '更新时间',
     getQuote: '检查交易路线', gettingQuote: '正在检查路线', login: '登录后检查路线', quoteDisclaimer: '已找到路线，尚未下单', quoteError: '无法检查交易路线，请重试。',
     route: '交易路线', wallet: '接收钱包', routeExpired: '报价已过期，请重新检查路线。',
     errors: { not_configured: '交易报价尚未配置。', account_not_configured: '账户验证尚未配置。',
-      unauthorized: '请重新登录后检查路线。', wallet_not_verified: '无法验证你的钱包，请重新登录后重试。',
+      unauthorized: '请重新登录后检查路线。', session_unavailable: '无法加载登录状态，请刷新后重试。', session_refresh_failed: '无法刷新登录状态，请重新登录后重试。', wallet_not_verified: '无法验证你的钱包，请重新登录后重试。',
       wallet_loading: '正在准备你的钱包，请稍后重试。', identity_token_unavailable: '钱包验证暂不可用，请重新登录后重试。',
       no_verified_route: '此代币和金额暂无经过核实的 BSC 路线。', chain_unavailable: '交易服务目前不提供 BSC 路线。',
       invalid_amount: '金额的小数位数超过代币支持的精度。', invalid_trade_request: '请输入有效金额后重试。',
@@ -103,7 +104,9 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const [quoteError, setQuoteError] = React.useState('')
   const { authenticated, login, getAccessToken } = usePrivy()
   const { wallets, ready: walletsReady } = useWallets()
-  const { refreshUser } = useUser()
+  const { identityToken } = useIdentityToken()
+  const identity = React.useRef(identityToken)
+  identity.current = identityToken
   const wallet = wallets.find(item => item.walletClientType === 'privy' || item.walletClientType === 'privy_v2')
   const address = authenticated && walletsReady ? wallet?.address : undefined
   const sheetRef = React.useRef<HTMLElement>(null)
@@ -170,13 +173,11 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     setQuoteState('loading'); setQuoteError('')
     try {
       if (!address) throw new Error('wallet_loading')
-      await refreshUser()
-      if (version !== quoteVersion.current) return
-      const [token, identityToken] = await Promise.all([getAccessToken(), getIdentityToken()])
-      if (version !== quoteVersion.current) return
-      if (!token) throw new Error('unauthorized')
-      if (!identityToken) throw new Error('identity_token_unavailable')
-      const result = await getTradingRoute(asset.symbol, side, amount, address, token, identityToken, abort.signal)
+      const result = await withWalletSession({ getAccessToken, getIdentityToken: () => identity.current,
+        refreshIdentityToken: getIdentityToken }, ({ accessToken, identityToken: proof }) => {
+        if (version !== quoteVersion.current || abort.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+        return getTradingRoute(asset.symbol, side, amount, address, accessToken, proof, abort.signal)
+      })
       if (version !== quoteVersion.current) return
       setQuote(result)
       setQuoteState('idle')
@@ -189,6 +190,9 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   }
 
   const validAmount = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,18})?$/.test(amount) && /[1-9]/.test(amount)
+  const quoteStatus = quoteExpired ? t.routeExpired : quote ? t.quoteDisclaimer
+    : quoteState === 'loading' ? t.gettingQuote : quoteState === 'error' ? t.unavailable
+    : validAmount ? t.routePrompt : t.enterAmount
   const tokenPrice = market?.symbol === asset.symbol && market.priceUsd !== null ? market.priceUsd
     : rwa?.symbol === asset.symbol ? rwa.tokenPriceUsd : null
   const price = tokenPrice !== null && tokenPrice > 0 && Number.isFinite(tokenPrice)
@@ -300,11 +304,11 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <div className="trade-sheet-tabs" role="group" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" key={value} aria-pressed={side === value} className={`motion-tab trade-${value} ${side === value ? 'active' : ''}`} onClick={() => { if (value !== side) { setAmount(value === 'sell' ? ticketAmount : ''); setSide(value) } }}>{side === value && <motion.span className="motion-tab-indicator" layoutId="trade-side-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[value]}</span></button>)}</div>
         <label className="trade-amount-label" htmlFor="trade-amount">{side === 'buy' ? t.buyAmount : t.sellAmount}</label>
         <div className="trade-amount-field"><input id="trade-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><span>{side === 'buy' ? 'USDT' : asset.symbol}</span></div>
-        <div className="trade-sheet-row"><span>{t.receive}</span><strong>{quote ? `${displayQuantity(quote.outputAmount)} ${quote.outputSymbol}` : t.unavailable}</strong></div>
+        <div className="trade-sheet-row"><span>{t.receive}</span><strong>{quote && !quoteExpired ? `${displayQuantity(quote.outputAmount)} ${quote.outputSymbol}` : quoteStatus}</strong></div>
         {quote && <div className="trade-sheet-row"><span>{t.route}</span><strong>{quote.vendor}</strong></div>}
         <div className="trade-sheet-row"><span>{t.wallet}</span><strong>{address ? `${address.slice(0, 8)}…${address.slice(-6)}` : t.noBalance}</strong></div>
         {side === 'sell' && <div className="trade-sheet-row"><span>{t.balanceLabel}</span><strong>{address ? t.balance : t.noBalance}</strong></div>}
-        <div className="trade-sheet-status" role="status" aria-live="polite"><span>{quoteExpired ? t.routeExpired : quote ? t.quoteDisclaimer : t.unavailable}</span><span>BNB SMART CHAIN</span></div>
+        <div className="trade-sheet-status" role="status" aria-live="polite"><span>{quoteStatus}</span><span>BNB SMART CHAIN</span></div>
         {quoteError && <p role="alert" className="trade-sheet-error">{quoteError}</p>}
         <button type="button" className={`trade-submit trade-${side}`} disabled={quoteState === 'loading' || (authenticated && !validAmount)} onClick={requestQuote}>{!authenticated ? t.login : quoteState === 'loading' ? t.gettingQuote : t.getQuote}</button>
         <p id="trade-sheet-note" className="trade-sheet-note">{t.sheetNote}</p>

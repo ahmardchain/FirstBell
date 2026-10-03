@@ -1,5 +1,7 @@
 # FirstBell visual contract
 
+- Session/quote follow-up (2026-10-03 UTC): keep the approved direct MoonPay handoff and Trade sheet layout. Show Enter an amount before input, Check route for a quote after input, Checking route during a request, and Quote unavailable only after failure. Keep route expiry and wallet/session errors distinct; do not display invented receive quantities.
+
 - Deposit authentication follow-up (2026-10-02 UTC): preserve the approved wallet/deposit layout. A rejected access token says the sign-in session could not be verified; only a failed linked-wallet proof uses wallet verification copy. Loading, sandbox, provider configuration and confirmed-funds states remain distinct.
 
 Read `AGENTS.md` before making interface changes. Review matching components from the catalog below and adapt a licensed source when it fits.

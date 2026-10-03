@@ -1,6 +1,7 @@
 import * as React from 'react'
-import { getIdentityToken, useUser } from '@privy-io/react-auth'
+import { getIdentityToken, useIdentityToken } from '@privy-io/react-auth'
 import { checkoutAsset, sessionAsset, type DepositConfig, type DepositSession, isDepositTerminal } from '../lib/funding'
+import { WalletSessionError, withWalletSession } from '../lib/wallet-session'
 
 type GetAccessToken = () => Promise<string | null>
 type DepositResponse = { session: DepositSession; checkoutUrl?: string }
@@ -20,7 +21,9 @@ async function request<T>(path: string, getAccessToken: GetAccessToken, init: Re
 }
 
 export function useDeposits(address: string | undefined, getAccessToken: GetAccessToken) {
-  const { refreshUser } = useUser()
+  const { identityToken } = useIdentityToken()
+  const identity = React.useRef(identityToken)
+  identity.current = identityToken
   const [config, setConfig] = React.useState<DepositConfig | null>(null)
   const [sessions, setSessions] = React.useState<DepositSession[]>([])
   const [loading, setLoading] = React.useState(false)
@@ -91,13 +94,14 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
     if (!address || busy) return
     setBusy(true); setError(null)
     try {
-      // A freshly created wallet may be newer than the current identity token.
-      await refreshUser()
-      const identityToken = await getIdentityToken()
-      if (!identityToken) throw new DepositRequestError('identity_token_unavailable')
-      const result = await request<DepositResponse>('/api/deposits/checkout', getAccessToken, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'privy-id-token': identityToken },
-        body: JSON.stringify({ walletAddress: address, sessionId, theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light' }),
+      if (config && !config.ready) throw new DepositRequestError(config.reason ?? 'provider_unavailable')
+      const result = await withWalletSession({ getAccessToken, getIdentityToken: () => identity.current,
+        refreshIdentityToken: getIdentityToken }, ({ accessToken, identityToken: proof }) => {
+        if (activeAddress.current !== address) throw new DepositRequestError('unauthorized')
+        return request<DepositResponse>('/api/deposits/checkout', async () => accessToken, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'privy-id-token': proof },
+          body: JSON.stringify({ walletAddress: address, sessionId, theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light' }),
+        })
       })
       if (activeAddress.current !== address) return
       const url = new URL(result.checkoutUrl ?? '')
@@ -108,7 +112,7 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
       // and redirectURL returns to the authenticated Portfolio screen.
       window.location.assign(url.toString())
     } catch (reason) {
-      if (activeAddress.current === address) setError(reason instanceof DepositRequestError ? reason.message : 'provider_unavailable')
+      if (activeAddress.current === address) setError(reason instanceof DepositRequestError || reason instanceof WalletSessionError ? reason.message : 'provider_unavailable')
     } finally { if (activeAddress.current === address) setBusy(false) }
   }
 

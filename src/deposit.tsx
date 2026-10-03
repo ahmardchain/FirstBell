@@ -38,7 +38,7 @@ export function depositErrorMessage(reason: string | null | undefined, language:
   const t = copy[language]
   if (['not_configured', 'invalid_configuration', 'account_not_configured', 'sandbox_asset_unavailable', 'asset_unavailable'].includes(reason ?? '')) return t.setup
   if (reason === 'identity_token_unavailable') return t.identity
-  if (reason === 'unauthorized') return t.session
+  if (['unauthorized', 'session_unavailable', 'session_refresh_failed'].includes(reason ?? '')) return t.session
   if (reason === 'wallet_not_verified') return t.verify
   if (['connection_unverified', 'https_required'].includes(reason ?? '')) return t.connection
   if (['rate_limited', 'too_many_pending'].includes(reason ?? '')) return t.limited
