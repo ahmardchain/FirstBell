@@ -87,8 +87,8 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
     return () => { abort.abort(); window.clearInterval(timer); document.removeEventListener('visibilitychange', visible); window.removeEventListener('focus', visible) }
   }, [pendingId, address, config?.ready, refresh])
 
-  const checkout = async (amount: string, fiatCurrency: string, sessionId?: string) => {
-    if (!address || busy || !config?.ready) return
+  const checkout = async (sessionId?: string) => {
+    if (!address || busy) return
     setBusy(true); setError(null)
     try {
       // A freshly created wallet may be newer than the current identity token.
@@ -97,7 +97,7 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
       if (!identityToken) throw new DepositRequestError('identity_token_unavailable')
       const result = await request<DepositResponse>('/api/deposits/checkout', getAccessToken, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'privy-id-token': identityToken },
-        body: JSON.stringify({ walletAddress: address, amount, fiatCurrency, sessionId, theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light' }),
+        body: JSON.stringify({ walletAddress: address, sessionId, theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light' }),
       })
       if (activeAddress.current !== address) return
       const url = new URL(result.checkoutUrl ?? '')

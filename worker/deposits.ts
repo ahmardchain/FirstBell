@@ -81,7 +81,9 @@ export async function handleDepositRequest(request: Request, env: Env, userId: s
     if (url.protocol !== 'https:') throw new FundingError('https_required')
     const options = await getFiatOptions(credentials)
     if (input.sessionId !== undefined && (typeof input.sessionId !== 'string' || !validId(input.sessionId))) throw new FundingError('invalid_session', 400)
-    const amount = input.sessionId ? {} : validateFiatAmount(input.amount, input.fiatCurrency, options)
+    const amount = input.sessionId ? {} : input.amount === undefined && input.fiatCurrency === undefined
+      ? { amount: '', fiatCurrency: '', amountSelection: 'moonpay' }
+      : validateFiatAmount(input.amount, input.fiatCurrency, options)
     // The stable external customer ID is pseudonymous, not a raw Privy DID.
     const customerId = (await hmac(userId, env.PRIVY_APP_ID)).replace(/[^a-zA-Z0-9]/g, '')
     return stub.fetch(new Request('https://account.internal/deposits/checkout', {
@@ -105,7 +107,7 @@ export async function handleStoredDeposits(request: Request, env: FundingEnv, st
     if (path === '/deposits/checkout' && request.method === 'POST') {
       const times = (await storage.get<number[]>('depositTimes') ?? []).filter(time => time > Date.now() - 60_000)
       if (times.length >= 3) throw new FundingError('rate_limited', 429)
-      const input = await request.json() as { sessionId?: string; walletAddress: string; amount: string; fiatCurrency: string; customerId: string; ip: string; origin: string; theme: 'dark' | 'light' }
+      const input = await request.json() as { sessionId?: string; walletAddress: string; amount: string; fiatCurrency: string; amountSelection?: 'moonpay'; customerId: string; ip: string; origin: string; theme: 'dark' | 'light' }
       let session = input.sessionId ? sessions.find(item => item.id === input.sessionId) : undefined
       if (input.sessionId && (!session || isDepositTerminal(session.status) || session.walletAddress.toLowerCase() !== input.walletAddress.toLowerCase()
         || session.mode !== credentials.mode || (session.currencyCode ?? BSC_USDT.currencyCode) !== checkoutAsset(credentials.mode).currencyCode
@@ -114,6 +116,7 @@ export async function handleStoredDeposits(request: Request, env: FundingEnv, st
         if (sessions.filter(item => !isDepositTerminal(item.status)).length >= 10) throw new FundingError('too_many_pending', 409)
         session = { id: crypto.randomUUID(), customerId: input.customerId, walletAddress: input.walletAddress, amount: input.amount, fiatCurrency: input.fiatCurrency,
           mode: credentials.mode, currencyCode: checkoutAsset(credentials.mode).currencyCode,
+          ...(input.amountSelection === 'moonpay' ? { amountSelection: 'moonpay' as const } : {}),
           status: 'awaiting_payment', createdAt: new Date().toISOString(), checkedAt: null,
           transactionId: null, transactionHash: null, receivedAmount: null }
       }

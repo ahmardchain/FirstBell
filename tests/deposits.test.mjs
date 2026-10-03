@@ -55,6 +55,41 @@ test('checkout locks BSC USDT, wallet and amount; signs the IP hash and encoded 
   await assert.rejects(() => createCheckoutUrl(credentials, session, 'http://firstbell.example', '203.0.113.42', 'light'), /https_required/)
 })
 
+test('native MoonPay checkout collects amount, fiat and payment method while retaining signed wallet and IP', async () => {
+  for (const [fields, record, asset] of [[env, session, 'usdt_bsc'], [sandboxEnv, sandboxSession, 'eth']]) {
+    const native = { ...record, amount: '', fiatCurrency: '', amountSelection: 'moonpay' }
+    const url = new URL(await createCheckoutUrl(getMoonPayCredentials(fields), native, 'https://firstbell.example', '203.0.113.42', 'light'))
+    assert.equal(url.searchParams.get('currencyCode'), asset)
+    assert.equal(url.searchParams.get('walletAddress'), wallet)
+    assert.equal(url.searchParams.get('externalTransactionId'), record.id)
+    for (const key of ['baseCurrencyCode', 'baseCurrencyAmount', 'lockAmount', 'paymentMethod']) assert.equal(url.searchParams.has(key), false)
+    assert.equal(url.searchParams.get('allowedIpAddress'), createHmac('sha256', fields.MOONPAY_SECRET_KEY).update('203.0.113.42').digest('base64'))
+    const signature = url.searchParams.get('signature'); url.searchParams.delete('signature')
+    assert.equal(signature, createHmac('sha256', fields.MOONPAY_SECRET_KEY).update(url.search).digest('base64'))
+  }
+})
+
+test('native checkout records provider-selected fiat only after order correlation and pins it for subsequent checks', () => {
+  const native = { ...session, amount: '', fiatCurrency: '', amountSelection: 'moonpay' }
+  const chosen = transaction({ baseCurrency: { ...fiat, code: 'eur' }, baseCurrencyAmount: 75.25, status: 'pending' })
+  const recorded = normalizeTransaction(chosen, native)
+  assert.equal(recorded.amount, '75.25'); assert.equal(recorded.fiatCurrency, 'eur')
+  assert.equal(recorded.transactionId, chosen.id); assert.equal(recorded.status, 'processing')
+  assert.equal(recorded.receivedAmount, null)
+  for (const override of [{ baseCurrencyAmount: 75.26 }, { baseCurrency: fiat }, { id: 'other-provider-order' }]) {
+    assert.throws(() => normalizeTransaction({ ...chosen, ...override }, recorded), /transaction_mismatch/)
+  }
+  for (const override of [{ externalCustomerId: 'another-user' }, { walletAddress: otherWallet },
+    { externalTransactionId: 'another-session' }, { currency: eth }, { baseCurrencyAmount: 0 },
+    { baseCurrencyAmount: -1 }, { baseCurrencyAmount: '1e3' }, { baseCurrencyAmount: Infinity },
+    { baseCurrencyAmount: true }, { baseCurrency: { code: 'not-fiat' } }]) {
+    assert.throws(() => normalizeTransaction({ ...chosen, ...override }, native), /transaction_mismatch/)
+  }
+  assert.throws(() => normalizeTransaction({ ...chosen, currency: eth }, { ...sandboxSession, amount: '', fiatCurrency: '', amountSelection: 'moonpay' }), /transaction_mismatch/)
+  const sandbox = normalizeTransaction(transaction({ currency: eth, baseCurrencyAmount: 25.5 }), { ...sandboxSession, amount: '', fiatCurrency: '', amountSelection: 'moonpay' })
+  assert.equal(sandbox.status, 'test_completed'); assert.equal(sandbox.receivedAmount, null)
+})
+
 test('environment/key mismatch and missing credentials fail closed', () => {
   assert.throws(() => getMoonPayCredentials({ PRIVY_APP_ID: 'test' }), /not_configured/)
   assert.throws(() => getMoonPayCredentials({ ...env, MOONPAY_ENVIRONMENT: 'sandbox' }), /invalid_configuration/)

@@ -6,7 +6,7 @@ import { displayQuantity, readWalletBalances, type WalletBalances } from './wall
 import { PRIVY_APP_ID } from './privy-config'
 import { getMarket } from './market-api'
 import { useDeposits, type DepositController } from './deposits-api'
-import { DepositDialog, DepositHistory, DepositPage } from './deposit'
+import { DepositHistory, DepositPage } from './deposit'
 import { portfolioAvatar } from '../lib/portfolio-avatar'
 import './portfolio.css'
 
@@ -89,11 +89,10 @@ const money = (value: number) => `US$${value.toLocaleString('en-US', { minimumFr
 export function PortfolioView({ assets, language, onInspect, account }: Props & { account: Account }) {
   const reduceMotion = useReducedMotion()
   const t = copy[language]
-  const [section, setSection] = React.useState<'positions' | 'activity'>('positions')
+  const [section, setSection] = React.useState<'positions' | 'activity'>(() => new URLSearchParams(window.location.search).has('deposit') ? 'activity' : 'positions')
   const [search, setSearch] = React.useState('')
   const [hidden, setHidden] = React.useState(false)
-  const [depositPage, setDepositPage] = React.useState(() => new URLSearchParams(window.location.search).has('deposit') || new URLSearchParams(window.location.search).get('view') === 'deposit')
-  const [cardOpen, setCardOpen] = React.useState(() => new URLSearchParams(window.location.search).has('deposit'))
+  const [depositPage, setDepositPage] = React.useState(() => new URLSearchParams(window.location.search).get('view') === 'deposit')
   const [editing, setEditing] = React.useState(false)
   const storageKey = `firstbell-display-name:${account.address ?? account.email ?? 'guest'}`
   const defaultName = account.email?.split('@')[0] || 'FirstBell'
@@ -131,10 +130,9 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
     window.history.pushState(null, '', url.pathname + url.search + url.hash)
     window.scrollTo({ top: 0 })
   }
-  const openCard = (id?: string) => {
-    account.deposits?.select(id ?? null)
-    setCardOpen(true)
-    if (id) void account.deposits?.refresh(id)
+  const openDeposit = (id: string) => {
+    account.deposits?.select(account.deposits.selectedId === id ? null : id)
+    void account.deposits?.refresh(id)
   }
   React.useEffect(() => {
     if (!account.authenticated || account.deposits?.loading) return
@@ -142,7 +140,8 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
     if (!url.searchParams.has('deposit')) return
     // Callback parameters are navigation hints, never payment evidence.
     for (const key of ['deposit', 'transactionId', 'transactionStatus']) url.searchParams.delete(key)
-    url.searchParams.set('view', 'deposit')
+    url.searchParams.delete('view')
+    setSection('activity'); setDepositPage(false)
     window.history.replaceState(null, '', url.pathname + url.search + url.hash)
   }, [account.authenticated, account.deposits?.loading])
 
@@ -165,7 +164,8 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
         <button type="button" className="portfolio-primary" disabled={!account.configured || !account.ready} onClick={account.login}>{account.ready ? t.login : t.checking}<ArrowRight size={18} /></button>
         {!account.configured && <small>{t.setup}</small>}
       </motion.div> : depositPage && account.address ? <motion.div key="deposit" initial={reduceMotion ? false : { opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : .2 }}>
-        <DepositPage address={account.address} language={language} onBack={() => navigateDeposit(false)} onCard={() => openCard()} />
+        <DepositPage address={account.address} language={language} onBack={() => navigateDeposit(false)}
+          onCard={() => void account.deposits?.checkout()} busy={account.deposits?.busy} error={account.deposits?.error} />
       </motion.div> : <motion.div key="account" initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
         <div className="portfolio-account-head">
           <img className="portfolio-avatar" src={portfolioAvatar} alt="" />
@@ -178,11 +178,10 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
         <div className="portfolio-tabs" role="tablist" aria-label={t.title}>{(['positions', 'activity'] as const).map(id => <button type="button" role="tab" id={`portfolio-tab-${id}`} aria-controls="portfolio-results" key={id} aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => { setSection(id); setSearch('') }}>{t[id]}</button>)}</div>
         <label className="portfolio-search"><Search size={20} strokeWidth={2} /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
         <div id="portfolio-results" role="tabpanel" aria-labelledby={`portfolio-tab-${section}`}>
-          {section === 'activity' && account.deposits ? <DepositHistory controller={account.deposits} language={language} search={search} onOpen={openCard} /> : section === 'positions' && positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <button type="button" className="portfolio-position-row" key={asset.symbol} onClick={() => onInspect(asset)}><img className={`brand-mark brand-mark--${asset.mark}`} src={`/assets/marks/${asset.mark}.svg`} alt="" /><span><strong>{asset.symbol}</strong><small>{asset.company}</small></span><strong>{hidden ? '••••' : displayQuantity(quantity)}</strong></button>)}</div>
+          {section === 'activity' && account.deposits ? <DepositHistory controller={account.deposits} language={language} search={search} onOpen={openDeposit} /> : section === 'positions' && positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <button type="button" className="portfolio-position-row" key={asset.symbol} onClick={() => onInspect(asset)}><img className={`brand-mark brand-mark--${asset.mark}`} src={`/assets/marks/${asset.mark}.svg`} alt="" /><span><strong>{asset.symbol}</strong><small>{asset.company}</small></span><strong>{hidden ? '••••' : displayQuantity(quantity)}</strong></button>)}</div>
             : <div className="portfolio-content-empty" role="status">{section === 'positions' ? account.error ? t.error : account.loading || !account.address ? t.loading : t.noPositions : t.noActivity}</div>}
         </div>
       </motion.div>}
     </AnimatePresence>
-    {account.deposits && account.address && <DepositDialog open={cardOpen} onClose={() => setCardOpen(false)} controller={account.deposits} address={account.address} language={language} />}
   </section>
 }

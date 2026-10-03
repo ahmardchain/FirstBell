@@ -30,6 +30,9 @@ export type DepositSession = {
   walletAddress: string
   amount: string
   fiatCurrency: string
+  // Native checkout chooses its amount and fiat in MoonPay. Empty until the
+  // first correlated provider order; legacy fixed-amount sessions omit this.
+  amountSelection?: 'moonpay'
   mode: FundingMode
   // Records created before the sandbox extension are BSC USDT sessions.
   currencyCode?: CheckoutCurrency

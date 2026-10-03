@@ -140,10 +140,12 @@ export async function createCheckoutUrl(credentials: MoonPayCredentials, session
     apiKey: credentials.publishableKey,
     currencyCode: asset.currencyCode,
     walletAddress: session.walletAddress,
-    baseCurrencyCode: session.fiatCurrency,
-    baseCurrencyAmount: session.amount,
-    lockAmount: 'true',
-    paymentMethod: 'credit_debit_card',
+    ...(session.amountSelection === 'moonpay' ? {} : {
+      baseCurrencyCode: session.fiatCurrency,
+      baseCurrencyAmount: session.amount,
+      lockAmount: 'true',
+      paymentMethod: 'credit_debit_card',
+    }),
     externalTransactionId: session.id,
     externalCustomerId: session.customerId,
     redirectURL: redirect.toString(),
@@ -161,11 +163,18 @@ export function normalizeTransaction(value: unknown, session: DepositSession): D
   if (!rows.length) return session
   if (rows.length !== 1) throw new FundingError('ambiguous_transaction')
   const transaction = object(rows[0]), baseCurrency = object(transaction?.baseCurrency)
+  const providerSelection = session.amountSelection === 'moonpay' && !session.transactionId
+  const fiatAmount = transaction?.baseCurrencyAmount
+  const validProviderAmount = (typeof fiatAmount === 'number' || typeof fiatAmount === 'string')
+    && /^\d{1,9}(?:\.\d{1,8})?$/.test(String(fiatAmount)) && Number(fiatAmount) > 0
+    && typeof baseCurrency?.code === 'string' && /^[a-z]{3}$/.test(baseCurrency.code)
+    && (session.mode !== 'sandbox' || ['usd', 'gbp'].includes(baseCurrency.code))
   if (!transaction || transaction.externalTransactionId !== session.id || transaction.externalCustomerId !== session.customerId
     || typeof transaction.walletAddress !== 'string' || transaction.walletAddress.toLowerCase() !== session.walletAddress.toLowerCase()
     || (session.currencyCode ?? BSC_USDT.currencyCode) !== checkoutAsset(session.mode).currencyCode
-    || !matchesCheckoutAsset(transaction.currency, session.mode) || baseCurrency?.code !== session.fiatCurrency
-    || Number(transaction.baseCurrencyAmount) !== Number(session.amount)
+    || !matchesCheckoutAsset(transaction.currency, session.mode)
+    || (providerSelection ? !validProviderAmount : baseCurrency?.code !== session.fiatCurrency
+      || Number(transaction.baseCurrencyAmount) !== Number(session.amount))
     || typeof transaction.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(transaction.id)) throw new FundingError('transaction_mismatch')
   if (session.transactionId && transaction.id !== session.transactionId) throw new FundingError('transaction_mismatch')
   const statuses = { waitingAuthorization: 'action_required', waitingPayment: 'processing', pending: 'processing', failed: 'failed', completed: 'confirming' } as const
@@ -173,7 +182,8 @@ export function normalizeTransaction(value: unknown, session: DepositSession): D
   const hash = typeof transaction.cryptoTransactionId === 'string' && /^0x[a-fA-F0-9]{64}$/.test(transaction.cryptoTransactionId) ? transaction.cryptoTransactionId : null
   const quote = transaction.quoteCurrencyAmount
   const amount = (typeof quote === 'number' || typeof quote === 'string') && /^\d+(?:\.\d{1,18})?$/.test(String(quote)) && Number(quote) > 0 ? String(quote) : null
-  return { ...session, transactionId: transaction.id, transactionHash: hash, receivedAmount: null,
+  return { ...session, ...(providerSelection ? { amount: String(fiatAmount), fiatCurrency: baseCurrency!.code as string } : {}),
+    transactionId: transaction.id, transactionHash: hash, receivedAmount: null,
     status: statuses[transaction.status as keyof typeof statuses],
     ...(transaction.status === 'completed' && session.mode === 'sandbox' ? { status: 'test_completed' as const } : {}),
     // Keep the quote private to this check until its transfer is verified.

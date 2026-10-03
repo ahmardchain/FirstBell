@@ -134,17 +134,17 @@ The existing five Ondo tokens remain the asset catalog. Trade's Buy/Sell sheet n
 
 ## Card checkout: MoonPay → Privy wallet
 
-Portfolio opens an amount dialog in the existing light/dark design. The Worker verifies that the receiving address is the signed-in user's Privy embedded EVM wallet, checks MoonPay's enabled currency catalog, and generates a server-signed, IP-bound checkout URL. The wallet, mode-specific asset and requested fiat amount are prefilled and locked. FirstBell never receives real card details.
+Portfolio → Deposit → Add Money opens MoonPay's hosted UI directly in the same tab. MoonPay collects the amount, fiat currency, payment method, verification and fees. FirstBell verifies the signed-in user's embedded EVM wallet and the enabled asset, then signs the wallet, customer IP and return URL server-side. There is no FirstBell payment form or test-card panel. FirstBell never receives card details.
 
 | Mode | Portfolio action | MoonPay currency | Delivery network | Mainnet balance |
 | --- | --- | --- | --- | --- |
-| `sandbox` | Test card checkout | Native ETH (`eth`) | Ethereum Sepolia (11155111) | No BSC funds credited |
-| `live` | Deposit from card | USDT (`usdt_bsc`) | BNB Smart Chain (56) | Actual BSC balance read after receipt verification |
+| `sandbox` | Add Money | Native ETH (`eth`) | Ethereum Sepolia (11155111) | No BSC funds credited |
+| `live` | Add Money | USDT (`usdt_bsc`) | BNB Smart Chain (56) | Actual BSC balance read after receipt verification |
 
 ### Activate sandbox checkout for the demo
 
 1. In [MoonPay Developers → API Keys](https://dashboard.moonpay.com/), use the test keys available before production approval. Enable **Ethereum** in the integration's On-ramp asset settings. Add your FirstBell deployment domain to the allowed domains.
-2. In **Cloudflare → Workers & Pages → firstbell → Settings → Variables and Secrets**, configure:
+2. In the Vercel project’s Production environment variables (or Cloudflare runtime secrets when using the Worker adapter), configure:
 
    | Runtime setting | Value |
    | --- | --- |
@@ -153,9 +153,9 @@ Portfolio opens an amount dialog in the existing light/dark design. The Worker v
    | `MOONPAY_ENVIRONMENT` | `sandbox` |
 
 3. Match the frontend and server Privy App IDs and enable **Return user data in an identity token** in Privy's authentication settings, as described below. Sign in again after enabling it. The API verifies both token types with the configured PEM or app-specific published keys.
-4. In Portfolio choose **Test card checkout**. Verify that the dialog identifies **ETH / Ethereum Sepolia** and your embedded wallet address. Test checkout offers the provider's enabled USD/GBP payment currencies and their actual amount limits.
-5. Follow [MoonPay's sandbox guide](https://dev.moonpay.com/widget/sandbox-testing). The dialog shows its UK frictionless Visa test card: `4485 0403 7153 6584`, expiry `12/2030`, CVC `123`. Use a UK test billing address only inside sandbox and an email you can access for the login OTP. KYC is simulated and document submission can be skipped. Never enter a real card into sandbox.
-6. Return to FirstBell. A verified provider completion is labelled **Test completed**, with **no mainnet USDT credited**. The session records `currencyCode: eth`, and its transaction link uses Sepolia Etherscan. MoonPay documents testnet delivery as **1/100 of the quoted ETH amount**; FirstBell does not display the quote as a received balance.
+4. In Portfolio choose **Deposit → Add Money**. MoonPay opens directly. Choose the amount and supported payment currency in MoonPay; it owns the checkout screen and its sandbox indicators.
+5. Follow [MoonPay's sandbox guide](https://dev.moonpay.com/widget/sandbox-testing). For developer testing, its documented UK frictionless Visa test card is: `4485 0403 7153 6584`, expiry `12/2030`, CVC `123`. Use a UK test billing address only inside sandbox and an email you can access for the login OTP. KYC is simulated and document submission can be skipped. Never enter a real card into sandbox.
+6. Return to FirstBell. A verified sandbox provider completion appears as **Checkout completed** in Activity; **no mainnet USDT is credited**. The session records `currencyCode: eth`, and its transaction link uses Sepolia Etherscan. MoonPay documents testnet delivery as **1/100 of the quoted ETH amount**; FirstBell does not display the quote as a received balance.
 
 The BSC mainnet portfolio remains independent: pre-fund the same embedded wallet address with real USDT on BSC and BNB for gas. This does not convert a test card payment into real money. The [hackathon](https://www.bnbchain.org/en/hackathons/tokenized-stocks) requires mainnet proof; an eventual recording must label sandbox checkout and any separately funded real stock purchase as separate parts. **Stock execution remains unfinished in the current app; pre-funding alone does not enable a buy.** See [the demo preparation guide](docs/demo-guide.md) for the remaining checks.
 
@@ -172,10 +172,14 @@ The BSC mainnet portfolio remains independent: pre-fund the same embedded wallet
 
    Using runtime secrets also keeps dashboard configuration across Git-triggered Wrangler deployments. CLI equivalents are `npx wrangler secret put MOONPAY_PUBLISHABLE_KEY`, `npx wrangler secret put MOONPAY_SECRET_KEY` and `npx wrangler secret put MOONPAY_ENVIRONMENT`. Paste only into the dashboard or interactive CLI prompts. Never commit keys or prefix them with `VITE_`. The publishable key appears in the provider checkout URL as intended; the secret key stays in the Worker.
 3. Keep the frontend and server Privy App IDs aligned. In **Privy → User management → Authentication → Advanced**, enable **Return user data in an identity token**, following [Privy's identity token documentation](https://docs.privy.io/user-management/users/identity-tokens). Sign in again so checkout has an identity token containing the newly created embedded wallet. `PRIVY_VERIFICATION_KEY` is optional because the API also verifies against Privy's published keys. No Privy App Secret is needed for this integration.
-4. Open Portfolio, choose **Deposit from card**, and review the correct wallet, USDT and BNB Smart Chain before entering MoonPay. Runtime secret changes do not require a frontend rebuild. FirstBell returns an explicit setup/unavailable state until the keys, mode and enabled asset are valid.
+4. Open Portfolio, choose **Deposit → Add Money**, and review the purchase in MoonPay’s own UI. Runtime secret changes do not require a frontend rebuild. FirstBell returns an explicit setup/unavailable state until the keys, mode and enabled asset are valid.
 5. Complete one small live deposit through MoonPay yourself. Return to FirstBell and compare its confirmed transfer and wallet balance with BscScan. Record this real payment and its latency in the developer experience report before claiming the complete card flow works.
 
 **Catalog observation, 2026-09-30:** MoonPay's public `/v3/currencies?show=all` lists `usdt_bsc`, chain `56`, contract `0x55d398326f99059ff775485246999027b3197955`, **18 decimals**, `supportsLiveMode: true` and **`supportsTestMode: false`**. Native `eth` supports test mode; its catalog metadata identifies Ethereum mainnet, while the sandbox guide explicitly says delivery is on Sepolia. FirstBell uses these two distinct routes and never counts test checkout as mainnet funds.
+
+### Native checkout API
+
+`POST /api/deposits/checkout` accepts `{ walletAddress, theme, sessionId? }` with a Privy access token, embedded-wallet identity token and same-origin browser request. New native sessions use `amountSelection: moonpay` and empty amount/fiat fields until the first correlated MoonPay order. Its signed URL omits amount, fiat and payment-method overrides. External customer/order IDs, exact wallet and asset remain required; the first verified order records its fiat amount, which is pinned for future checks. Legacy sessions with an explicit amount and fiat retain their original fixed-amount behavior. The provider return opens Portfolio Activity, rather than a custom payment dialog.
 
 ### Status and confirmation
 

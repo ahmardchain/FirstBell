@@ -165,7 +165,7 @@ test('sandbox checkout verifies both Privy tokens, persists through Vercel insta
   }
   assert.equal((await (await call('deposits/config')).json()).ready, true)
   assert.equal(commands.length, 0, 'config does not initialize an account or a checkout')
-  const input = { walletAddress: wallet, amount: '50', fiatCurrency: 'usd', theme: 'dark' }
+  const input = { walletAddress: wallet, theme: 'dark' }
   for (const [changes, body, status, reason] of [
     [{ 'privy-id-token': null }, input, 403, 'wallet_not_verified'],
     [{}, { ...input, walletAddress: '0x2222222222222222222222222222222222222222' }, 403, 'wallet_not_verified'],
@@ -182,14 +182,17 @@ test('sandbox checkout verifies both Privy tokens, persists through Vercel insta
   const checkout = await response.json(), session = checkout.session, url = new URL(checkout.checkoutUrl)
   assert.equal(session.status, 'awaiting_payment'); assert.equal(session.mode, 'sandbox')
   assert.equal(session.currencyCode, 'eth'); assert.equal(session.walletAddress, wallet)
-  assert.equal(session.amount, '50'); assert.equal(session.fiatCurrency, 'usd')
+  assert.equal(session.amount, ''); assert.equal(session.fiatCurrency, '')
+  assert.equal(session.amountSelection, 'moonpay')
   assert.equal(session.transactionHash, null); assert.equal(session.receivedAmount, null)
   assert.equal(url.origin, 'https://buy-sandbox.moonpay.com')
   const expected = { apiKey: env.MOONPAY_PUBLISHABLE_KEY, currencyCode: 'eth', walletAddress: wallet,
-    baseCurrencyCode: 'usd', baseCurrencyAmount: '50', lockAmount: 'true', paymentMethod: 'credit_debit_card',
     externalTransactionId: session.id, externalCustomerId: session.customerId, theme: 'dark',
     redirectURL: `${origin}/app/?tab=portfolio&deposit=${session.id}` }
   for (const [key, value] of Object.entries(expected)) assert.equal(url.searchParams.get(key), value)
+  for (const key of ['baseCurrencyCode', 'baseCurrencyAmount', 'lockAmount', 'paymentMethod']) {
+    assert.equal(url.searchParams.has(key), false, 'MoonPay collects amount, fiat and payment method in its own UI')
+  }
   assert.notEqual(session.customerId, user)
   const mac = value => createHmac('sha256', env.MOONPAY_SECRET_KEY).update(value).digest('base64')
   assert.equal(url.searchParams.get('allowedIpAddress'), mac(ip), 'use the trusted Vercel IP, not supplied Cloudflare headers')

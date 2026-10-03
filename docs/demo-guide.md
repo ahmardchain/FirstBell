@@ -14,7 +14,7 @@ Follow [the Binance route-check setup](../README.md#check-an-ondo-trading-route-
 
 Follow the [sandbox setup in README](../README.md#activate-sandbox-checkout-for-the-demo). Configure `pk_test_…`, the matching `sk_test_…`, and `MOONPAY_ENVIRONMENT=sandbox` in the Cloudflare Worker. Keep the Privy verification public key and identity-token option enabled. Do not send signing keys in chat or commit them.
 
-Sign in with the identity you will use during recording. Check that Portfolio opens **Test card checkout** and that its dialog shows **ETH / Ethereum Sepolia**, the same wallet address, test-card instructions, and the selected payment amount. Complete the hosted MoonPay flow, return to FirstBell, and verify **Test completed** in Activity. Compare your BSC USDT balance before and after; sandbox checkout must not credit it.
+Sign in with the identity you will use during recording. Choose **Deposit → Add Money** and verify that it opens MoonPay’s native hosted UI directly. Choose the amount and supported payment currency in MoonPay. Check the provider’s sandbox context and receiving wallet there, complete its test flow, return to FirstBell, and verify **Checkout completed** in Activity. Compare your BSC USDT balance before and after; sandbox checkout must not credit it.
 
 ## Prepare the mainnet trading proof
 
