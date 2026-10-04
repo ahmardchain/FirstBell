@@ -5,7 +5,8 @@ import { getRwaContext } from './binance-rwa.ts'
 import { binanceFailure } from './binance-api.ts'
 import { handleDepositRequest } from './deposits.ts'
 import { handleTradingRoute } from './trading.ts'
-import { getOnramperSetup, handleOnramperWebhook } from './onramper.ts'
+import { getOnramperMode, getOnramperSetup, handleOnramperWebhook } from './onramper.ts'
+import { createOnramperDemoUrl } from '../lib/onramper-demo.ts'
 
 const maxBodyBytes = 512
 
@@ -55,6 +56,15 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
       ? { provider: 'moonpay', configured: Boolean(env.MOONPAY_PUBLISHABLE_KEY?.trim() && env.MOONPAY_SECRET_KEY?.trim()) }
       : { provider: 'onramper', ...await getOnramperSetup(env) } })
   if (pathname === '/api/onramper/webhook') return handleOnramperWebhook(request, env)
+  if (pathname === '/api/onramper/demo-widget') {
+    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
+    if (getOnramperMode(env) !== 'sandbox') return json({ error: 'demo_not_configured' }, 503)
+    try {
+      const theme = new URL(request.url).searchParams.get('theme') === 'dark' ? 'dark' : 'light'
+      const widgetUrl = createOnramperDemoUrl(env.ONRAMPER_API_KEY?.trim() ?? '', theme)
+      return json({ demo: true, mode: 'sandbox', widgetUrl })
+    } catch { return json({ error: 'demo_not_configured' }, 503) }
+  }
   if (pathname === '/api/prices') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
     const symbols = new URL(request.url).searchParams.get('symbols')?.split(',') ?? []

@@ -140,3 +140,9 @@ The mark provenance is in `brand-mark-sources.json`. The floating icon component
 - User authorized replacing MoonPay with Onramper for broad card coverage and a simple experience for non-Web3 users. Preserve the existing three Deposit method rows, QR receiving views, light/dark styles and navigation. Only the card provider label/loading copy changes; no amount form, extra modal, network selector or country-specific rule is added.
 - Add Money opens the signed Onramper hosted checkout in the same tab with the wallet and BSC USDT output preset, card default and automatic live provider routing. Activity uses provider-aware names for historical records and concise neutral payment statuses. Simulated Onramper completion has no BSC receipt or credited balance.
 - Source layout/style are unchanged. Backend fixture validation and deployed observations are recorded in the developer experience report; no real card acceptance is claimed.
+
+## Onramper UI recording (2026-10-04 UTC)
+
+- User requested a UI-only video without partner activation. Open `/app/?tab=portfolio&view=deposit&demo=onramper`; keep normal client sign-in and real account balances. The card row uses the same component, marks and styles, with **Onramper · Demo** as its descriptor.
+- Design Read: existing Deposit utility for newcomers; preservation extension; variance 1/10, motion 1/10, density 2/10, reference fidelity 9/10. Reuse the current rows, spinner, inline errors, keyboard controls, themes and navigation. No new payment form, modal or fabricated payment success.
+- The demo performs one public read for a test-key-only `.dev` widget URL and uses same-tab navigation. It sends no wallet, identity token, account context or exact asset selection. No FirstBell deposit session, balance credit or stock order is created. The ordinary app keeps its existing funding checks.

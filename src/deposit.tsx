@@ -38,6 +38,7 @@ const copy = {
 
 export function depositErrorMessage(reason: string | null | undefined, language: Language) {
   const t = copy[language]
+  if (reason === 'demo_not_configured') return language === 'zh' ? '演示需要 Onramper 测试密钥。' : 'The demo needs an Onramper test key.'
   if (['not_configured', 'invalid_configuration', 'account_not_configured', 'sandbox_asset_unavailable', 'asset_unavailable'].includes(reason ?? '')) return t.setup
   if (['identity_token_unavailable', 'wallet_verification_not_configured'].includes(reason ?? '')) return t.identity
   if (reason === 'wallet_verification_unavailable') return t.verificationUnavailable
@@ -57,8 +58,8 @@ const statusMessage = (session: DepositSession, language: Language) => {
     test_completed: t.testCompleted })[session.status]
 }
 
-export function DepositPage({ address, language, onBack, onCard, busy = false, error }: {
-  address: string; language: Language; onBack: () => void; onCard: () => void; busy?: boolean; error?: string | null
+export function DepositPage({ address, language, onBack, onCard, busy = false, error, demo = false }: {
+  address: string; language: Language; onBack: () => void; onCard: () => void; busy?: boolean; error?: string | null; demo?: boolean
 }) {
   const t = language === 'zh' ? {
     title: '充值', back: '返回', manual: '手动转入', exchange: '从交易所充值', card: '添加资金',
@@ -113,7 +114,7 @@ export function DepositPage({ address, language, onBack, onCard, busy = false, e
       {([
         { id: 'manual', title: t.manual, icon: QrCode, badges: 'crypto', hint: t.network },
         { id: 'exchange', title: t.exchange, icon: Landmark, badges: 'exchange', hint: t.network },
-        { id: 'card', title: t.card, icon: CreditCard, badges: 'card', hint: t.cardHint },
+        { id: 'card', title: t.card, icon: CreditCard, badges: 'card', hint: demo ? `${t.cardHint} · ${language === 'zh' ? '演示' : 'Demo'}` : t.cardHint },
       ] as const).map(item => <button type="button" className="funding-method" key={item.id} disabled={item.id === 'card' && busy} aria-busy={item.id === 'card' && busy} onClick={() => choose(item.id)}>
         <span className="funding-method-icon">{item.id === 'card' && busy ? <LoaderCircle className="deposit-spinner" size={22} /> : <item.icon size={22} strokeWidth={1.8} />}</span>
         <span className="funding-method-content"><span className="funding-method-title">{item.id === 'card' && busy ? language === 'zh' ? '正在打开 Onramper…' : 'Opening Onramper…' : item.title}</span><span className="funding-method-meta">{badges(item.badges)}<span>{item.hint}</span></span></span>

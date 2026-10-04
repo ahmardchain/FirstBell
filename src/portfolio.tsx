@@ -7,6 +7,8 @@ import { PRIVY_APP_ID } from './privy-config'
 import { getTokenPrices } from './market-api'
 import { useDeposits, type DepositController } from './deposits-api'
 import { DepositHistory, DepositPage } from './deposit'
+import { useOnramperDemo } from './onramper-demo'
+import { isOnramperDemo } from '../lib/onramper-demo'
 import { portfolioAvatar } from '../lib/portfolio-avatar'
 import { assetLogo, tokenLogoError, type CatalogAsset as Asset } from '../lib/asset-catalog'
 import './portfolio.css'
@@ -46,7 +48,7 @@ function ConnectedPortfolio(props: Props) {
   const [refreshKey, setRefreshKey] = React.useState(0)
   const wallet = wallets.find(item => item.walletClientType === 'privy' || item.walletClientType === 'privy_v2')
   const address = authenticated && walletsReady ? wallet?.address : undefined
-  const deposits = useDeposits(address, getAccessToken)
+  const deposits = useDeposits(isOnramperDemo(window.location.search) ? undefined : address, getAccessToken)
   const completedDeposits = React.useRef('')
   React.useEffect(() => {
     const completed = deposits.sessions.filter(session => session.mode === 'live' && session.status === 'completed').map(session => session.id).join(',')
@@ -93,6 +95,8 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
   const [search, setSearch] = React.useState('')
   const [hidden, setHidden] = React.useState(false)
   const [depositPage, setDepositPage] = React.useState(() => new URLSearchParams(window.location.search).get('view') === 'deposit')
+  const demoCard = isOnramperDemo(window.location.search)
+  const demo = useOnramperDemo(demoCard && depositPage)
   const [editing, setEditing] = React.useState(false)
   const storageKey = `firstbell-display-name:${account.address ?? account.email ?? 'guest'}`
   const defaultName = account.email?.split('@')[0] || 'FirstBell'
@@ -167,7 +171,8 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
         {!account.configured && <small>{t.setup}</small>}
       </motion.div> : depositPage && account.address ? <motion.div key="deposit" initial={reduceMotion ? false : { opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : .2 }}>
         <DepositPage address={account.address} language={language} onBack={() => navigateDeposit(false)}
-          onCard={() => void account.deposits?.checkout()} busy={account.deposits?.busy} error={account.deposits?.error} />
+          demo={demoCard} onCard={() => void (demoCard ? demo.checkout() : account.deposits?.checkout())}
+          busy={demoCard ? demo.busy : account.deposits?.busy} error={demoCard ? demo.error : account.deposits?.error} />
       </motion.div> : <motion.div key="account" initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
         <div className="portfolio-account-head">
           <img className="portfolio-avatar" src={portfolioAvatar} alt="" />
