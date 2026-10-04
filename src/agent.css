@@ -21,6 +21,7 @@
 .ai-chat-message>span { color:var(--muted); }
 .ai-chat-message.user>span { color:color-mix(in srgb,var(--background) 75%,transparent); }
 .ai-chat-message p { margin:10px 0 0; font-size:14px; line-height:1.55; }
+.ai-chat-message p { white-space:pre-line; }
 .ai-chat-message a { display:inline-block; margin-top:13px; border-bottom:1px solid currentColor; font-size:12px; text-decoration:none; }
 .ai-chat-message a:hover { opacity:.65; }
 .ai-chat-composer-wrap { padding:0 24px 19px; }
@@ -44,3 +45,32 @@
 .ai-chat-composer,.ai-chat-message,.ai-chat-icon { border-radius:16px; }
 .ai-chat-reset,.ai-chat-send { border-radius:999px; }
 @media(max-width:760px) { .ai-chat-card { min-height:calc(100svh - 175px); } }
+
+.agent-wallet-status { display:flex; align-items:center; gap:7px; margin-top:13px; color:var(--muted); font-size:12px; }
+.agent-wallet-status button { min-height:36px; padding:0 13px; border:1px solid var(--line); border-radius:999px; background:var(--background); color:var(--foreground); cursor:pointer; }
+.agent-trade-review { width:100%; padding:20px; border:1px solid var(--line); border-radius:16px; background:var(--hover); }
+.agent-review-heading { display:flex; align-items:center; gap:13px; margin-bottom:20px; }
+.agent-review-heading img { flex:none; width:38px; height:38px; object-fit:contain; }
+.agent-review-heading div { display:grid; gap:5px; }
+.agent-review-heading span,.agent-review-heading small { color:var(--muted); font-size:11px; }
+.agent-review-heading strong { font-size:16px; font-weight:600; }
+.agent-trade-review dl { display:grid; gap:12px; margin:0; font-size:12px; }
+.agent-trade-review dl>div { display:flex; justify-content:space-between; align-items:baseline; gap:16px; }
+.agent-trade-review dt { color:var(--muted); }
+.agent-trade-review dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.agent-trade-review p,.agent-notice { color:var(--muted); font-size:12px; line-height:1.6; }
+.agent-trade-review p { margin:17px 0 0; }
+.agent-review-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:22px; }
+.agent-review-actions button,.agent-inline-action,.agent-order-status button { display:inline-flex; justify-content:center; align-items:center; gap:7px; min-height:44px; padding:0 17px; border:1px solid var(--line); border-radius:999px; background:var(--background); color:var(--foreground); font:500 12px 'Inter Variable',sans-serif; cursor:pointer; }
+.agent-review-actions .agent-primary { background:var(--foreground); border-color:var(--foreground); color:var(--background); }
+.agent-review-actions button:hover,.agent-inline-action:hover,.agent-order-status button:hover,.agent-wallet-status button:hover { opacity:.75; }
+.agent-review-actions button:disabled,.agent-inline-action:disabled,.agent-order-status button:disabled,.ai-chat-reset:disabled { opacity:.45; cursor:not-allowed; }
+.agent-notice { display:flex; align-items:flex-start; gap:9px; width:100%; margin:0; }
+.agent-notice svg { flex:none; margin-top:2px; }
+.agent-order-status { display:flex; align-items:center; flex-wrap:wrap; gap:10px; width:100%; font-size:11px; }
+.agent-order-status>span { width:100%; overflow-wrap:anywhere; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.agent-order-status a { display:flex; align-items:center; gap:6px; color:var(--foreground); }
+.agent-spinner { animation:agent-spin 1s linear infinite; }
+@keyframes agent-spin { to { transform:rotate(360deg); } }
+@media(max-width:540px) { .agent-trade-review { padding:16px; } .agent-trade-review dl>div { gap:10px; } .agent-review-actions button { padding:0 13px; } }
+@media(prefers-reduced-motion:reduce) { .agent-spinner { animation:none; } }

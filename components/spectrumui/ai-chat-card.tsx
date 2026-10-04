@@ -10,6 +10,7 @@ export interface AIChatMessage {
   id: number
   role: 'user' | 'guide'
   text: string
+  source?: boolean
 }
 
 export interface AIChatCardProps {
@@ -30,12 +31,19 @@ export interface AIChatCardProps {
   onSend: (message: string) => void
   onReset: () => void
   className?: string
+  afterMessages?: React.ReactNode
+  status?: React.ReactNode
+  busy?: boolean
+  resetDisabled?: boolean
+  composerCaption?: string
+  agentLabel?: string
 }
 
 export function AIChatCard({
   title, subtitle, greeting, prompt, prompts, placeholder, note,
   sourceHref, sourceLabel, resetLabel, sendLabel, messages,
-  icon, autoType = true, onSend, onReset, className,
+  icon, autoType = true, onSend, onReset, className, afterMessages, status, busy = false, resetDisabled = false,
+  composerCaption = 'BNB SMART CHAIN', agentLabel = 'FIRSTBELL / SOURCE',
 }: AIChatCardProps) {
   const rootRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -52,7 +60,7 @@ export function AIChatCard({
 
   React.useEffect(() => {
     if (messages.length && transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
-  }, [messages.length])
+  }, [messages.length, afterMessages])
 
   const takeOver = () => {
     if (userActive || !autoType) return
@@ -63,7 +71,7 @@ export function AIChatCard({
 
   const send = () => {
     const text = userMessage.trim()
-    if (!text) return
+    if (!text || busy) return
     onSend(text)
     setUserMessage('')
     setUserActive(true)
@@ -72,16 +80,16 @@ export function AIChatCard({
 
   return <div ref={rootRef} className={cn('ai-chat-card', className)}>
     <header className="ai-chat-header">
-      <div><span className="ai-chat-index">FIRSTBELL / AGENT</span><h1>{title}</h1><p>{subtitle}</p></div>
+      <div><span className="ai-chat-index">FIRSTBELL / AGENT</span><h1>{title}</h1><p>{subtitle}</p>{status}</div>
       <motion.button type="button" className="ai-chat-reset" aria-label={resetLabel} title={resetLabel}
-        whileTap={reduce ? undefined : { scale: .93 }}
+        whileTap={reduce ? undefined : { scale: .93 }} disabled={busy || resetDisabled}
         onClick={() => { setSpins(count => count + 1); setUserActive(false); setUserMessage(''); onReset() }}>
         <motion.span animate={reduce ? undefined : { rotate: spins * 360 }} transition={{ duration: .55 }}><RefreshCw size={18} /></motion.span>
       </motion.button>
     </header>
 
     <div className="ai-chat-body">
-      {messages.length === 0 ? <div className="ai-chat-empty">
+      {messages.length === 0 && !afterMessages ? <div className="ai-chat-empty">
         <motion.div className="ai-chat-icon" animate={reduce ? undefined : { y: [0, -3, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
           {icon ?? <MessageCircleDashed size={22} strokeWidth={1.7} />}
         </motion.div>
@@ -90,9 +98,10 @@ export function AIChatCard({
       </div> : <div ref={transcriptRef} className="ai-chat-transcript" role="log" aria-live="polite" aria-label={title}>
         {messages.map(message => <motion.div key={message.id} className={`ai-chat-message ${message.role}`}
           initial={reduce ? false : { opacity: 0, y: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: reduce ? 0 : .25, ease: [.22, 1, .36, 1] }}>
-          <span>{message.role === 'user' ? 'YOU' : 'FIRSTBELL / SOURCE'}</span><p>{message.text}</p>
-          {message.role === 'guide' && <a href={sourceHref} target="_blank" rel="noreferrer">{sourceLabel}</a>}
+          <span>{message.role === 'user' ? 'YOU' : agentLabel}</span><p>{message.text}</p>
+          {message.role === 'guide' && message.source !== false && <a href={sourceHref} target="_blank" rel="noreferrer">{sourceLabel}</a>}
         </motion.div>)}
+        {afterMessages}
       </div>}
     </div>
 
@@ -105,8 +114,8 @@ export function AIChatCard({
         : <button type="button" className="ai-chat-typewriter" onClick={takeOver} aria-label={`${placeholder}: ${typedMessage || prompts[0]}`}>
           {typedMessage || <span className="ai-chat-placeholder">{placeholder}</span>}<span className="ai-chat-caret" aria-hidden="true" />
         </button>}
-        <div className="ai-chat-composer-actions"><span>BNB SMART CHAIN / 05 ASSETS</span>
-          <motion.button type="button" className="ai-chat-send" aria-label={sendLabel} title={sendLabel} onClick={send} disabled={!userMessage.trim()}
+        <div className="ai-chat-composer-actions"><span>{composerCaption}</span>
+          <motion.button type="button" className="ai-chat-send" aria-label={sendLabel} title={sendLabel} onClick={send} disabled={busy || !userMessage.trim()}
             whileTap={reduce ? undefined : { scale: .93 }}><ArrowUp size={19} /></motion.button>
         </div>
       </div>

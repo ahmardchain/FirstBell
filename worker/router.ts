@@ -5,6 +5,7 @@ import { getRwaContext } from './binance-rwa.ts'
 import { binanceFailure } from './binance-api.ts'
 import { handleDepositRequest } from './deposits.ts'
 import { handleTradingRoute } from './trading.ts'
+import { handleAgentTrade } from './agent-trading.ts'
 import { getOnramperMode, getOnramperSetup, handleOnramperWebhook } from './onramper.ts'
 import { createOnramperDemoUrl } from '../lib/onramper-demo.ts'
 
@@ -51,6 +52,7 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
   const pathname = new URL(request.url).pathname
   if (!pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
   if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok',
+    agentTrading: { configured: Boolean(env.BINANCE_WEB3_API_KEY?.trim() && env.BINANCE_WEB3_SECRET_KEY?.trim()), chainId: 56, executionVendor: 'CowSwap', confirmationRequired: true },
     walletVerification: { serverLookupConfigured: Boolean(env.PRIVY_APP_SECRET?.trim()) },
     cardFunding: env.CARD_FUNDING_PROVIDER === 'moonpay'
       ? { provider: 'moonpay', configured: Boolean(env.MOONPAY_PUBLISHABLE_KEY?.trim() && env.MOONPAY_SECRET_KEY?.trim()) }
@@ -91,6 +93,12 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
     const id = await getUserId(request, env)
     if (!id) return json({ error: 'unauthorized' }, 401)
     return handleTradingRoute(request, env, id)
+  }
+  if (['/api/trade/prepare', '/api/trade/submit', '/api/trade/status'].includes(pathname)) {
+    if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
+    const id = await getUserId(request, env)
+    if (!id) return json({ error: 'unauthorized' }, 401)
+    return handleAgentTrade(request, env, id)
   }
   const rwaMatch = /^\/api\/rwa\/([^/]+)$/.exec(pathname)
   if (rwaMatch) {

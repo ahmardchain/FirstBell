@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, ArrowUpRight, Bookmark, ChevronDown, ExternalLink, Globe2, House, Menu, Moon, Search, Sparkles, Sun, X, ChartNoAxesCombined, ChartPie } from 'lucide-react'
 import manifest from '@/asset-sources.json'
 import { assetCatalog as assets, assetLogo, tokenLogoError, type CatalogAsset as Asset } from '../lib/asset-catalog'
-import { AIChatCard } from '@/components/spectrumui/ai-chat-card'
+import { AgentWorkspace } from './agent'
 import { StockCard } from '@/components/ui/stock-card'
 import { TradeWorkspace } from './trade'
 import { PortfolioWorkspace } from './portfolio'
@@ -90,6 +90,7 @@ export default function FirstBellApp() {
     return NAV.some(item => item.id === requested) ? requested as Tab : 'home'
   })
   const [query, setQuery] = React.useState('')
+  const [agentOpened, setAgentOpened] = React.useState(tab === 'agent')
   const [filter, setFilter] = React.useState<'all' | 'saved'>('all')
   const [page, setPage] = React.useState(0)
   const [saved, setSaved] = React.useState<string[]>(() => { try { const value = JSON.parse(localStorage.getItem('firstbell-saved') ?? '[]'); return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [] } catch { return [] } })
@@ -98,7 +99,6 @@ export default function FirstBellApp() {
   const [workingAsset, setWorkingAsset] = React.useState<Asset>(assets.find(a => a.symbol === 'NVDAon')!)
   const [tradeEntry, setTradeEntry] = React.useState<'buy' | null>(() => tab === 'trade' && new URLSearchParams(window.location.search).get('side') === 'buy' ? 'buy' : null)
   const [homeMarkets, setHomeMarkets] = React.useState<Record<string, TokenPrice | null>>({})
-  const [messages, setMessages] = React.useState<{ id: number; role: 'user' | 'guide'; text: string }[]>([])
   const [mobileMenu, setMobileMenu] = React.useState(false)
   const dialogRef = React.useRef<HTMLElement>(null)
   const t = copy[language]
@@ -161,6 +161,7 @@ export default function FirstBellApp() {
 
   const switchTab = (id: Tab) => {
     setTab(id); setMobileMenu(false)
+    if (id === 'agent') setAgentOpened(true)
     if (id !== 'trade') setTradeEntry(null)
     window.history.replaceState(null, '', id === 'home' ? '/app/' : `/app/?tab=${id}`)
     window.scrollTo({ top: 0, behavior: 'instant' })
@@ -173,17 +174,6 @@ export default function FirstBellApp() {
         /* The local saved list continues to work if the server is not configured. */
       })
     }
-  }
-  const answer = (prompt: string) => {
-    const q = prompt.trim()
-    if (!q) return
-    const lower = q.toLowerCase()
-    const mentioned = assets.find(asset => lower.includes(asset.symbol.toLowerCase()) || lower.includes(asset.company.toLowerCase()))
-    const response = !mentioned ? t.answerSelect
-      : /issuer|issue|ondo|发行|谁/.test(lower) ? t.answerIssuer(mentioned)
-      : /contract|address|合约|地址/.test(lower) ? t.answerContract(mentioned)
-      : /network|chain|bsc|网络|链/.test(lower) ? t.answerNetwork(mentioned) : t.answerOther
-    setMessages(list => [...list, { id: list.length + 1, role: 'user', text: q }, { id: list.length + 2, role: 'guide', text: response }])
   }
 
   const assetCard = (asset: Asset) => <StockCard key={asset.symbol} className="app-stock-card max-w-none"
@@ -221,15 +211,9 @@ export default function FirstBellApp() {
         </section>
       </>}
       {tab === 'trade' && <TradeWorkspace assets={assets} asset={workingAsset} onAssetChange={setWorkingAsset} onInspect={setSelected} language={language} initialSide={tradeEntry} />}
-      {tab === 'agent' && <section className="agent-workspace" aria-label={t.agentTitle}>
-        <AIChatCard title={t.agentTitle} subtitle={t.agentIntro} greeting={t.agentGreeting}
-          prompt={t.agentHelp} prompts={t.quick} placeholder={t.agentPrompt}
-          sendLabel={t.agentSend} resetLabel={t.agentReset} messages={messages}
-          note={t.agentNote} sourceHref={manifest.sourceTokenList} sourceLabel={t.tokenList}
-          icon={<img src="/assets/firstbell-mark.svg" alt="" />} onSend={answer} onReset={() => setMessages([])} />
-      </section>}
       {tab === 'portfolio' && <PortfolioWorkspace assets={assets} language={language} onInspect={setSelected} />}
       </motion.div></AnimatePresence>
+      {agentOpened && <div hidden={tab !== 'agent'}><AgentWorkspace language={language} /></div>}
     </main>
     <footer className="app-footer"><div><a href="/" className="app-brand"><img src="/assets/firstbell-mark.svg" alt="" />FirstBell</a><p>{t.footer}</p></div><div><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={14} /></a><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github}<ArrowUpRight size={14} /></a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x}<ArrowUpRight size={14} /></a></div><small>© 2026 FIRSTBELL / BNB SMART CHAIN</small></footer>
     <nav className="app-bottom-nav" aria-label="App navigation">{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-bottom-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={22} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
