@@ -1,8 +1,9 @@
 import { validateAgentTradePlan, type AgentOrder, type AgentTradePlan } from '../lib/agent-trading.ts'
 import type { WalletSession } from '../lib/wallet-session.ts'
+import { PREPARE_TIMEOUT_MS } from '../lib/quote-timeout.ts'
 
 async function post(path: 'prepare' | 'submit' | 'status', body: Record<string, unknown>, session: WalletSession, signal?: AbortSignal): Promise<Record<string, unknown>> {
-  const timeout = AbortSignal.timeout(30_000)
+  const timeout = AbortSignal.timeout(path === 'prepare' ? PREPARE_TIMEOUT_MS : 30_000)
   try {
     const response = await fetch(`/api/trade/${path}`, { method: 'POST', cache: 'no-store',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}`, 'privy-id-token': session.identityToken },

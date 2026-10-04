@@ -1,3 +1,5 @@
+import { abortable } from './quote-timeout.ts'
+
 export class WalletSessionError extends Error {}
 
 export type WalletSession = { accessToken: string; identityToken: string }
@@ -7,10 +9,10 @@ type SessionSource = {
   refreshIdentityToken: () => Promise<string | null>
 }
 
-async function bounded<T>(action: () => Promise<T>, reason: string, milliseconds = 6000): Promise<T> {
+async function bounded<T>(action: () => Promise<T>, reason: string, milliseconds = 6000, signal?: AbortSignal): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    return await Promise.race([Promise.resolve().then(action), new Promise<never>((_, reject) => {
+    return await Promise.race([abortable(action, signal), new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new WalletSessionError(reason)), milliseconds)
     })])
   } finally { clearTimeout(timer) }
@@ -27,18 +29,18 @@ function freshIdentity(token: string | null): token is string {
 
 // The SDK's standalone identity getter performs a network refresh. Use the
 // reactive token first; the server still verifies both JWTs and wallet ownership.
-export async function withWalletSession<T>(source: SessionSource, send: (session: WalletSession) => Promise<T>): Promise<T> {
+export async function withWalletSession<T>(source: SessionSource, send: (session: WalletSession) => Promise<T>, signal?: AbortSignal): Promise<T> {
   const access = async () => {
     let token: string | null
-    try { token = await bounded(source.getAccessToken, 'session_timeout') }
-    catch (error) { if (error instanceof WalletSessionError) throw error; throw new WalletSessionError('session_unavailable') }
+    try { token = await bounded(source.getAccessToken, 'session_timeout', 6000, signal) }
+    catch (error) { signal?.throwIfAborted(); if (error instanceof WalletSessionError) throw error; throw new WalletSessionError('session_unavailable') }
     if (!token) throw new WalletSessionError('unauthorized')
     return token
   }
   const refreshIdentity = async () => {
     let token: string | null
-    try { token = await bounded(source.refreshIdentityToken, 'session_timeout') }
-    catch (error) { if (error instanceof WalletSessionError) throw error; throw new WalletSessionError('session_refresh_failed') }
+    try { token = await bounded(source.refreshIdentityToken, 'session_timeout', 6000, signal) }
+    catch (error) { signal?.throwIfAborted(); if (error instanceof WalletSessionError) throw error; throw new WalletSessionError('session_refresh_failed') }
     return token ?? ''
   }
   const accessToken = await access()
@@ -46,12 +48,14 @@ export async function withWalletSession<T>(source: SessionSource, send: (session
   // Missing identity proof must reach the authenticated server lookup, rather
   // than hang on a client refresh for an optional dashboard feature.
   const identityToken = freshIdentity(cached) ? cached : ''
-  try { return await send({ accessToken, identityToken }) }
+  try { return await abortable(() => send({ accessToken, identityToken }), signal) }
   catch (error) {
+    signal?.throwIfAborted()
     if (!(error instanceof Error) || !['wallet_not_verified', 'unauthorized'].includes(error.message)) throw error
     if (error.message === 'wallet_not_verified' && !identityToken) throw error
     // These explicit authentication rejections happen before checkout storage
     // or provider work. Never retry a network failure or an uncertain write.
-    return send({ accessToken: await access(), identityToken: await refreshIdentity() })
+    const [renewedAccess, renewedIdentity] = await Promise.all([access(), refreshIdentity()])
+    return abortable(() => send({ accessToken: renewedAccess, identityToken: renewedIdentity }), signal)
   }
 }

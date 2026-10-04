@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
-import { after, test } from 'node:test'
+import { after, beforeEach, test } from 'node:test'
 import { exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import { BSC_USDT } from '../lib/funding.ts'
 import { assets } from '../worker/market.ts'
-import { getTradingRoute, normalizeRoutes } from '../worker/binance-trading.ts'
+import { clearTradingMetadataCache, getTradingRoute, normalizeRoutes } from '../worker/binance-trading.ts'
 import { handleTradingRoute } from '../worker/trading.ts'
 
 const originalFetch = globalThis.fetch
 after(() => { globalThis.fetch = originalFetch })
+beforeEach(() => clearTradingMetadataCache())
 const wallet = '0x1111111111111111111111111111111111111111'
 const other = '0x2222222222222222222222222222222222222222'
 const credentials = { apiKey: 'fixture-key', secretKey: 'fixture-secret' }
@@ -115,6 +116,84 @@ test('missing keys, unsupported BSC, and provider auth errors fail closed', asyn
     return new Response('', { status: 403 })
   }
   await assert.rejects(() => getTradingRoute('NVDAon', 'buy', '5', wallet, credentials), /provider_auth_error/)
+})
+
+test('cold quotes overlap metadata, coalesce discovery, and always fetch fresh prices', { timeout: 1500 }, async () => {
+  const coldCredentials = { apiKey: 'cold-fixture-key', secretKey: 'cold-fixture-secret' }
+  let release, started, supportCalls = 0, quoteCalls = 0, rpcCalls = 0
+  const metadataGate = new Promise(resolve => { release = resolve })
+  const quotesStarted = new Promise(resolve => { started = resolve })
+  globalThis.fetch = async (url, options) => {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'bsc-dataseed.bnbchain.org') {
+      rpcCalls++
+      const input = JSON.parse(options.body)
+      await metadataGate
+      return Response.json(Array.isArray(input) ? input.map(item => rpcResult(item)) : rpcResult(input))
+    }
+    if (parsed.pathname.endsWith('/supported/chain')) {
+      // Earlier fail-fast fixtures can leave their independent discovery reads
+      // finishing. Count this test's credential scope, not another request's.
+      if (options.headers['X-OC-APIKEY'] === coldCredentials.apiKey) supportCalls++
+      await metadataGate
+      return Response.json(result([{ binanceChainId: '56' }]))
+    }
+    if (options.headers['X-OC-APIKEY'] === coldCredentials.apiKey) quoteCalls++
+    if (quoteCalls === 2) started()
+    return Response.json(result([route({ toTokenAmount: String(25000000000000000n + BigInt(quoteCalls)) })]))
+  }
+  const first = getTradingRoute('NVDAon', 'buy', '5', wallet, coldCredentials)
+  const second = getTradingRoute('NVDAon', 'buy', '5', wallet, coldCredentials)
+  try {
+    await quotesStarted
+    assert.equal(supportCalls, 1, 'concurrent cold requests share only discovery')
+    release()
+    const values = await Promise.all([first, second])
+    assert.notEqual(values[0].outputAmount, values[1].outputAmount)
+    const discovered = rpcCalls
+    await getTradingRoute('NVDAon', 'buy', '5', wallet, coldCredentials)
+    assert.equal(quoteCalls, 3, 'even identical warm requests fetch a new price')
+    assert.equal(supportCalls, 1)
+    assert.equal(rpcCalls, discovered)
+  } finally { release() }
+})
+
+test('verified metadata expires, credentials scope capabilities, and discovery failures are retried', async context => {
+  let supportCalls = 0, rpcCalls = 0, quoteCalls = 0, unavailable = false
+  let clock = Date.now()
+  context.mock.method(Date, 'now', () => clock)
+  globalThis.fetch = async (url, options) => {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'bsc-dataseed.bnbchain.org') {
+      rpcCalls++
+      const input = JSON.parse(options.body)
+      return Response.json(Array.isArray(input) ? input.map(item => rpcResult(item)) : rpcResult(input))
+    }
+    if (parsed.pathname.endsWith('/supported/chain')) {
+      supportCalls++
+      return Response.json(result([{ binanceChainId: unavailable ? '1' : '56' }]))
+    }
+    quoteCalls++
+    return Response.json(result([route()]))
+  }
+  await getTradingRoute('NVDAon', 'buy', '5', wallet, credentials)
+  const initialRpc = rpcCalls
+  await getTradingRoute('NVDAon', 'buy', '5', wallet, { ...credentials, secretKey: 'rotated-fixture-secret' })
+  assert.equal(supportCalls, 2)
+  assert.equal(rpcCalls, initialRpc, 'credential rotation rechecks API capability, not public token metadata')
+  clock += 60_001; unavailable = true
+  await assert.rejects(() => getTradingRoute('NVDAon', 'buy', '5', wallet, credentials), /chain_unavailable/)
+  assert.ok(rpcCalls > initialRpc)
+  unavailable = false
+  await getTradingRoute('NVDAon', 'buy', '5', wallet, credentials)
+  assert.equal(supportCalls, 4, 'failed capability checks never enter the successful cache')
+  assert.equal(quoteCalls, 4)
+})
+
+test('a pre-cancelled quote never contacts either provider', async () => {
+  const cancel = new AbortController(); cancel.abort(new Error('cancelled fixture'))
+  globalThis.fetch = async () => { assert.fail('cancelled requests must not start network work') }
+  await assert.rejects(() => getTradingRoute('NVDAon', 'buy', '5', wallet, credentials, cancel.signal), /cancelled fixture/)
 })
 
 test('HTTP route checks require same origin, small valid input, ownership proof and the account rate limit', async () => {

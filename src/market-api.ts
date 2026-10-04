@@ -1,5 +1,6 @@
 import type { Candle } from '@/components/spectrumui/charts/chart-engine'
 import type { TradingRoute } from '../lib/trading'
+import { QUOTE_TIMEOUT_MS } from '../lib/quote-timeout.ts'
 export type { TradingRoute } from '../lib/trading'
 
 export type Timeframe = '15m' | '1h' | '4h' | '1D'
@@ -81,7 +82,7 @@ export async function getTradeQuote(symbol: string, side: 'buy' | 'sell', quanti
 
 export async function getTradingRoute(symbol: string, side: 'buy' | 'sell', amount: string, walletAddress: string,
   token: string, identityToken: string, signal: AbortSignal): Promise<TradingRoute> {
-  const timeout = AbortSignal.timeout(20_000)
+  const timeout = AbortSignal.timeout(QUOTE_TIMEOUT_MS)
   const boundedSignal = AbortSignal.any([signal, timeout])
   try {
   const response = await fetch('/api/trade/route', {

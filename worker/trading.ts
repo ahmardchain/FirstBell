@@ -45,7 +45,7 @@ export async function handleTradingRoute(request: Request, env: Env, userId: str
     const allowed = await stub.fetch(new Request('https://account.internal/quote-rate', { method: 'POST', headers: { 'X-Privy-DID': userId } }))
     if (!allowed.ok) return json({ error: 'rate_limited' }, allowed.status)
     const route = await getTradingRoute(input.symbol, input.side, input.amount as string, input.walletAddress,
-      { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY })
+      { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY }, request.signal)
     return json({ route })
   } catch (error) {
     if (error instanceof WalletVerificationError) return json({ error: error.message }, error.status)

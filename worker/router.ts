@@ -6,6 +6,7 @@ import { binanceFailure } from './binance-api.ts'
 import { handleDepositRequest } from './deposits.ts'
 import { handleTradingRoute } from './trading.ts'
 import { handleAgentTrade } from './agent-trading.ts'
+import { quoteResponse } from './quote-response.ts'
 import { getOnramperMode, getOnramperSetup, handleOnramperWebhook } from './onramper.ts'
 import { createOnramperDemoUrl } from '../lib/onramper-demo.ts'
 
@@ -89,12 +90,22 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
     return handleDepositRequest(request, env, id)
   }
   if (pathname === '/api/trade/route') {
-    if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
-    const id = await getUserId(request, env)
-    if (!id) return json({ error: 'unauthorized' }, 401)
-    return handleTradingRoute(request, env, id)
+    return quoteResponse(request, async bounded => {
+      if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
+      const id = await getUserId(bounded, env)
+      if (!id) return json({ error: 'unauthorized' }, 401)
+      return handleTradingRoute(bounded, env, id)
+    })
   }
-  if (['/api/trade/prepare', '/api/trade/submit', '/api/trade/status'].includes(pathname)) {
+  if (pathname === '/api/trade/prepare') {
+    return quoteResponse(request, async bounded => {
+      if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
+      const id = await getUserId(bounded, env)
+      if (!id) return json({ error: 'unauthorized' }, 401)
+      return handleAgentTrade(bounded, env, id)
+    })
+  }
+  if (['/api/trade/submit', '/api/trade/status'].includes(pathname)) {
     if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
     const id = await getUserId(request, env)
     if (!id) return json({ error: 'unauthorized' }, 401)

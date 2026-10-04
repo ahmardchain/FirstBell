@@ -31,6 +31,12 @@ function redisFixture(initial = {}) {
     assert.equal(command[0], 'EVAL')
     assert.equal(command[2], 1)
     const key = command[3]
+    if (command[1].includes('ZREMRANGEBYSCORE')) {
+      const timestamps = (records.get(key) ?? []).filter(value => value > command[4] - 60_000)
+      const allowed = timestamps.length < 6
+      records.set(key, allowed ? [...timestamps, command[4]] : timestamps)
+      return Response.json({ result: allowed ? 1 : 0 })
+    }
     if (command.length === 4) return Response.json({ result: records.get(key) ?? null })
     assert.match(command[1], /redis.call\('GET'/)
     assert.match(command[1], /redis.call\('SET'/)
@@ -59,13 +65,23 @@ test('accounts persist across independent instances and concurrent bookmarks pre
   assert.equal(db.records.size, 2)
 })
 
-test('quote limit survives new server instances and concurrent calls cannot exceed six', async () => {
+test('quote limit uses one atomic call, survives new instances and never loads or migrates account records', async () => {
   const db = redisFixture()
-  for (let i = 0; i < 5; i++) assert.equal((await stub(namespace(db)).fetch(internal(user, 'POST', undefined, '/quote-rate'))).status, 200)
+  const fast = () => namespace(db, { ...env, LEGACY_ACCOUNTS_ORIGIN: 'https://firstbell.ahmardchain.workers.dev' })
+  for (let i = 0; i < 5; i++) assert.equal((await stub(fast()).fetch(internal(user, 'POST', undefined, '/quote-rate'))).status, 200)
   const results = await Promise.all(Array.from({ length: 5 }, () => stub(namespace(db)).fetch(internal(user, 'POST', undefined, '/quote-rate'))))
   assert.equal(results.filter(r => r.status === 200).length, 1)
   assert.ok(results.filter(r => r.status !== 200).every(r => r.status === 429))
   assert.equal((await stub(namespace(db)).fetch(internal(user, 'POST', undefined, '/quote-rate'))).status, 429)
+  assert.equal(db.commands.length, 11, 'one database request per check, including the denied ones')
+  assert.ok(db.commands.every(command => command[3] === `firstbell:quote-rate:v1:${user}`))
+  assert.equal(db.records.has(`firstbell:accounts:v1:${user}`), false)
+  assert.equal((await stub(fast(), otherUser).fetch(internal(otherUser, 'POST', undefined, '/quote-rate'))).status, 200)
+  db.records.set(`firstbell:quote-rate:v1:${user}`, Array(6).fill(Date.now() - 60_001))
+  assert.equal((await stub(fast()).fetch(internal(user, 'POST', undefined, '/quote-rate'))).status, 200)
+  const before = db.commands.length
+  assert.equal((await stub(fast()).fetch(internal(user, 'GET', undefined, '/quote-rate'))).status, 405)
+  assert.equal(db.commands.length, before)
 })
 
 test('storage errors fail closed, do not leak provider credentials, and do not retry ambiguous writes', async () => {

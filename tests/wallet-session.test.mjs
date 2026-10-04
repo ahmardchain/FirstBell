@@ -86,3 +86,29 @@ test('a hanging access-token getter times out and never starts checkout', async 
   context.mock.timers.tick(6001)
   await rejected
 })
+
+test('a cancelled session does not send a late request when the SDK eventually resolves', async () => {
+  const cancel = new AbortController()
+  let release, started
+  const getterStarted = new Promise(resolve => { started = resolve })
+  const pending = withWalletSession(source({ getAccessToken: () => { started(); return new Promise(resolve => { release = resolve }) } }),
+    async () => { assert.fail('cancelled SDK work must not send a late API request') }, cancel.signal)
+  const rejected = assert.rejects(pending, /fixture deadline/)
+  await getterStarted; cancel.abort(new Error('fixture deadline'))
+  await rejected; release('late-access')
+  await new Promise(resolve => setImmediate(resolve))
+})
+
+test('authentication retry refreshes access and identity concurrently', { timeout: 1500 }, async () => {
+  let accesses = 0, sends = 0, identityStarted
+  const identityGate = new Promise(resolve => { identityStarted = resolve })
+  const value = await withWalletSession(source({ getAccessToken: async () => {
+    if (++accesses === 2) await identityGate
+    return `access-${accesses}`
+  }, refreshIdentityToken: async () => { identityStarted(); return token(600) } }), async session => {
+    if (++sends === 1) throw new Error('unauthorized')
+    assert.equal(session.accessToken, 'access-2')
+    return 'verified'
+  })
+  assert.equal(value, 'verified'); assert.equal(sends, 2)
+})

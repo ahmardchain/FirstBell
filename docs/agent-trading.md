@@ -24,6 +24,16 @@ After explicit confirmation, Privy signs the audited order. The server verifies 
 
 The latest known order receipt ticket is kept in this browser per wallet for status recovery after reload. Its server signature binds it to the authenticated account, wallet and order. Pending, confirming, filled, failed, expired, cancelled and unknown submission states remain distinct.
 
+## Quote latency
+
+Buy quotes start alongside chain support, RPC chain verification and output-token decimals. Successful metadata is coalesced and cached for 60 seconds in each running instance; API support is scoped to the credential pair. Failed checks are not cached. Sell quotes wait for verified input decimals. Every request still obtains a fresh provider price and validates its timestamp, chain, contracts, amount and route.
+
+Agent preparation overlaps fresh wallet balance and allowance reads with the quote, then overlaps the unsigned RFQ build with exact-amount approval simulation and gas checks when permission is needed. Both results must pass validation before a plan is returned. An unfunded buy cancels the pending quote immediately. Vercel's six-per-minute account limit uses one atomic Redis sliding-window command without loading or migrating account records.
+
+The UI gives route checks 15 seconds and complete preparation 20 seconds, including session retrieval; the server budget ends one second earlier. Timed-out session retrieval cannot start a late API request. These limits return an error rather than inventing a price. Signed submissions and settlement recovery keep their separate behavior. `Server-Timing` records the total server duration; sanitized provider logs record support, quote, build and simulation durations without credentials, wallets or payloads.
+
+The hackathon-linked Trading API docs advertise a one-call Flash API, but currently accept only `LiquidMesh` for that endpoint. Ondo tokens use RFQ, so this app retains `/quote` followed by `/swap`. General market/RWA prices are reference data and do not replace an executable quote. Local concurrency and expiry checks use network fixtures; they do not establish deployed Binance latency.
+
 ## Configuration and verification
 
 Use the existing server configuration: `BINANCE_WEB3_API_KEY`, `BINANCE_WEB3_SECRET_KEY`, `PRIVY_APP_ID` and either Privy identity tokens or a valid `PRIVY_APP_SECRET` for server lookup. The existing account storage supplies per-account rate limits. Do not expose server secrets in Vite environment variables. The app checks provider trading availability and never circumvents provider restrictions.
@@ -35,6 +45,7 @@ Official references:
 - [Hackathon track](https://www.bnbchain.org/en/hackathons/tokenized-stocks)
 - [Binance Trading API](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api)
 - [Binance integration flow](https://web3.binance.com/en/dev-docs/products/trading-api/integration-flow)
+- [Binance Trading API execution modes and Flash API](https://web3.binance.com/en/dev-docs/products/trading-api/introduction)
 - [Binance transaction simulation](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/transaction-api)
 - [CoW deployment addresses](https://docs.cow.fi/cow-protocol/reference/contracts/core)
 - [Privy typed-data signing](https://docs.privy.io/wallets/using-wallets/ethereum/sign-typed-data)

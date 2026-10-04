@@ -8,6 +8,7 @@ import { assetCatalog, assetLogo, tokenLogoError } from '../lib/asset-catalog'
 import { fractionOfQuantity, parseAgentIntent, type TradeIntent } from '../lib/agent-intent'
 import { terminalOrder, validateAgentTradePlan, type AgentOrder, type AgentTradePlan } from '../lib/agent-trading'
 import { withWalletSession, type WalletSession } from '../lib/wallet-session'
+import { abortable, PREPARE_TIMEOUT_MS, QUOTE_TIMEOUT_MS } from '../lib/quote-timeout'
 import { checkTrade, prepareTrade, submitTrade } from './agent-api'
 import { displayQuantity, readWalletBalances } from './wallet-balances'
 import { getTradingRoute } from './market-api'
@@ -85,8 +86,8 @@ export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
     if (/reject|cancel|4001/i.test(reason)) return t.errors.wallet_rejected
     return t.errors[reason as keyof typeof t.errors] ?? t.errors.provider_error
   }
-  const session = <T,>(action: (value: WalletSession) => Promise<T>) => withWalletSession({ getAccessToken,
-    getIdentityToken: () => live.current.identityToken, refreshIdentityToken: getIdentityToken }, action)
+  const session = <T,>(action: (value: WalletSession) => Promise<T>, signal?: AbortSignal) => withWalletSession({ getAccessToken,
+    getIdentityToken: () => live.current.identityToken, refreshIdentityToken: getIdentityToken }, action, signal)
   const assertWallet = (owner: string) => { if (!live.current.active || live.current.address?.toLowerCase() !== owner.toLowerCase()) throw new Error('wallet_changed') }
   const persist = (next: AgentOrder, owner: string) => { try { localStorage.setItem(`firstbell-agent-order:${owner.toLowerCase()}`, JSON.stringify(next)) } catch { /* Status stays available in this view. */ } }
 
@@ -120,25 +121,27 @@ export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
     busyRef.current = true
     const version = ++operation.current
     controller.current?.abort(); const abort = new AbortController(); controller.current = abort
+    const deadline = AbortSignal.timeout(next.quoteOnly ? QUOTE_TIMEOUT_MS : PREPARE_TIMEOUT_MS)
+    const signal = AbortSignal.any([abort.signal, deadline])
     setPhase('loading'); setNotice(t.loading); setPlan(null); setIntent(next)
     try {
       const asset = assetCatalog.find(item => item.symbol === next.symbol)!
       let amount = next.amount
       if (next.fraction) {
         let balances
-        try { balances = await readWalletBalances(address, [asset]) } catch { throw new Error('balance_unavailable') }
+        try { balances = await abortable(() => readWalletBalances(address, [asset]), signal) } catch { if (signal.aborted) throw signal.reason; throw new Error('balance_unavailable') }
         amount = fractionOfQuantity(balances.tokens[0].quantity, next.fraction)
       }
       if (!amount) throw new Error('invalid_amount')
       assertWallet(address)
       if (next.quoteOnly) {
-        const route = await session(value => getTradingRoute(asset.symbol, next.side, amount!, address, value.accessToken, value.identityToken, abort.signal))
+        const route = await session(value => getTradingRoute(asset.symbol, next.side, amount!, address, value.accessToken, value.identityToken, signal), signal)
         if (version === operation.current) { say(`${route.inputAmount} ${route.inputSymbol} → ${displayQuantity(route.outputAmount)} ${route.outputSymbol}. ${t.quoteOnly}`); setIntent(null); setNotice('') }
       } else {
-        const prepared = await session(value => prepareTrade({ symbol: asset.symbol, side: next.side, amount: amount!, walletAddress: address }, value, abort.signal))
+        const prepared = await session(value => prepareTrade({ symbol: asset.symbol, side: next.side, amount: amount!, walletAddress: address }, value, signal), signal)
         if (version === operation.current) { setPlan(prepared); setIntent({ ...next, amount, fraction: null }); setNotice('') }
       }
-    } catch (error) { if (version === operation.current) setNotice(errorText(error)) }
+    } catch (error) { if (version === operation.current) setNotice(errorText(deadline.aborted && !abort.signal.aborted ? new Error('quote_timeout') : error)) }
     finally { if (version === operation.current) { setPhase('idle'); busyRef.current = false } }
   }
 

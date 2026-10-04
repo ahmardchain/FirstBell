@@ -15,37 +15,74 @@ const sameToken = (value: unknown, address: string, decimals: number) => {
 }
 export const tradingClient = createPublicClient({ chain: bsc, transport: http('https://bsc-dataseed.bnbchain.org', { timeout: 8_000, retryCount: 0 }) })
 
+const metadata = new Map<string, { promise: Promise<unknown>; expiresAt: number }>()
+const metadataTtl = 60_000
+// No prices, balances, allowances, quotes, orders, or failures enter this cache.
+function cachedMetadata<T>(key: string, read: () => Promise<T>): Promise<T> {
+  const previous = metadata.get(key)
+  if (previous && previous.expiresAt > Date.now()) return previous.promise as Promise<T>
+  if (metadata.size >= 512) metadata.delete(metadata.keys().next().value!)
+  const entry = { promise: Promise.resolve().then(read) as Promise<unknown>, expiresAt: Date.now() + 8_000 }
+  metadata.set(key, entry)
+  entry.promise = entry.promise.then(value => { entry.expiresAt = Date.now() + metadataTtl; return value }, error => {
+    if (metadata.get(key) === entry) metadata.delete(key)
+    throw error
+  })
+  return entry.promise as Promise<T>
+}
+export function clearTradingMetadataCache() { metadata.clear() }
+async function credentialScope(credentials: Credentials) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([credentials.apiKey, credentials.secretKey])))
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
 export class RouteError extends Error {
   reason: string
   status: number
   constructor(reason: string, status = 503) { super(reason); this.reason = reason; this.status = status }
 }
 
-export async function tradingRequest(method: 'GET' | 'POST', endpoint: string, input: Record<string, unknown>, credentials: Credentials): Promise<Json> {
+export async function tradingRequest(method: 'GET' | 'POST', endpoint: string, input: Record<string, unknown>, credentials: Credentials, signal?: AbortSignal): Promise<Json> {
   const body = method === 'POST' ? JSON.stringify(input) : ''
   const query = method === 'GET' ? new URLSearchParams(input as Record<string, string>).toString() : ''
   const path = `/build${endpoint}${query ? `?${query}` : ''}`
   const timestamp = new Date().toISOString()
-  const response = await fetch(`https://web3.binance.com${path}`, {
+  const timeout = AbortSignal.timeout(8_000)
+  const boundedSignal = signal ? AbortSignal.any([signal, timeout]) : timeout
+  const start = performance.now()
+  try {
+    const signature = await signPath(timestamp, method, path, body, credentials.secretKey)
+    boundedSignal.throwIfAborted()
+    const response = await fetch(`https://web3.binance.com${path}`, {
     method, headers: {
       'X-OC-APIKEY': credentials.apiKey, 'X-OC-TIMESTAMP': timestamp,
-      'X-OC-SIGN': await signPath(timestamp, method, path, body, credentials.secretKey),
+      'X-OC-SIGN': signature,
       'X-OC-NONCE': crypto.randomUUID(), Accept: 'application/json', 'Content-Type': 'application/json',
-    }, ...(body ? { body } : {}), signal: AbortSignal.timeout(8_000),
-  })
-  if (!response.ok) throw new RouteError(response.status === 401 || response.status === 403 ? 'provider_auth_error' : 'provider_error')
-  if (Number(response.headers.get('content-length') ?? 0) > 300_000) throw new RouteError('invalid_provider_response')
-  const text = await response.text()
-  if (text.length > 300_000) throw new RouteError('invalid_provider_response')
-  let result: Json | null
-  try { result = object(JSON.parse(text)) } catch { throw new RouteError('invalid_provider_response') }
-  if (!result || result.code !== 0 || result.success !== true) {
-    // Business codes are useful evidence; never log keys, user IDs or upstream bodies.
-    console.warn('Binance route business error', typeof result?.code === 'number' ? result.code : 'missing')
-    const reason = ({ 40304: 'provider_unavailable', 40367: 'market_closed', 40369: 'market_closed', 40374: 'no_verified_route', 40401: 'stale_quote', 40462: 'invalid_provider_response' } as Record<number, string>)[Number(result?.code)]
-    throw new RouteError(reason ?? 'provider_error')
+    }, ...(body ? { body } : {}), signal: boundedSignal,
+    })
+    if (!response.ok) throw new RouteError(response.status === 401 || response.status === 403 ? 'provider_auth_error' : 'provider_error')
+    if (Number(response.headers.get('content-length') ?? 0) > 300_000) throw new RouteError('invalid_provider_response')
+    const text = await response.text()
+    boundedSignal.throwIfAborted()
+    if (text.length > 300_000) throw new RouteError('invalid_provider_response')
+    let result: Json | null
+    try { result = object(JSON.parse(text)) } catch { throw new RouteError('invalid_provider_response') }
+    if (!result || result.code !== 0 || result.success !== true) {
+      // Business codes are useful evidence; never log keys, user IDs or upstream bodies.
+      console.warn('Binance route business error', typeof result?.code === 'number' ? result.code : 'missing')
+      const reason = ({ 40304: 'provider_unavailable', 40367: 'market_closed', 40369: 'market_closed', 40374: 'no_verified_route', 40401: 'stale_quote', 40462: 'invalid_provider_response' } as Record<number, string>)[Number(result?.code)]
+      throw new RouteError(reason ?? 'provider_error')
+    }
+    return result
+  } catch (error) {
+    if (boundedSignal.aborted && (method === 'GET' || endpoint.endsWith('/simulate'))) throw new RouteError('quote_timeout', 504)
+    throw error
+  } finally {
+    // A fixed stage label and duration only: no URL, wallet, keys, body or signature.
+    const stage = endpoint.endsWith('/supported/chain') ? 'support' : endpoint.endsWith('/quote') ? 'quote'
+      : endpoint.endsWith('/swap') ? 'build' : endpoint.endsWith('/simulate') ? 'simulation' : 'order'
+    console.info('TRADE_PROVIDER_TIMING', { stage, durationMs: Math.round(performance.now() - start) })
   }
-  return result
 }
 
 export function normalizeRoutes(result: Json, request: {
@@ -83,27 +120,51 @@ export function normalizeRoutes(result: Json, request: {
   }
 }
 
-export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials, executableOnly = false) {
+export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials, executableOnly = false, signal?: AbortSignal) {
   if (!isSymbol(symbol) || !['buy', 'sell'].includes(side) || !parseQuantity(amount) || !isAddress(walletAddress)) throw new RouteError('invalid_trade_request', 400)
   if (!credentials.apiKey || !credentials.secretKey) throw new RouteError('not_configured')
-  const [chains, tokenDecimals, rpcChain] = await Promise.all([
-    tradingRequest('GET', '/api/v1/dex/aggregator/supported/chain', { binanceChainId: '56' }, credentials),
-    tradingClient.readContract({ address: assets[symbol], abi: erc20Abi, functionName: 'decimals' }),
-    tradingClient.getChainId(),
+  signal?.throwIfAborted()
+  const toRaw = (decimals: number) => {
+    if ((amount.split('.')[1]?.length ?? 0) > decimals) throw new RouteError('invalid_amount', 400)
+    const raw = parseUnits(amount, decimals).toString()
+    if (!units(raw)) throw new RouteError('invalid_amount', 400)
+    return raw
+  }
+  // Buy input units are already known. Do not serialize a live quote behind
+  // independent output metadata/RPC discovery. Sells still await real decimals.
+  const buyAmount = side === 'buy' ? toRaw(BSC_USDT.decimals) : null
+  const scope = await credentialScope(credentials)
+  signal?.throwIfAborted()
+  const supported = cachedMetadata(`${scope}:bsc-support`, async () => {
+    const chains = await tradingRequest('GET', '/api/v1/dex/aggregator/supported/chain', { binanceChainId: '56' }, credentials)
+    if (!Array.isArray(chains.data) || !chains.data.some(chain => object(chain)?.binanceChainId === '56')) throw new RouteError('chain_unavailable')
+    return true
+  })
+  const rpc = cachedMetadata('bsc-rpc-chain', async () => {
+    if (await tradingClient.getChainId() !== 56) throw new RouteError('chain_unavailable')
+    return true
+  })
+  const decimals = cachedMetadata(`bsc-decimals:${assets[symbol].toLowerCase()}`, async () => {
+    const value = await tradingClient.readContract({ address: assets[symbol], abi: erc20Abi, functionName: 'decimals' })
+    if (!Number.isInteger(value) || value < 0 || value > 36) throw new RouteError('invalid_provider_response')
+    return value
+  })
+  const [[, , tokenDecimals], quoted] = await Promise.all([
+    Promise.all([supported, rpc, decimals]),
+    (async () => {
+      const rawAmount = buyAmount ?? toRaw(await decimals)
+      const startedAt = Date.now()
+      const result = await tradingRequest('GET', '/api/v1/dex/aggregator/quote', {
+        binanceChainId: '56', amount: rawAmount,
+        fromTokenAddress: side === 'buy' ? BSC_USDT.address : assets[symbol],
+        toTokenAddress: side === 'buy' ? assets[symbol] : BSC_USDT.address,
+        userWalletAddress: walletAddress,
+      }, credentials, signal)
+      return { rawAmount, startedAt, result }
+    })(),
   ])
-  if (rpcChain !== 56 || !Array.isArray(chains.data) || !chains.data.some(chain => object(chain)?.binanceChainId === '56')) throw new RouteError('chain_unavailable')
-  if (!Number.isInteger(tokenDecimals) || tokenDecimals < 0 || tokenDecimals > 36) throw new RouteError('invalid_provider_response')
-  const inputDecimals = side === 'buy' ? BSC_USDT.decimals : tokenDecimals
-  if ((amount.split('.')[1]?.length ?? 0) > inputDecimals) throw new RouteError('invalid_amount', 400)
-  const rawAmount = parseUnits(amount, inputDecimals).toString()
-  if (!units(rawAmount)) throw new RouteError('invalid_amount', 400)
-  const startedAt = Date.now()
-  const result = await tradingRequest('GET', '/api/v1/dex/aggregator/quote', {
-    binanceChainId: '56', amount: rawAmount,
-    fromTokenAddress: side === 'buy' ? BSC_USDT.address : assets[symbol],
-    toTokenAddress: side === 'buy' ? assets[symbol] : BSC_USDT.address,
-    userWalletAddress: walletAddress,
-  }, credentials)
+  const { rawAmount, startedAt, result } = quoted
+  signal?.throwIfAborted()
   // Only the audited CoW Order schema is executable. Other RFQ vendors remain
   // available to the existing read-only route checker.
   const selected = executableOnly && Array.isArray(result.data) ? { ...result, data: result.data.filter(row => object(row)?.vendorName === 'CowSwap') } : result
@@ -119,6 +180,6 @@ export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amou
   return { route, providerRoute, ...context }
 }
 
-export async function getTradingRoute(symbol: Symbol, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials): Promise<TradingRoute> {
-  return (await getQuoteContext(symbol, side, amount, walletAddress, credentials)).route
+export async function getTradingRoute(symbol: Symbol, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials, signal?: AbortSignal): Promise<TradingRoute> {
+  return (await getQuoteContext(symbol, side, amount, walletAddress, credentials, false, signal)).route
 }

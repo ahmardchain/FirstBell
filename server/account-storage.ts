@@ -19,6 +19,15 @@ if (redis.call('GET', KEYS[1]) or '') ~= ARGV[1] then return 0 end
 redis.call('SET', KEYS[1], ARGV[2])
 return 1
 `
+// Sliding window in one atomic command, independent of account/deposit records.
+const quoteRateScript = `
+local now = tonumber(ARGV[1])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - 60000)
+if redis.call('ZCARD', KEYS[1]) >= 6 then return 0 end
+redis.call('ZADD', KEYS[1], now, ARGV[2])
+redis.call('PEXPIRE', KEYS[1], 61000)
+return 1
+`
 
 async function readBounded(response: Response): Promise<string> {
   if (!response.body || Number(response.headers.get('Content-Length')) > maxBytes * 2) throw new AccountStorageError('account_storage_unavailable')
@@ -74,6 +83,13 @@ export function createAccountNamespace(env: Omit<ApiEnv, 'ACCOUNTS'> & StorageEn
       const key = `firstbell:accounts:v1:${name}`
       try {
         credentials(env)
+        if (new URL(request.url).pathname === '/quote-rate') {
+          if (request.method !== 'POST') return fail('Method not allowed', 405)
+          const allowed = await command(['EVAL', quoteRateScript, 1, `firstbell:quote-rate:v1:${name}`, Date.now(), crypto.randomUUID()])
+          if (allowed !== 0 && allowed !== 1) throw new AccountStorageError('account_storage_unavailable')
+          return allowed === 1 ? Response.json({ allowed: true }, { headers: { 'Cache-Control': 'no-store' } })
+            : fail('Quote limit reached. Try again in a minute.', 429)
+        }
         for (let attempt = 0; attempt < 3; attempt++) {
           const original = await command(['EVAL', readScript, 1, key])
           if (original !== null && typeof original !== 'string') throw new AccountStorageError('account_storage_unavailable')

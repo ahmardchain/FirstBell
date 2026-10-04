@@ -28,53 +28,70 @@ export async function openTradeTicket(token: unknown, userId: string, secret: st
   } catch { throw new RouteError('invalid_order_ticket', 403) }
 }
 
-export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials): Promise<Omit<AgentTradePlan, 'planToken'>> {
-  if (!isSymbol(symbol)) throw new RouteError('invalid_trade_request', 400)
-  const context = await getQuoteContext(symbol, side, amount, walletAddress, credentials, true)
+export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials, signal?: AbortSignal): Promise<Omit<AgentTradePlan, 'planToken'>> {
+  if (!isSymbol(symbol) || !['buy', 'sell'].includes(side) || !parseQuantity(amount) || !isAddress(walletAddress)) throw new RouteError('invalid_trade_request', 400)
+  const cancel = new AbortController()
+  const bounded = signal ? AbortSignal.any([signal, cancel.signal]) : cancel.signal
   const inputToken = side === 'buy' ? BSC_USDT.address : assets[symbol]
-  const inputDecimals = side === 'buy' ? BSC_USDT.decimals : context.tokenDecimals
-  const outputDecimals = side === 'buy' ? context.tokenDecimals : BSC_USDT.decimals
-  if (context.providerRoute.approveTarget && !same(context.providerRoute.approveTarget, COW_RELAYER)) throw new RouteError('invalid_order_payload')
-  const rawAmount = context.rawAmount
-  const [balance, allowance, swap] = await Promise.all([
-    tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'balanceOf', args: [walletAddress as Address] }),
-    tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'allowance', args: [walletAddress as Address, COW_RELAYER] }),
-    tradingRequest('GET', '/api/v1/dex/aggregator/swap', { binanceChainId: '56', amount: rawAmount,
+  // Real wallet reads start with the quote. An unfunded buy fails as soon as
+  // balanceOf returns instead of waiting through quote + order construction.
+  const contextPromise = getQuoteContext(symbol, side, amount, walletAddress, credentials, true, bounded).then(context => {
+    if (context.providerRoute.approveTarget && !same(context.providerRoute.approveTarget, COW_RELAYER)) throw new RouteError('invalid_order_payload')
+    return context
+  })
+  const balancePromise = tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'balanceOf', args: [walletAddress as Address] }).then(balance => {
+    if (side === 'buy' && balance < parseUnits(amount, BSC_USDT.decimals)) throw new RouteError('insufficient_balance', 409)
+    return balance
+  })
+  const allowancePromise = tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'allowance', args: [walletAddress as Address, COW_RELAYER] })
+  const builtPromise = contextPromise.then(async context => {
+    bounded.throwIfAborted()
+    const inputDecimals = side === 'buy' ? BSC_USDT.decimals : context.tokenDecimals
+    const outputDecimals = side === 'buy' ? context.tokenDecimals : BSC_USDT.decimals
+    const swap = await tradingRequest('GET', '/api/v1/dex/aggregator/swap', { binanceChainId: '56', amount: context.rawAmount,
       fromTokenAddress: inputToken, toTokenAddress: side === 'buy' ? assets[symbol] : BSC_USDT.address,
-      userWalletAddress: walletAddress, quoteId: context.providerRoute.quoteId, slippagePercent: '0.5' }, credentials),
-  ])
-  if (balance < BigInt(rawAmount)) throw new RouteError('insufficient_balance', 409)
-  const data = object(swap.data), rfq = object(data?.rfq), router = object(data?.routerResult)
-  if (data?.executionMode !== 'RFQ' || rfq?.vendor !== 'CowSwap' || !id(rfq.orderId)
-    || (rfq.signingScheme && String(rfq.signingScheme).toLowerCase() !== 'eip712')
-    || !router || router.binanceChainId !== '56' || router.vendorName !== 'CowSwap' || router.fromTokenAmount !== rawAmount
-    || !same(object(router.fromToken)?.tokenContractAddress, inputToken)
-    || !same(object(router.toToken)?.tokenContractAddress, side === 'buy' ? assets[symbol] : BSC_USDT.address)
-    || typeof router.toTokenAmount !== 'string' || router.toTokenAmount !== parseUnits(context.route.outputAmount, outputDecimals).toString()) throw new RouteError('invalid_order_payload')
-  let typedData
-  try { typedData = validateOrderTypedData(rfq.typedDataToSign, { route: context.route, rawAmount, inputDecimals, outputDecimals }) }
-  catch (error) { throw new RouteError(error instanceof Error ? error.message : 'invalid_order_payload') }
-  let approval: AgentTradePlan['approval'] = null
-  if (allowance < BigInt(rawAmount)) {
-    // Reset a smaller nonzero allowance first. Both steps authorize only the
-    // pinned relayer and are separately simulated, reviewed and confirmed.
+      userWalletAddress: walletAddress, quoteId: context.providerRoute.quoteId, slippagePercent: '0.5' }, credentials, bounded)
+    const data = object(swap.data), rfq = object(data?.rfq), router = object(data?.routerResult)
+    if (data?.executionMode !== 'RFQ' || rfq?.vendor !== 'CowSwap' || !id(rfq.orderId)
+      || (rfq.signingScheme && String(rfq.signingScheme).toLowerCase() !== 'eip712')
+      || !router || router.binanceChainId !== '56' || router.vendorName !== 'CowSwap' || router.fromTokenAmount !== context.rawAmount
+      || !same(object(router.fromToken)?.tokenContractAddress, inputToken)
+      || !same(object(router.toToken)?.tokenContractAddress, side === 'buy' ? assets[symbol] : BSC_USDT.address)
+      || typeof router.toTokenAmount !== 'string' || router.toTokenAmount !== parseUnits(context.route.outputAmount, outputDecimals).toString()) throw new RouteError('invalid_order_payload')
+    try {
+      return { inputDecimals, outputDecimals, orderQuoteId: rfq.orderId,
+        typedData: validateOrderTypedData(rfq.typedDataToSign, { route: context.route, rawAmount: context.rawAmount, inputDecimals, outputDecimals }) }
+    } catch (error) { throw new RouteError(error instanceof Error ? error.message : 'invalid_order_payload') }
+  })
+  const approvalPromise = Promise.all([contextPromise, balancePromise, allowancePromise]).then(async ([context, balance, allowance]): Promise<AgentTradePlan['approval']> => {
+    bounded.throwIfAborted()
+    const rawAmount = context.rawAmount
+    if (balance < BigInt(rawAmount)) throw new RouteError('insufficient_balance', 409)
+    if (allowance >= BigInt(rawAmount)) return null
+    // The fixed approval simulation and gas reads can overlap the unsigned RFQ
+    // build. Nothing is sent to the wallet until BOTH results are validated.
     const reset = allowance > 0n
     const approvalAmount = reset ? 0n : BigInt(rawAmount)
     const calldata = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [COW_RELAYER, approvalAmount] })
     const [simulation, gas, gasPrice, native] = await Promise.all([
-      tradingRequest('POST', '/api/v1/dex/pre-transaction/simulate', { binanceChainId: '56', evmTx: { from: walletAddress, to: inputToken, value: '0', data: calldata } }, credentials),
+      tradingRequest('POST', '/api/v1/dex/pre-transaction/simulate', { binanceChainId: '56', evmTx: { from: walletAddress, to: inputToken, value: '0', data: calldata } }, credentials, bounded),
       tradingClient.estimateGas({ account: walletAddress as Address, to: inputToken, data: calldata, value: 0n }),
       tradingClient.getGasPrice(), tradingClient.getBalance({ address: walletAddress as Address }),
     ])
     if (object(simulation.data)?.status !== 'SUCCESS') throw new RouteError('simulation_failed', 409)
     const gasBudget = gas * gasPrice * 12n / 10n
     if (native < gasBudget) throw new RouteError('insufficient_gas', 409)
-    approval = { chainId: 56, to: inputToken, data: calldata, value: '0', amount: approvalAmount.toString(), spender: COW_RELAYER,
+    return { chainId: 56, to: inputToken, data: calldata, value: '0', amount: approvalAmount.toString(), spender: COW_RELAYER,
       reset, gasFeeBnb: formatUnits(gasBudget, 18), simulated: true }
-  }
-  return { route: context.route, rawAmount, inputDecimals, outputDecimals, minimumReceive: typedData.message.buyAmount as string,
-    feeAmount: typedData.message.feeAmount as string, slippagePercent: '0.5', expiresAt: new Date(Number(typedData.message.validTo) * 1000).toISOString(),
-    requestId: crypto.randomUUID(), orderQuoteId: rfq.orderId, typedData, typedDataHash: hashTypedData(typedData), approval }
+  })
+  try {
+    const [context, built, approval] = await Promise.all([contextPromise, builtPromise, approvalPromise])
+    const { inputDecimals, outputDecimals, orderQuoteId, typedData } = built
+    bounded.throwIfAborted()
+    return { route: context.route, rawAmount: context.rawAmount, inputDecimals, outputDecimals, minimumReceive: typedData.message.buyAmount as string,
+      feeAmount: typedData.message.feeAmount as string, slippagePercent: '0.5', expiresAt: new Date(Number(typedData.message.validTo) * 1000).toISOString(),
+      requestId: crypto.randomUUID(), orderQuoteId, typedData, typedDataHash: hashTypedData(typedData), approval }
+  } catch (error) { cancel.abort(error); throw error }
 }
 
 export async function submitAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, signature: string, credentials: Credentials) {
@@ -163,7 +180,7 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
     }
     if (path === '/api/trade/prepare') {
       if (typeof body.symbol !== 'string' || !isSymbol(body.symbol) || (body.side !== 'buy' && body.side !== 'sell') || !parseQuantity(body.amount)) throw new RouteError('invalid_trade_request', 400)
-      const prepared = await prepareAgentTrade(body.symbol, body.side, body.amount as string, body.walletAddress, credentials)
+      const prepared = await prepareAgentTrade(body.symbol, body.side, body.amount as string, body.walletAddress, credentials, request.signal)
       const planToken = await sealTradeTicket({ plan: prepared }, userId, credentials.secretKey, 'plan')
       return json({ plan: { ...prepared, planToken } })
     }

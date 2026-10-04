@@ -149,3 +149,8 @@ The mark provenance is in `brand-mark-sources.json`. The floating icon component
 - User requested a UI-only video without partner activation. Open `/app/?tab=portfolio&view=deposit&demo=onramper`; keep normal client sign-in and real account balances. The card row uses the same component, marks and styles, with **Onramper · Demo** as its descriptor.
 - Design Read: existing Deposit utility for newcomers; preservation extension; variance 1/10, motion 1/10, density 2/10, reference fidelity 9/10. Reuse the current rows, spinner, inline errors, keyboard controls, themes and navigation. No new payment form, modal or fabricated payment success.
 - The demo performs one public read for a test-key-only `.dev` widget URL and uses same-tab navigation. It sends no wallet, identity token, account context or exact asset selection. No FirstBell deposit session, balance credit or stock order is created. The ordinary app keeps its existing funding checks.
+
+## Quote responsiveness (2026-10-04 UTC)
+
+- Preservation change: keep the existing Trade and Agent layout, loading feedback, retry controls, themes, focus and reduced-motion behavior. Route checks have a 15-second total budget and agent preparation has a 20-second budget, including wallet session retrieval. Show the existing inline timeout error and re-enable controls when that budget expires; changing the request or leaving the view cancels obsolete work.
+- Each result remains a fresh provider quote. Only verified chain/token metadata is briefly cached. No fabricated quote, completed trade or balance is displayed. Signing, submission recovery and settlement confirmation keep their existing interactions.

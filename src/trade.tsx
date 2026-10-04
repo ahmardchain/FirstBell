@@ -7,6 +7,7 @@ import { MarketChart } from '@/components/spectrumui/charts/market-chart'
 import { getMarket, getRwa, getTradingRoute, MarketRequestError, type MarketData, type MarketFailure, type RwaContext, type Timeframe, type TradingRoute } from './market-api'
 import { displayQuantity } from './wallet-balances'
 import { withWalletSession } from '../lib/wallet-session'
+import { QUOTE_TIMEOUT_MS } from '../lib/quote-timeout'
 import './trade.css'
 
 export type TradeAsset = CatalogAsset
@@ -35,7 +36,7 @@ const words = {
       unauthorized: 'Sign in again to check this route.', session_unavailable: 'Your session could not be loaded. Refresh the page and retry.', session_refresh_failed: 'Your session could not be refreshed. Sign in again and retry.', wallet_not_verified: 'Your wallet could not be verified. Sign in again and retry.',
       wallet_loading: 'Your wallet is still being prepared. Try again shortly.', identity_token_unavailable: 'Wallet verification is not available yet. Sign in again and retry.',
       wallet_verification_not_configured: 'Wallet verification needs to be enabled for this app.', wallet_verification_unavailable: 'Wallet verification is temporarily unavailable. Try again.',
-      session_timeout: 'Your sign-in session took too long. Try again.', quote_timeout: 'No quote was returned within 20 seconds. Try again.',
+      session_timeout: 'Your sign-in session took too long. Try again.', quote_timeout: 'No quote was returned within 15 seconds. Try again.',
       no_verified_route: 'No verified BSC route is available for this token and amount.', chain_unavailable: 'The trading provider is not offering BSC routes right now.',
       invalid_amount: 'This amount has too many decimal places for the token.', invalid_trade_request: 'Enter a valid amount and try again.',
       provider_auth_error: 'Trading provider access needs to be checked.', rate_limited: 'Please wait a minute before checking another route.', stale_quote: 'The quote expired. Check the route again.' },
@@ -63,7 +64,7 @@ const words = {
       unauthorized: '请重新登录后检查路线。', session_unavailable: '无法加载登录状态，请刷新后重试。', session_refresh_failed: '无法刷新登录状态，请重新登录后重试。', wallet_not_verified: '无法验证你的钱包，请重新登录后重试。',
       wallet_loading: '正在准备你的钱包，请稍后重试。', identity_token_unavailable: '钱包验证暂不可用，请重新登录后重试。',
       wallet_verification_not_configured: '此应用需要启用钱包验证。', wallet_verification_unavailable: '钱包验证暂不可用，请重试。',
-      session_timeout: '登录状态加载超时，请重试。', quote_timeout: '20 秒内未收到报价，请重试。',
+      session_timeout: '登录状态加载超时，请重试。', quote_timeout: '15 秒内未收到报价，请重试。',
       no_verified_route: '此代币和金额暂无经过核实的 BSC 路线。', chain_unavailable: '交易服务目前不提供 BSC 路线。',
       invalid_amount: '金额的小数位数超过代币支持的精度。', invalid_trade_request: '请输入有效金额后重试。',
       provider_auth_error: '需要检查交易服务的访问配置。', rate_limited: '请等待一分钟后再次检查路线。', stale_quote: '报价已过期，请重新检查路线。' },
@@ -173,22 +174,24 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     quoteAbort.current?.abort()
     const abort = new AbortController()
     quoteAbort.current = abort
+    const deadline = AbortSignal.timeout(QUOTE_TIMEOUT_MS)
+    const signal = AbortSignal.any([abort.signal, deadline])
     setQuote(null)
     setQuoteState('loading'); setQuoteError('')
     try {
       if (!address) throw new Error('wallet_loading')
       const result = await withWalletSession({ getAccessToken, getIdentityToken: () => identity.current,
         refreshIdentityToken: getIdentityToken }, ({ accessToken, identityToken: proof }) => {
-        if (version !== quoteVersion.current || abort.signal.aborted) throw new DOMException('Aborted', 'AbortError')
-        return getTradingRoute(asset.symbol, side, amount, address, accessToken, proof, abort.signal)
-      })
+        if (version !== quoteVersion.current || signal.aborted) throw new DOMException('Aborted', 'AbortError')
+        return getTradingRoute(asset.symbol, side, amount, address, accessToken, proof, signal)
+      }, signal)
       if (version !== quoteVersion.current) return
       setQuote(result)
       setQuoteState('idle')
     } catch (error) {
       if (version !== quoteVersion.current) return
       setQuoteState('error')
-      const reason = error instanceof Error ? error.message : ''
+      const reason = deadline.aborted && !abort.signal.aborted ? 'quote_timeout' : error instanceof Error ? error.message : ''
       setQuoteError(t.errors[reason as keyof typeof t.errors] ?? t.quoteError)
     }
   }

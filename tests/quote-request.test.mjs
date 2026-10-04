@@ -9,7 +9,7 @@ const call = signal => getTradingRoute('NVDAon', 'buy', '5', wallet, 'fixture-ac
 
 test('quote timeout stops the request with a specific error instead of endless loading', async () => {
   const deadline = new AbortController()
-  AbortSignal.timeout = milliseconds => { assert.equal(milliseconds, 20_000); return deadline.signal }
+  AbortSignal.timeout = milliseconds => { assert.equal(milliseconds, 15_000); return deadline.signal }
   globalThis.fetch = async (_url, init) => {
     deadline.abort(new DOMException('Expired', 'TimeoutError'))
     throw init.signal.reason

@@ -1,17 +1,19 @@
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
-import { after, test } from 'node:test'
+import { after, beforeEach, test } from 'node:test'
 import { privateKeyToAccount } from 'viem/accounts'
 import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, erc20Abi, hashTypedData } from 'viem'
 import { fractionOfQuantity, parseAgentIntent } from '../lib/agent-intent.ts'
 import { COW_ORDER_FIELDS, COW_RELAYER, COW_SETTLEMENT, validateAgentTradePlan, validateOrderTypedData } from '../lib/agent-trading.ts'
 import { prepareAgentTrade, submitAgentTrade, checkAgentOrder, sealTradeTicket, openTradeTicket, handleAgentTrade } from '../worker/agent-trading.ts'
 import { handleApiRequest } from '../worker/router.ts'
+import { clearTradingMetadataCache } from '../worker/binance-trading.ts'
 import { BSC_USDT } from '../lib/funding.ts'
 import { tokenAddresses } from '../lib/asset-catalog.ts'
 
 const originalFetch = globalThis.fetch
 after(() => { globalThis.fetch = originalFetch })
+beforeEach(() => clearTradingMetadataCache())
 // Public, unfunded test signer; all provider and RPC calls below are fixtures.
 const signer = privateKeyToAccount(`0x${'11'.repeat(32)}`), wallet = signer.address
 const credentials = { apiKey: 'fixture-key', secretKey: 'fixture-secret' }
@@ -113,6 +115,54 @@ test('approval is simulated and capped to this spend and pinned relayer; reset p
   await assert.rejects(() => submitAgentTrade(prepared, '0x', credentials), /approval_required/)
   allowance = 1n; const reset = await prepareAgentTrade('NVDAon', 'buy', '5', wallet, credentials); assert.equal(reset.approval.reset, true); assert.equal(reset.approval.amount, '0')
   simulationState = 'FAILED'; await assert.rejects(() => prepareAgentTrade('NVDAon', 'buy', '5', wallet, credentials), /simulation_failed/)
+})
+
+test('approval simulation starts while the unsigned RFQ build is still pending', { timeout: 1500 }, async () => {
+  mock(); allowance = 0n
+  const fixtureFetch = globalThis.fetch
+  let release, simulationStarted
+  const buildGate = new Promise(resolve => { release = resolve })
+  const simulationGate = new Promise(resolve => { simulationStarted = resolve })
+  globalThis.fetch = async (url, options) => {
+    const path = new URL(url).pathname
+    if (path.endsWith('/swap')) await buildGate
+    if (path.endsWith('/simulate')) simulationStarted()
+    return fixtureFetch(url, options)
+  }
+  const pending = prepareAgentTrade('NVDAon', 'buy', '5', wallet, credentials)
+  try {
+    await simulationGate
+    release()
+    const prepared = await pending
+    assert.equal(prepared.approval.simulated, true)
+    assert.equal(prepared.orderQuoteId, 'vendor-order-id')
+    assert.equal(calls.some(call => call.path.endsWith('/order/submit')), false)
+  } finally { release() }
+})
+
+test('an unfunded wallet stops preparation without waiting for a stalled quote', { timeout: 1500 }, async () => {
+  mock(); balance = 0n
+  const fixtureFetch = globalThis.fetch
+  let quoteStarted, aborted = false
+  const quoteGate = new Promise(resolve => { quoteStarted = resolve })
+  globalThis.fetch = async (url, options) => {
+    const parsed = new URL(url)
+    if (parsed.pathname.endsWith('/quote')) {
+      quoteStarted()
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => { aborted = true; reject(options.signal.reason) }, { once: true })
+      })
+    }
+    if (parsed.hostname === 'bsc-dataseed.bnbchain.org') {
+      const input = JSON.parse(options.body)
+      const requests = Array.isArray(input) ? input : [input]
+      if (requests.some(item => item.method === 'eth_call' && decodeFunctionData({ abi: erc20Abi, data: item.params[0].data }).functionName === 'balanceOf')) await quoteGate
+    }
+    return fixtureFetch(url, options)
+  }
+  await assert.rejects(() => prepareAgentTrade('NVDAon', 'buy', '5', wallet, credentials), /insufficient_balance/)
+  assert.equal(aborted, true)
+  assert.equal(calls.some(call => /\/swap$|\/simulate$|\/order\/submit$/.test(call.path)), false)
 })
 test('signed tickets reject account changes, tampering and cross-use', async () => {
   const ticket = await sealTradeTicket({ plan: { walletAddress: wallet } }, 'did:privy:fixture123', credentials.secretKey, 'plan')
