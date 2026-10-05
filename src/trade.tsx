@@ -8,6 +8,7 @@ import { getMarket, getRwa, getTradingRoute, MarketRequestError, type MarketData
 import { displayQuantity } from './wallet-balances'
 import { withWalletSession } from '../lib/wallet-session'
 import { QUOTE_TIMEOUT_MS } from '../lib/quote-timeout'
+import { TradeRequestError } from '../lib/trade-error'
 import './trade.css'
 
 export type TradeAsset = CatalogAsset
@@ -28,10 +29,11 @@ const words = {
     inspect: 'Inspect asset file', scan: 'View contract on BscScan',
     buy: 'Buy', sell: 'Sell', sheetTitle: 'Trade', buyAmount: 'Amount to spend', sellAmount: 'Token quantity',
     receive: 'Estimated receive', unavailable: 'Quote unavailable', enterAmount: 'Enter an amount', routePrompt: 'Check route for a quote', balance: 'Wallet balance unavailable', balanceLabel: 'Wallet balance', noPrice: 'Price unavailable', noChange: 'No data', noBalance: 'Not connected',
-    sheetNote: 'Check a BSC trading route for your wallet. This check does not place an order. Stock purchase and sale are not available in FirstBell yet.',
+    sheetNote: 'Check a live quote for your wallet. To place a trade, use Agent to review it and confirm with your wallet.',
     loading: 'Loading market data', retry: 'Retry', sourceOndo: 'Ondo primary-market data', sourceDex: 'GeckoTerminal DEX pool data', sourceBinance: 'Binance Web3 token-market data', sourceBinanceRwa: 'Binance RWA token price', marketPrice: 'Market price', updated: 'Updated',
     getQuote: 'Check trading route', gettingQuote: 'Checking route', login: 'Log In to check route', quoteDisclaimer: 'Route found · no order placed', quoteError: 'Trading route could not be checked. Try again.',
     route: 'Trading route', wallet: 'Receiving wallet', routeExpired: 'Quote expired. Check the route again.',
+    minimumOrder: (value: string | null) => value ? `The provider requires a trade worth at least $${value}. Choose an amount that meets it and check again.` : 'This trade is below the provider’s minimum value. Choose a larger amount and check again.',
     errors: { not_configured: 'Trading quotes are not configured yet.', account_not_configured: 'Account verification is not configured yet.',
       unauthorized: 'Sign in again to check this route.', session_unavailable: 'Your session could not be loaded. Refresh the page and retry.', session_refresh_failed: 'Your session could not be refreshed. Sign in again and retry.', wallet_not_verified: 'Your wallet could not be verified. Sign in again and retry.',
       wallet_loading: 'Your wallet is still being prepared. Try again shortly.', identity_token_unavailable: 'Wallet verification is not available yet. Sign in again and retry.',
@@ -56,10 +58,11 @@ const words = {
     inspect: '查看资产资料', scan: '在 BscScan 查看合约',
     buy: '买入', sell: '卖出', sheetTitle: '交易', buyAmount: '支付金额', sellAmount: '代币数量',
     receive: '预计收到', unavailable: '暂无报价', enterAmount: '请输入金额', routePrompt: '检查路线以获取报价', balance: '暂无钱包余额', balanceLabel: '钱包余额', noPrice: '暂无报价', noChange: '暂无数据', noBalance: '未连接',
-    sheetNote: '为你的钱包检查 BSC 交易路线。此检查不会下单，FirstBell 目前尚不能买入或卖出股票代币。',
+    sheetNote: '为你的钱包检查实时报价。下单请使用 Agent 审核交易并通过钱包确认。',
     loading: '正在加载市场数据', retry: '重试', sourceOndo: 'Ondo 一级市场数据', sourceDex: 'GeckoTerminal 去中心化交易池数据', sourceBinance: 'Binance Web3 代币行情', sourceBinanceRwa: 'Binance RWA 代币价格', marketPrice: '市场价格', updated: '更新时间',
     getQuote: '检查交易路线', gettingQuote: '正在检查路线', login: '登录后检查路线', quoteDisclaimer: '已找到路线，尚未下单', quoteError: '无法检查交易路线，请重试。',
     route: '交易路线', wallet: '接收钱包', routeExpired: '报价已过期，请重新检查路线。',
+    minimumOrder: (value: string | null) => value ? `服务商要求交易价值至少为 ${value} 美元。请选择符合要求的金额并重新检查。` : '此交易低于服务商的最低交易价值。请增加金额并重新检查。',
     errors: { not_configured: '交易报价尚未配置。', account_not_configured: '账户验证尚未配置。',
       unauthorized: '请重新登录后检查路线。', session_unavailable: '无法加载登录状态，请刷新后重试。', session_refresh_failed: '无法刷新登录状态，请重新登录后重试。', wallet_not_verified: '无法验证你的钱包，请重新登录后重试。',
       wallet_loading: '正在准备你的钱包，请稍后重试。', identity_token_unavailable: '钱包验证暂不可用，请重新登录后重试。',
@@ -192,7 +195,8 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
       if (version !== quoteVersion.current) return
       setQuoteState('error')
       const reason = deadline.aborted && !abort.signal.aborted ? 'quote_timeout' : error instanceof Error ? error.message : ''
-      setQuoteError(t.errors[reason as keyof typeof t.errors] ?? t.quoteError)
+      setQuoteError(reason === 'minimum_order_not_met' ? t.minimumOrder(error instanceof TradeRequestError ? error.minimumUsd : null)
+        : t.errors[reason as keyof typeof t.errors] ?? t.quoteError)
     }
   }
 

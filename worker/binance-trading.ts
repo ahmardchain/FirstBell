@@ -1,6 +1,7 @@
 import { createPublicClient, erc20Abi, formatUnits, http, isAddress, parseUnits } from 'viem'
 import { bsc } from 'viem/chains'
 import { BSC_USDT } from '../lib/funding.ts'
+import { validUsdMinimum } from '../lib/trade-error.ts'
 import type { TradingRoute } from '../lib/trading.ts'
 import { signPath } from './binance-rwa.ts'
 import { assets, isSymbol, parseQuantity, type Symbol } from './market.ts'
@@ -39,7 +40,11 @@ async function credentialScope(credentials: Credentials) {
 export class RouteError extends Error {
   reason: string
   status: number
-  constructor(reason: string, status = 503) { super(reason); this.reason = reason; this.status = status }
+  minimumUsd: string | null
+  constructor(reason: string, status = 503, minimumUsd?: unknown) {
+    super(reason); this.reason = reason; this.status = status
+    this.minimumUsd = reason === 'minimum_order_not_met' ? validUsdMinimum(minimumUsd) : null
+  }
 }
 
 export async function tradingRequest(method: 'GET' | 'POST', endpoint: string, input: Record<string, unknown>, credentials: Credentials, signal?: AbortSignal): Promise<Json> {
@@ -70,6 +75,11 @@ export async function tradingRequest(method: 'GET' | 'POST', endpoint: string, i
     if (!result || result.code !== 0 || result.success !== true) {
       // Business codes are useful evidence; never log keys, user IDs or upstream bodies.
       console.warn('Binance route business error', typeof result?.code === 'number' ? result.code : 'missing')
+      if (result?.code === 40375) {
+        const minimum = typeof result.msg === 'string' && result.msg.length <= 512
+          ? result.msg.match(/\bminimum order amount is ((?:0|[1-9]\d{0,8})(?:\.\d{1,2})?) USD\b/i)?.[1] : undefined
+        throw new RouteError('minimum_order_not_met', 400, minimum)
+      }
       const reason = ({ 40304: 'provider_unavailable', 40367: 'market_closed', 40369: 'market_closed', 40374: 'no_verified_route', 40401: 'stale_quote', 40462: 'invalid_provider_response' } as Record<number, string>)[Number(result?.code)]
       throw new RouteError(reason ?? 'provider_error')
     }

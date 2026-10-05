@@ -9,6 +9,7 @@ import { fractionOfQuantity, parseAgentIntent, type TradeIntent } from '../lib/a
 import { terminalOrder, validateAgentTradePlan, type AgentOrder, type AgentTradePlan } from '../lib/agent-trading'
 import { withWalletSession, type WalletSession } from '../lib/wallet-session'
 import { abortable, PREPARE_TIMEOUT_MS, QUOTE_TIMEOUT_MS } from '../lib/quote-timeout'
+import { TradeRequestError } from '../lib/trade-error'
 import { checkTrade, prepareTrade, submitTrade } from './agent-api'
 import { displayQuantity, readWalletBalances } from './wallet-balances'
 import { getTradingRoute } from './market-api'
@@ -22,6 +23,7 @@ const copy = {
     prompt: 'Buy, sell, or check your balance…', send: 'Send message', reset: 'New conversation', note: 'Simple commands use a fixed parser. Trades use live Binance quotes and your Privy wallet.',
     examples: ['Buy $10 of Nvidia', 'Sell half my Tesla', 'Show my balance'], login: 'Log In', walletLoading: 'Preparing wallet', connected: 'Wallet connected',
     signIn: 'Log in with Google or email to use your wallet. Then send your command again.', loading: 'Checking wallet and trading route…',
+    minimumOrder: (value: string | null) => value ? `The provider requires a trade worth at least $${value}. Choose an amount that meets it and send your command again.` : 'This trade is below the provider’s minimum value. Choose a larger amount and send your command again.',
     select: 'Name one token or company, such as Nvidia, Apple, or TSLAon.', amount: 'For a buy, enter USDT to spend: “Buy Nvidia with 10 USDT.” For a sell, enter token quantity: “Sell 0.1 TSLAon,” “Sell half my Tesla,” or “Sell all my Tesla.”',
     ambiguous: 'Please request one trade with one asset and amount. Dollar-based sells and multiple assets need separate commands.', unsupported: 'I can buy or sell one listed token, check your balance or holdings, and look up issuer records. Try “Buy $10 of Nvidia.” Scheduled strategies and transfers are not supported.',
     preparing: 'I’ll check the amount and wallet, then show a trade for you to review.', cancel: 'Trade review cancelled. No order was submitted.', noOrder: 'No order to check yet.',
@@ -46,6 +48,7 @@ const copy = {
     title: '用自己的话交易', subtitle: '你的钱包，由你确认。', greeting: '你想交易什么？', help: '试试“用 10 USDT 买入 NVDAon”或“卖出一半特斯拉”。每笔交易由你审核后签名。',
     prompt: '买入、卖出或查看余额…', send: '发送消息', reset: '新对话', note: '简单指令由固定解析器识别。交易使用 Binance 实时报价和你的 Privy 钱包。', examples: ['用 10 USDT 买入 NVDAon', '卖出一半特斯拉', '查看余额'],
     login: '登录', walletLoading: '正在准备钱包', connected: '钱包已连接', signIn: '请用 Google 或邮箱登录后重新发送指令。', loading: '正在检查钱包和交易路线…',
+    minimumOrder: (value: string | null) => value ? `服务商要求交易价值至少为 ${value} 美元。请选择符合要求的金额并重新发送指令。` : '此交易低于服务商的最低交易价值。请增加金额并重新发送指令。',
     select: '请指定一个代币或公司，例如 NVDAon、苹果或 TSLAon。', amount: '买入请指定 USDT 支付金额；卖出请指定代币数量、一半或全部持仓。', ambiguous: '每次请只指定一项资产和一个金额。', unsupported: '支持单项代币买卖、余额及持仓查询和发行方资料。暂不支持定期策略或转账。',
     preparing: '正在检查钱包和金额，随后由你审核交易。', cancel: '已取消交易审核，尚未提交订单。', noOrder: '尚无订单可查询。',
     balance: (usdt: string, bnb: string) => `可用金额为 ${displayQuantity(usdt)} USDT，网络费用余额为 ${displayQuantity(bnb, 8)} BNB。`, empty: '此钱包暂无目录内的股票代币。',
@@ -83,6 +86,7 @@ export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
   const say = (text: string, source = false) => setMessages(list => [...list, { id: list.length + 1, role: 'guide', text, source }])
   const errorText = (error: unknown) => {
     const reason = error instanceof Error ? error.message : ''
+    if (reason === 'minimum_order_not_met') return t.minimumOrder(error instanceof TradeRequestError ? error.minimumUsd : null)
     if (/reject|cancel|4001/i.test(reason)) return t.errors.wallet_rejected
     return t.errors[reason as keyof typeof t.errors] ?? t.errors.provider_error
   }

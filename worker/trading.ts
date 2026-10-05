@@ -49,6 +49,7 @@ export async function handleTradingRoute(request: Request, env: Env, userId: str
     return json({ route })
   } catch (error) {
     if (error instanceof WalletVerificationError) return json({ error: error.message }, error.status)
-    return json({ error: error instanceof RouteError ? error.reason : 'provider_error' }, error instanceof RouteError ? error.status : 503)
+    return json({ error: error instanceof RouteError ? error.reason : 'provider_error',
+      ...(error instanceof RouteError && error.minimumUsd ? { minimumUsd: error.minimumUsd } : {}) }, error instanceof RouteError ? error.status : 503)
   }
 }

@@ -195,6 +195,6 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
   } catch (error) {
     if (error instanceof WalletVerificationError) return json({ error: error.message }, error.status)
     const reason = error instanceof RouteError ? error.reason : error instanceof Error && ['unsupported_order_schema', 'invalid_order_payload'].includes(error.message) ? error.message : 'provider_error'
-    return json({ error: reason }, error instanceof RouteError ? error.status : 503)
+    return json({ error: reason, ...(error instanceof RouteError && error.minimumUsd ? { minimumUsd: error.minimumUsd } : {}) }, error instanceof RouteError ? error.status : 503)
   }
 }

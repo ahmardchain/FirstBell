@@ -154,3 +154,8 @@ The mark provenance is in `brand-mark-sources.json`. The floating icon component
 
 - Preservation change: keep the existing Trade and Agent layout, loading feedback, retry controls, themes, focus and reduced-motion behavior. Route checks have a 15-second total budget and agent preparation has a 20-second budget, including wallet session retrieval. Show the existing inline timeout error and re-enable controls when that budget expires; changing the request or leaving the view cancels obsolete work.
 - Each result remains a fresh provider quote. Only verified chain/token metadata is briefly cached. No fabricated quote, completed trade or balance is displayed. Signing, submission recovery and settlement confirmation keep their existing interactions.
+
+## Live trading minimum value (2026-10-05 UTC)
+
+- Preservation change: keep Trade and Agent layouts, existing inline error feedback, themes, motion and keyboard behavior. When Binance rejects a below-minimum trade, show its validated numeric USD threshold in English or Chinese and let the user choose a new amount. Unknown thresholds use general minimum-value copy; no fixed 20 USD rule or automatic spend increase is added.
+- Trade remains a quote check. Replace its obsolete app-wide unavailability text with the path to review and confirm execution through Agent and the connected Privy wallet.

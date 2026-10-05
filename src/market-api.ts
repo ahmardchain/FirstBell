@@ -1,6 +1,7 @@
 import type { Candle } from '@/components/spectrumui/charts/chart-engine'
 import type { TradingRoute } from '../lib/trading'
 import { QUOTE_TIMEOUT_MS } from '../lib/quote-timeout.ts'
+import { TradeRequestError } from '../lib/trade-error.ts'
 export type { TradingRoute } from '../lib/trading'
 
 export type Timeframe = '15m' | '1h' | '4h' | '1D'
@@ -90,8 +91,8 @@ export async function getTradingRoute(symbol: string, side: 'buy' | 'sell', amou
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'privy-id-token': identityToken },
     body: JSON.stringify({ symbol, side, amount, walletAddress }),
   })
-  const result = await response.json() as { route?: TradingRoute; error?: string }
-  if (!response.ok || !result.route) throw new Error(result.error ?? 'provider_error')
+  const result = await response.json() as { route?: TradingRoute; error?: string; minimumUsd?: unknown }
+  if (!response.ok || !result.route) throw new TradeRequestError(result.error ?? 'provider_error', result.minimumUsd)
   const route = result.route
   if (route.source !== 'binance-web3' || route.chainId !== 56 || route.symbol !== symbol || route.side !== side
     || typeof route.walletAddress !== 'string' || route.walletAddress.toLowerCase() !== walletAddress.toLowerCase()

@@ -248,4 +248,11 @@ test('HTTP route checks require same origin, small valid input, ownership proof 
   assert.equal(noIdentity.status, 200)
   assert.equal((await noIdentity.json()).route.outputAmount, '0.025')
   assert.equal(rateCalls, 3)
+  const fixtureFetch = globalThis.fetch
+  globalThis.fetch = async (url, options) => new URL(url).pathname.endsWith('/quote')
+    ? Response.json({ code: 40375, success: false, msg: 'Minimum order amount is 20 USD. private fixture detail', data: null })
+    : fixtureFetch(url, options)
+  const tooSmall = await check()
+  assert.equal(tooSmall.status, 400)
+  assert.deepEqual(await tooSmall.json(), { error: 'minimum_order_not_met', minimumUsd: '20' })
 })

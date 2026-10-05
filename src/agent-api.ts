@@ -1,6 +1,7 @@
 import { validateAgentTradePlan, type AgentOrder, type AgentTradePlan } from '../lib/agent-trading.ts'
 import type { WalletSession } from '../lib/wallet-session.ts'
 import { PREPARE_TIMEOUT_MS } from '../lib/quote-timeout.ts'
+import { TradeRequestError } from '../lib/trade-error.ts'
 
 async function post(path: 'prepare' | 'submit' | 'status', body: Record<string, unknown>, session: WalletSession, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const timeout = AbortSignal.timeout(path === 'prepare' ? PREPARE_TIMEOUT_MS : 30_000)
@@ -10,7 +11,7 @@ async function post(path: 'prepare' | 'submit' | 'status', body: Record<string, 
       body: JSON.stringify(body), signal: signal ? AbortSignal.any([timeout, signal]) : timeout })
     const raw: unknown = await response.json()
     const result = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null
-    if (!response.ok) throw new Error(typeof result?.error === 'string' ? result.error : 'provider_error')
+    if (!response.ok) throw new TradeRequestError(typeof result?.error === 'string' ? result.error : 'provider_error', result?.minimumUsd)
     if (!result) throw new Error('invalid_provider_response')
     return result
   } catch (error) {
