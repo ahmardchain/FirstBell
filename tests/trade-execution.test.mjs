@@ -89,6 +89,12 @@ test('an unknown submission preserves the exact signed attempt for recovery', as
   assert.equal(saved.plan.planToken, reviewed.planToken)
   assert.equal(saved.signature, signature)
 })
+test('an acknowledged receipt reaches the submission handler before a late wallet-change rejection', async () => {
+  let changed = false, saved
+  const io = ports({ assertWallet: () => { if (changed) throw new Error('wallet_changed') }, submit: async () => { saved = order; changed = true; return order } })
+  await assert.rejects(executeReviewedTrade(plan(), request, io), /wallet_changed/)
+  assert.deepEqual(saved, order)
+})
 test('an expired order cannot open wallet confirmation', async () => {
   const reviewed = plan()
   reviewed.typedData.message.validTo = Math.floor(Date.now() / 1000) - 1

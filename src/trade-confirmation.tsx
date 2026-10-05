@@ -197,7 +197,13 @@ export function TradeConfirmation({ symbol, side, amount, onAmountChange, langua
         signing: async typedData => (await signTypedData(typedData, { address: owner, uiOptions: { showWalletUIs: true, title: `${side === 'buy' ? 'Buy' : 'Sell'} ${symbol}` } })).signature,
         onApproval: () => { if (version === operation.current) setPhase('approval') },
         onSigned: attempt => { signedAttempt.current = attempt; setPhase('submitting') },
-        submit: attempt => session(value => { assertWallet(owner); return submitTrade(attempt.plan, attempt.signature, value) }),
+        submit: async attempt => {
+          const submitted = await session(value => { assertWallet(owner); return submitTrade(attempt.plan, attempt.signature, value) })
+          // Keep an acknowledged server receipt even if the view or wallet
+          // changes before the execution helper's final wallet check.
+          persist(submitted, owner)
+          return submitted
+        },
       })
       if (version !== operation.current) return
       setPlan(null)
@@ -216,6 +222,7 @@ export function TradeConfirmation({ symbol, side, amount, onAmountChange, langua
     const version = operation.current
     try {
       const submitted = await session(value => { assertWallet(attempt.plan.route.walletAddress); return submitTrade(attempt.plan, attempt.signature, value) })
+      persist(submitted, attempt.plan.route.walletAddress)
       if (version !== operation.current) return
       setOrder(submitted); persist(submitted, address); signedAttempt.current = null; setPlan(null); setPhase('idle')
     } catch { if (version === operation.current) setPhase('uncertain') }

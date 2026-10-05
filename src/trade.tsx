@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, Search, X } from 'lucide-react'
 import { assetLogo, tokenLogoError, type CatalogAsset } from '../lib/asset-catalog'
@@ -147,7 +148,10 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     if (!side) return
     triggerRef.current ??= document.querySelector<HTMLButtonElement>(`.trade-ticket .trade-${side}`)
     const priorOverflow = document.body.style.overflow
+    const background = document.querySelector<HTMLElement>('.app-shell')
+    const wasInert = background?.inert ?? false
     document.body.style.overflow = 'hidden'
+    if (background) background.inert = true
     const focusTimer = window.setTimeout(() => sheetRef.current?.querySelector<HTMLInputElement>('input')?.focus(), 80)
     const onKey = (event: KeyboardEvent) => {
       // Privy opens its own login/approval/signing dialog above this sheet.
@@ -165,6 +169,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     return () => {
       window.clearTimeout(focusTimer)
       document.body.style.overflow = priorOverflow
+      if (background) background.inert = wasInert
       document.removeEventListener('keydown', onKey)
       triggerRef.current?.focus()
     }
@@ -229,7 +234,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
       <div className="trade-dock-buttons"><button type="button" className="trade-buy" onClick={event => openSheet('buy', event)}>{t.buy}</button><button type="button" className="trade-sell" onClick={event => openSheet('sell', event)}>{t.sell}</button></div>
     </section>
 
-    <AnimatePresence>{side && <div className="trade-sheet-layer">
+    {typeof document !== 'undefined' && createPortal(<AnimatePresence>{side && <div className="trade-sheet-layer">
       <motion.button className="trade-sheet-scrim" type="button" tabIndex={-1} disabled={sheetLock.close} aria-label={t.close} onClick={closeSheet} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
       <motion.section ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="trade-sheet-heading" aria-describedby="trade-sheet-note" className="trade-sheet" initial={reduceMotion ? false : { y: 100, opacity: 0, filter: 'blur(2px)' }} animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 0 } : { y: 100, opacity: 0, filter: 'blur(2px)' }} transition={{ duration: reduceMotion ? 0 : .4, ease: [.22, 1, .36, 1] }}>
         <div className="trade-sheet-handle" aria-hidden="true" />
@@ -237,6 +242,6 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <div className="trade-sheet-tabs" role="group" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" key={value} disabled={sheetLock.edit} aria-pressed={side === value} className={`motion-tab trade-${value} ${side === value ? 'active' : ''}`} onClick={() => { if (value !== side) { setAmount(value === 'sell' ? ticketAmount : ''); setSide(value) } }}>{side === value && <motion.span className="motion-tab-indicator" layoutId="trade-side-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[value]}</span></button>)}</div>
         <TradeConfirmation key={sheetInstance} symbol={asset.symbol} side={side} amount={amount} onAmountChange={setAmount} language={language} onCancel={closeSheet} onLockChange={updateLock} cancelWork={cancelWork} />
       </motion.section>
-    </div>}</AnimatePresence>
+    </div>}</AnimatePresence>, document.body)}
   </section>
 }
