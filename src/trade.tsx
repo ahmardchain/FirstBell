@@ -1,14 +1,10 @@
 import * as React from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { getIdentityToken, useIdentityToken, usePrivy, useWallets } from '@privy-io/react-auth'
 import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, Search, X } from 'lucide-react'
 import { assetLogo, tokenLogoError, type CatalogAsset } from '../lib/asset-catalog'
 import { MarketChart } from '@/components/spectrumui/charts/market-chart'
-import { getMarket, getRwa, getTradingRoute, MarketRequestError, type MarketData, type MarketFailure, type RwaContext, type Timeframe, type TradingRoute } from './market-api'
-import { displayQuantity } from './wallet-balances'
-import { withWalletSession } from '../lib/wallet-session'
-import { QUOTE_TIMEOUT_MS } from '../lib/quote-timeout'
-import { TradeRequestError } from '../lib/trade-error'
+import { getMarket, getRwa, MarketRequestError, type MarketData, type MarketFailure, type RwaContext, type Timeframe } from './market-api'
+import { TradeConfirmation, type TradeSheetLock } from './trade-confirmation'
 import './trade.css'
 
 export type TradeAsset = CatalogAsset
@@ -27,21 +23,9 @@ const words = {
     marketRate: 'Market-data request limit reached', marketRateBody: 'Wait a minute, then retry.',
     source: 'ASSET RECORD', issuer: 'Issuer', network: 'Network', contract: 'Contract',
     inspect: 'Inspect asset file', scan: 'View contract on BscScan',
-    buy: 'Buy', sell: 'Sell', sheetTitle: 'Trade', buyAmount: 'Amount to spend', sellAmount: 'Token quantity',
-    receive: 'Estimated receive', unavailable: 'Quote unavailable', enterAmount: 'Enter an amount', routePrompt: 'Check route for a quote', balance: 'Wallet balance unavailable', balanceLabel: 'Wallet balance', noPrice: 'Price unavailable', noChange: 'No data', noBalance: 'Not connected',
-    sheetNote: 'Check a live quote for your wallet. To place a trade, use Agent to review it and confirm with your wallet.',
+    buy: 'Buy', sell: 'Sell', sheetTitle: 'Trade',
+    balance: 'Wallet balance unavailable', noPrice: 'Price unavailable', noChange: 'No data',
     loading: 'Loading market data', retry: 'Retry', sourceOndo: 'Ondo primary-market data', sourceDex: 'GeckoTerminal DEX pool data', sourceBinance: 'Binance Web3 token-market data', sourceBinanceRwa: 'Binance RWA token price', marketPrice: 'Market price', updated: 'Updated',
-    getQuote: 'Check trading route', gettingQuote: 'Checking route', login: 'Log In to check route', quoteDisclaimer: 'Route found · no order placed', quoteError: 'Trading route could not be checked. Try again.',
-    route: 'Trading route', wallet: 'Receiving wallet', routeExpired: 'Quote expired. Check the route again.',
-    minimumOrder: (value: string | null) => value ? `The provider requires a trade worth at least $${value}. Choose an amount that meets it and check again.` : 'This trade is below the provider’s minimum value. Choose a larger amount and check again.',
-    errors: { not_configured: 'Trading quotes are not configured yet.', account_not_configured: 'Account verification is not configured yet.',
-      unauthorized: 'Sign in again to check this route.', session_unavailable: 'Your session could not be loaded. Refresh the page and retry.', session_refresh_failed: 'Your session could not be refreshed. Sign in again and retry.', wallet_not_verified: 'Your wallet could not be verified. Sign in again and retry.',
-      wallet_loading: 'Your wallet is still being prepared. Try again shortly.', identity_token_unavailable: 'Wallet verification is not available yet. Sign in again and retry.',
-      wallet_verification_not_configured: 'Wallet verification needs to be enabled for this app.', wallet_verification_unavailable: 'Wallet verification is temporarily unavailable. Try again.',
-      session_timeout: 'Your sign-in session took too long. Try again.', quote_timeout: 'No quote was returned within 15 seconds. Try again.',
-      no_verified_route: 'No verified BSC route is available for this token and amount.', chain_unavailable: 'The trading provider is not offering BSC routes right now.',
-      invalid_amount: 'This amount has too many decimal places for the token.', invalid_trade_request: 'Enter a valid amount and try again.',
-      provider_auth_error: 'Trading provider access needs to be checked.', rate_limited: 'Please wait a minute before checking another route.', stale_quote: 'The quote expired. Check the route again.' },
     rwaSource: 'BINANCE WEB3 / RWA DATA', rwaPrice: 'On-chain token price', rwaReference: 'Per-share reference', rwaSession: 'Underlying market', rwaPending: 'Binance Web3 API setup pending', rwaUnavailable: 'Binance RWA data unavailable', rwaAssetMissing: 'This asset is not verified in the Binance RWA response', rwaLoading: 'Loading RWA data', rwaNoSession: 'Market status unavailable', rwaNextOpen: 'Next open',
     rwaNote: 'The reference is a per-share conversion derived from the token price, not an official stock exchange quote or a trade fill.',
     close: 'Close trade sheet', choose: 'Choose a token', search: 'Search name or token', noTokens: 'No tokens found.',
@@ -56,21 +40,9 @@ const words = {
     marketRate: '行情请求已达上限', marketRateBody: '请等待一分钟后重试。',
     source: '资产记录', issuer: '发行方', network: '网络', contract: '合约',
     inspect: '查看资产资料', scan: '在 BscScan 查看合约',
-    buy: '买入', sell: '卖出', sheetTitle: '交易', buyAmount: '支付金额', sellAmount: '代币数量',
-    receive: '预计收到', unavailable: '暂无报价', enterAmount: '请输入金额', routePrompt: '检查路线以获取报价', balance: '暂无钱包余额', balanceLabel: '钱包余额', noPrice: '暂无报价', noChange: '暂无数据', noBalance: '未连接',
-    sheetNote: '为你的钱包检查实时报价。下单请使用 Agent 审核交易并通过钱包确认。',
+    buy: '买入', sell: '卖出', sheetTitle: '交易',
+    balance: '暂无钱包余额', noPrice: '暂无报价', noChange: '暂无数据',
     loading: '正在加载市场数据', retry: '重试', sourceOndo: 'Ondo 一级市场数据', sourceDex: 'GeckoTerminal 去中心化交易池数据', sourceBinance: 'Binance Web3 代币行情', sourceBinanceRwa: 'Binance RWA 代币价格', marketPrice: '市场价格', updated: '更新时间',
-    getQuote: '检查交易路线', gettingQuote: '正在检查路线', login: '登录后检查路线', quoteDisclaimer: '已找到路线，尚未下单', quoteError: '无法检查交易路线，请重试。',
-    route: '交易路线', wallet: '接收钱包', routeExpired: '报价已过期，请重新检查路线。',
-    minimumOrder: (value: string | null) => value ? `服务商要求交易价值至少为 ${value} 美元。请选择符合要求的金额并重新检查。` : '此交易低于服务商的最低交易价值。请增加金额并重新检查。',
-    errors: { not_configured: '交易报价尚未配置。', account_not_configured: '账户验证尚未配置。',
-      unauthorized: '请重新登录后检查路线。', session_unavailable: '无法加载登录状态，请刷新后重试。', session_refresh_failed: '无法刷新登录状态，请重新登录后重试。', wallet_not_verified: '无法验证你的钱包，请重新登录后重试。',
-      wallet_loading: '正在准备你的钱包，请稍后重试。', identity_token_unavailable: '钱包验证暂不可用，请重新登录后重试。',
-      wallet_verification_not_configured: '此应用需要启用钱包验证。', wallet_verification_unavailable: '钱包验证暂不可用，请重试。',
-      session_timeout: '登录状态加载超时，请重试。', quote_timeout: '15 秒内未收到报价，请重试。',
-      no_verified_route: '此代币和金额暂无经过核实的 BSC 路线。', chain_unavailable: '交易服务目前不提供 BSC 路线。',
-      invalid_amount: '金额的小数位数超过代币支持的精度。', invalid_trade_request: '请输入有效金额后重试。',
-      provider_auth_error: '需要检查交易服务的访问配置。', rate_limited: '请等待一分钟后再次检查路线。', stale_quote: '报价已过期，请重新检查路线。' },
     rwaSource: 'BINANCE WEB3 / RWA 数据', rwaPrice: '链上代币价格', rwaReference: '每股参考价', rwaSession: '标的市场', rwaPending: 'Binance Web3 API 待配置', rwaUnavailable: 'Binance RWA 数据暂不可用', rwaAssetMissing: 'Binance RWA 响应中未核实此资产', rwaLoading: '正在加载 RWA 数据', rwaNoSession: '市场状态暂不可用', rwaNextOpen: '下次开市',
     rwaNote: '参考价由代币价格换算为每股价格，并非证券交易所官方报价或成交价。',
     close: '关闭交易面板', choose: '选择代币', search: '搜索名称或代币', noTokens: '没有找到代币。',
@@ -97,6 +69,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const matchingAssets = assets.filter(candidate => `${candidate.company} ${candidate.symbol}`.toLowerCase().includes(selectorQuery.trim().toLowerCase()))
   const reduceMotion = useReducedMotion()
   const [side, setSide] = React.useState<Side | null>(initialSide)
+  const [sheetInstance, setSheetInstance] = React.useState(0)
   const [amount, setAmount] = React.useState('')
   const [ticketAmount, setTicketAmount] = React.useState('')
   const [timeframe, setTimeframe] = React.useState<Timeframe>('15m')
@@ -106,21 +79,12 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const [rwa, setRwa] = React.useState<RwaContext | null>(null)
   const [rwaState, setRwaState] = React.useState<'loading' | 'not_configured' | 'no_verified_asset' | MarketFailure>('loading')
   const [refresh, setRefresh] = React.useState(0)
-  const [quote, setQuote] = React.useState<TradingRoute | null>(null)
-  const [quoteExpired, setQuoteExpired] = React.useState(false)
-  const [quoteState, setQuoteState] = React.useState<'idle' | 'loading' | 'error'>('idle')
-  const [quoteError, setQuoteError] = React.useState('')
-  const { authenticated, login, getAccessToken } = usePrivy()
-  const { wallets, ready: walletsReady } = useWallets()
-  const { identityToken } = useIdentityToken()
-  const identity = React.useRef(identityToken)
-  identity.current = identityToken
-  const wallet = wallets.find(item => item.walletClientType === 'privy' || item.walletClientType === 'privy_v2')
-  const address = authenticated && walletsReady ? wallet?.address : undefined
+  const [sheetLock, setSheetLock] = React.useState<TradeSheetLock>({ close: false, edit: false })
+  const lockRef = React.useRef(sheetLock)
+  const cancelWork = React.useRef<(() => void) | null>(null)
+  const updateLock = React.useCallback((next: TradeSheetLock) => { lockRef.current = next; setSheetLock(next) }, [])
   const sheetRef = React.useRef<HTMLElement>(null)
   const triggerRef = React.useRef<HTMLButtonElement | null>(null)
-  const quoteVersion = React.useRef(0)
-  const quoteAbort = React.useRef<AbortController | null>(null)
 
   React.useEffect(() => {
     const controller = new AbortController()
@@ -156,54 +120,6 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     return () => window.clearInterval(timer)
   }, [])
 
-  React.useEffect(() => {
-    quoteVersion.current += 1; quoteAbort.current?.abort(); setQuote(null); setQuoteState('idle'); setQuoteError('')
-    return () => { quoteVersion.current += 1; quoteAbort.current?.abort() }
-  }, [asset.symbol, side, amount, address, authenticated])
-
-  React.useEffect(() => {
-    setQuoteExpired(false)
-    if (!quote) return
-    const remaining = Date.parse(quote.refreshAt) - Date.now()
-    if (remaining <= 0) { setQuoteExpired(true); return }
-    const timer = window.setTimeout(() => setQuoteExpired(true), remaining)
-    return () => window.clearTimeout(timer)
-  }, [quote])
-
-  const requestQuote = async () => {
-    if (!side) return
-    if (!authenticated) { login(); return }
-    const version = ++quoteVersion.current
-    quoteAbort.current?.abort()
-    const abort = new AbortController()
-    quoteAbort.current = abort
-    const deadline = AbortSignal.timeout(QUOTE_TIMEOUT_MS)
-    const signal = AbortSignal.any([abort.signal, deadline])
-    setQuote(null)
-    setQuoteState('loading'); setQuoteError('')
-    try {
-      if (!address) throw new Error('wallet_loading')
-      const result = await withWalletSession({ getAccessToken, getIdentityToken: () => identity.current,
-        refreshIdentityToken: getIdentityToken }, ({ accessToken, identityToken: proof }) => {
-        if (version !== quoteVersion.current || signal.aborted) throw new DOMException('Aborted', 'AbortError')
-        return getTradingRoute(asset.symbol, side, amount, address, accessToken, proof, signal)
-      }, signal)
-      if (version !== quoteVersion.current) return
-      setQuote(result)
-      setQuoteState('idle')
-    } catch (error) {
-      if (version !== quoteVersion.current) return
-      setQuoteState('error')
-      const reason = deadline.aborted && !abort.signal.aborted ? 'quote_timeout' : error instanceof Error ? error.message : ''
-      setQuoteError(reason === 'minimum_order_not_met' ? t.minimumOrder(error instanceof TradeRequestError ? error.minimumUsd : null)
-        : t.errors[reason as keyof typeof t.errors] ?? t.quoteError)
-    }
-  }
-
-  const validAmount = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,18})?$/.test(amount) && /[1-9]/.test(amount)
-  const quoteStatus = quoteExpired ? t.routeExpired : quote ? t.quoteDisclaimer
-    : quoteState === 'loading' ? t.gettingQuote : quoteState === 'error' ? t.unavailable
-    : validAmount ? t.routePrompt : t.enterAmount
   const tokenPrice = market?.symbol === asset.symbol && market.priceUsd !== null ? market.priceUsd
     : rwa?.symbol === asset.symbol ? rwa.tokenPriceUsd : null
   const price = tokenPrice !== null && tokenPrice > 0 && Number.isFinite(tokenPrice)
@@ -222,8 +138,10 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     triggerRef.current = event.currentTarget
     setSelectorOpen(false)
     setAmount(nextSide === 'sell' ? ticketAmount : '')
+    setSheetInstance(value => value + 1)
     setSide(nextSide)
   }
+  const closeSheet = React.useCallback(() => { if (!lockRef.current.close) { cancelWork.current?.(); setSide(null) } }, [])
 
   React.useEffect(() => {
     if (!side) return
@@ -232,7 +150,11 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     document.body.style.overflow = 'hidden'
     const focusTimer = window.setTimeout(() => sheetRef.current?.querySelector<HTMLInputElement>('input')?.focus(), 80)
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { setSide(null); return }
+      // Privy opens its own login/approval/signing dialog above this sheet.
+      // Let that dialog own Escape and Tab while it has keyboard focus.
+      const focusedDialog = document.activeElement?.closest('dialog, [role="dialog"], [role="alertdialog"]')
+      if (focusedDialog && focusedDialog !== sheetRef.current) return
+      if (event.key === 'Escape') { event.preventDefault(); closeSheet(); return }
       if (event.key !== 'Tab' || !sheetRef.current) return
       const focusable = Array.from(sheetRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), a[href]'))
       if (!focusable.length) return
@@ -246,7 +168,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
       document.removeEventListener('keydown', onKey)
       triggerRef.current?.focus()
     }
-  }, [side])
+  }, [side, closeSheet])
 
   React.useEffect(() => { setAmount(''); setTicketAmount('') }, [asset.symbol])
 
@@ -308,21 +230,12 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
     </section>
 
     <AnimatePresence>{side && <div className="trade-sheet-layer">
-      <motion.button className="trade-sheet-scrim" type="button" aria-label={t.close} onClick={() => setSide(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+      <motion.button className="trade-sheet-scrim" type="button" tabIndex={-1} disabled={sheetLock.close} aria-label={t.close} onClick={closeSheet} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
       <motion.section ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="trade-sheet-heading" aria-describedby="trade-sheet-note" className="trade-sheet" initial={reduceMotion ? false : { y: 100, opacity: 0, filter: 'blur(2px)' }} animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 0 } : { y: 100, opacity: 0, filter: 'blur(2px)' }} transition={{ duration: reduceMotion ? 0 : .4, ease: [.22, 1, .36, 1] }}>
         <div className="trade-sheet-handle" aria-hidden="true" />
-        <div className="trade-sheet-header"><div><span>{t.sheetTitle} / {asset.symbol}</span><h2 id="trade-sheet-heading">{side === 'buy' ? t.buy : t.sell} {asset.symbol}</h2></div><button type="button" onClick={() => setSide(null)} aria-label={t.close}><X size={22} /></button></div>
-        <div className="trade-sheet-tabs" role="group" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" key={value} aria-pressed={side === value} className={`motion-tab trade-${value} ${side === value ? 'active' : ''}`} onClick={() => { if (value !== side) { setAmount(value === 'sell' ? ticketAmount : ''); setSide(value) } }}>{side === value && <motion.span className="motion-tab-indicator" layoutId="trade-side-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[value]}</span></button>)}</div>
-        <label className="trade-amount-label" htmlFor="trade-amount">{side === 'buy' ? t.buyAmount : t.sellAmount}</label>
-        <div className="trade-amount-field"><input id="trade-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><span>{side === 'buy' ? 'USDT' : asset.symbol}</span></div>
-        <div className="trade-sheet-row"><span>{t.receive}</span><strong>{quote && !quoteExpired ? `${displayQuantity(quote.outputAmount)} ${quote.outputSymbol}` : quoteStatus}</strong></div>
-        {quote && <div className="trade-sheet-row"><span>{t.route}</span><strong>{quote.vendor}</strong></div>}
-        <div className="trade-sheet-row"><span>{t.wallet}</span><strong>{address ? `${address.slice(0, 8)}…${address.slice(-6)}` : t.noBalance}</strong></div>
-        {side === 'sell' && <div className="trade-sheet-row"><span>{t.balanceLabel}</span><strong>{address ? t.balance : t.noBalance}</strong></div>}
-        <div className="trade-sheet-status" role="status" aria-live="polite"><span>{quoteStatus}</span><span>BNB SMART CHAIN</span></div>
-        {quoteError && <p role="alert" className="trade-sheet-error">{quoteError}</p>}
-        <button type="button" className={`trade-submit trade-${side}`} disabled={quoteState === 'loading' || (authenticated && !validAmount)} onClick={requestQuote}>{!authenticated ? t.login : quoteState === 'loading' ? t.gettingQuote : t.getQuote}</button>
-        <p id="trade-sheet-note" className="trade-sheet-note">{t.sheetNote}</p>
+        <div className="trade-sheet-header"><div><span>{t.sheetTitle} / {asset.symbol}</span><h2 id="trade-sheet-heading">{side === 'buy' ? t.buy : t.sell} {asset.symbol}</h2></div><button type="button" disabled={sheetLock.close} onClick={closeSheet} aria-label={t.close}><X size={22} /></button></div>
+        <div className="trade-sheet-tabs" role="group" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" key={value} disabled={sheetLock.edit} aria-pressed={side === value} className={`motion-tab trade-${value} ${side === value ? 'active' : ''}`} onClick={() => { if (value !== side) { setAmount(value === 'sell' ? ticketAmount : ''); setSide(value) } }}>{side === value && <motion.span className="motion-tab-indicator" layoutId="trade-side-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[value]}</span></button>)}</div>
+        <TradeConfirmation key={sheetInstance} symbol={asset.symbol} side={side} amount={amount} onAmountChange={setAmount} language={language} onCancel={closeSheet} onLockChange={updateLock} cancelWork={cancelWork} />
       </motion.section>
     </div>}</AnimatePresence>
   </section>
