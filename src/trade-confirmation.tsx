@@ -239,12 +239,11 @@ export function TradeConfirmation({ symbol, side, amount, onAmountChange, langua
     </>}
     <div className="trade-sheet-row"><span>{t.wallet}</span><strong title={address}>{address ? `${address.slice(0, 7)}…${address.slice(-5)}` : t.disconnected}</strong></div>
     {plan?.approval && <p className="trade-approval-note">{plan.approval.reset ? t.resetNote : t.approvalNote}</p>}
-    <div className="trade-sheet-status" role="status" aria-live="polite"><span>{loading ? <LoaderCircle size={15} className="trade-spinner" /> : order?.status === 'FILLED' ? <Check size={15} /> : null}{status}</span><span>BNB / 56</span></div>
+    <div id="trade-sheet-note" className="trade-sheet-status" role="status" aria-live="polite"><span>{loading ? <LoaderCircle size={15} className="trade-spinner" /> : order?.status === 'FILLED' ? <Check size={15} /> : null}{status}</span><span>BNB / 56</span></div>
     {error && <p className="trade-sheet-error" role="alert">{error}</p>}
     {order ? <>
       <div className="trade-order-reference">{order.orderId}{order.txHash && <a href={`https://bscscan.com/tx/${order.txHash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a>}</div>
       <div className="trade-confirm-actions"><button type="button" className="trade-cancel" disabled={walletAction} onClick={cancel}>{t.close}</button><button type="button" className={`trade-submit trade-${side}`} disabled={loading} onClick={() => terminalOrder(order.status) ? startNewTrade() : void checkOrder()}>{terminalOrder(order.status) ? t.newTrade : t.status}</button></div>
     </> : <div className="trade-confirm-actions"><button type="button" className="trade-cancel" disabled={walletAction} onClick={cancel}>{t.cancel}</button><button type="button" className={`trade-submit trade-${side}`} disabled={loading || (phase !== 'uncertain' && authenticated && (!address || !validAmount))} onClick={() => !authenticated ? login() : phase === 'uncertain' ? void recover() : plan && !expired ? void confirm() : void prepare()}>{loading && <LoaderCircle size={16} className="trade-spinner" />}{phase === 'uncertain' ? t.recover : loading ? status : actionLabel}</button></div>}
-    <p id="trade-sheet-note" className="trade-sheet-note">{t.note}</p>
   </>
 }
