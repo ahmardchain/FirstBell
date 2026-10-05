@@ -8,6 +8,7 @@ import { executeReviewedTrade, type SignedTradeAttempt } from '../lib/trade-exec
 import { createSessionWarmup } from '../lib/session-warmup'
 import { withWalletSession, type WalletSession } from '../lib/wallet-session'
 import { PREPARE_TIMEOUT_MS } from '../lib/quote-timeout'
+import { createQuoteScheduler } from '../lib/quote-scheduler'
 import { TradeRequestError } from '../lib/trade-error'
 import { checkTrade, prepareTrade, submitTrade } from './agent-api'
 import { displayQuantity } from './wallet-balances'
@@ -60,6 +61,7 @@ export function TradeConfirmation({ symbol, side, amount, onAmountChange, langua
   const [notice, setNotice] = React.useState('')
   const [expired, setExpired] = React.useState(false)
   const [refresh, setRefresh] = React.useState(0)
+  const [quoteScheduler] = React.useState(createQuoteScheduler)
   const live = React.useRef({ address, identityToken, getAccessToken, active: true })
   live.current = { address, identityToken, getAccessToken, active: true }
   const warmup = React.useRef<ReturnType<typeof createSessionWarmup> | null>(null)
@@ -98,13 +100,13 @@ export function TradeConfirmation({ symbol, side, amount, onAmountChange, langua
   }, [walletAction, inputLocked, onLockChange])
   React.useEffect(() => {
     live.current.active = true
-    return () => { live.current.active = false; operation.current++; abort.current?.abort(); warmup.current?.clear() }
-  }, [])
+    return () => { live.current.active = false; operation.current++; abort.current?.abort(); warmup.current?.clear(); quoteScheduler.clear() }
+  }, [quoteScheduler])
   React.useEffect(() => {
-    const stop = () => { dismissed.current = true; operation.current++; abort.current?.abort(); warmup.current?.clear() }
+    const stop = () => { dismissed.current = true; operation.current++; abort.current?.abort(); warmup.current?.clear(); quoteScheduler.clear() }
     cancelWork.current = stop
     return () => { if (cancelWork.current === stop) cancelWork.current = null }
-  }, [cancelWork])
+  }, [cancelWork, quoteScheduler])
   React.useEffect(() => {
     warmup.current!.clear()
     if (address) warmup.current!.warm()
@@ -137,7 +139,7 @@ export function TradeConfirmation({ symbol, side, amount, onAmountChange, langua
     return () => window.removeEventListener('beforeunload', preventUnload)
   }, [walletAction])
 
-  const prepare = React.useCallback(async () => {
+  const prepare = React.useCallback(() => quoteScheduler.run(async () => {
     if (dismissed.current || !address || !validAmount || busy.current || order || signedAttempt.current) return
     busy.current = true
     const version = ++operation.current
@@ -154,12 +156,12 @@ export function TradeConfirmation({ symbol, side, amount, onAmountChange, langua
     } catch (failure) {
       if (version === operation.current) setError(errorText(deadline.aborted && !controller.signal.aborted ? new Error('quote_timeout') : failure))
     } finally { if (version === operation.current) { busy.current = false; setPhase('idle') } }
-  }, [symbol, side, amount, address, validAmount, order, session, t])
+  }), [symbol, side, amount, address, validAmount, order, session, t, quoteScheduler])
   React.useEffect(() => {
     if (!address || !validAmount || order) return
-    const timer = window.setTimeout(() => { void prepare() }, 750)
-    return () => window.clearTimeout(timer)
-  }, [prepare, refresh, address, validAmount, order])
+    quoteScheduler.schedule(prepare)
+    return quoteScheduler.clear
+  }, [prepare, refresh, address, validAmount, order, quoteScheduler])
 
   const checkOrder = React.useCallback(async () => {
     if (!order || !address || busy.current) return
