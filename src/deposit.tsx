@@ -63,15 +63,15 @@ export function DepositPage({ address, language, onBack, onCard, busy = false, e
 }) {
   const t = language === 'zh' ? {
     title: '充值', back: '返回', manual: '手动转入', exchange: '从交易所充值', card: '添加资金',
-    last: '上次使用', network: 'BNB 智能链', cardHint: 'Onramper', receive: '接收 USDT、USDC 或 BNB',
+    last: '上次使用', network: 'BNB 智能链', cardHint: 'Onramper', receive: '接收 USDT',
     address: '钱包地址', copy: '复制地址', copied: '已复制', copyError: '无法复制，请选中地址后复制。',
-    note: '请使用 BNB 智能链（BEP20）转入 USDT、USDC 或 BNB。', exchangeNote: '在交易所选择提现，使用 BNB 智能链（BEP20）和下方地址。',
+    note: '请使用 BNB 智能链（BEP20）转入 USDT。', exchangeNote: '在交易所选择提现，选择 USDT、BNB 智能链（BEP20）并使用下方地址。',
     qr: '钱包地址二维码', qrError: '二维码暂不可用，请复制下方地址。',
   } : {
     title: 'Deposit', back: 'Back', manual: 'Transfer Manually', exchange: 'Deposit from Exchange', card: 'Add Money',
-    last: 'Last Used', network: 'BNB Smart Chain', cardHint: 'Onramper', receive: 'Receive USDT, USDC or BNB',
+    last: 'Last Used', network: 'BNB Smart Chain', cardHint: 'Onramper', receive: 'Receive USDT',
     address: 'Wallet address', copy: 'Copy address', copied: 'Copied', copyError: 'Could not copy. Select the address to copy it.',
-    note: 'Send USDT, USDC or BNB using BNB Smart Chain (BEP20).', exchangeNote: 'Choose Withdraw in your exchange, then select BNB Smart Chain (BEP20) and use this address.',
+    note: 'Send USDT using BNB Smart Chain (BEP20).', exchangeNote: 'Choose Withdraw in your exchange, then select USDT and BNB Smart Chain (BEP20) and use this address.',
     qr: 'Wallet address QR code', qrError: 'QR unavailable. Copy the address below.',
   }
   const [method, setMethod] = React.useState<'methods' | 'manual' | 'exchange'>('methods')
@@ -107,7 +107,7 @@ export function DepositPage({ address, language, onBack, onCard, busy = false, e
     }
     catch { setCopyFailed(true) }
   }
-  const badges = (kind: 'crypto' | 'exchange' | 'card') => <span className="funding-badges" aria-hidden="true">{(kind === 'crypto' ? ['usdt', 'bnb'] : kind === 'exchange' ? ['coinbase', 'binance'] : ['visa', 'mastercard']).map(mark => <span key={mark} className={`funding-badge funding-badge--${mark}`}><img src={mark === 'coinbase' ? '/assets/marks/coinbase.svg' : `/assets/funding/${mark}.svg`} alt="" /></span>)}</span>
+  const badges = (kind: 'crypto' | 'exchange' | 'card') => <span className="funding-badges" aria-hidden="true">{(kind === 'crypto' ? ['usdt'] : kind === 'exchange' ? ['coinbase', 'binance'] : ['visa', 'mastercard']).map(mark => <span key={mark} className={`funding-badge funding-badge--${mark}`}><img src={mark === 'coinbase' ? '/assets/marks/coinbase.svg' : `/assets/funding/${mark}.svg`} alt="" /></span>)}</span>
   return <div className="funding-page">
     <div className="funding-page-head"><button type="button" aria-label={t.back} onClick={() => method === 'methods' ? onBack() : setMethod('methods')}><ArrowLeft size={21} /></button><h1>{method === 'methods' ? t.title : method === 'exchange' ? t.exchange : t.manual}</h1></div>
     {method === 'methods' ? <div className="funding-options">
@@ -133,7 +133,7 @@ export function DepositPage({ address, language, onBack, onCard, busy = false, e
   </div>
 }
 
-export function DepositHistory({ controller, language, onOpen, search = '' }: { controller: DepositController; language: Language; onOpen: (id: string) => void; search?: string }) {
+export function DepositHistory({ controller, language, onOpen, search = '', hideEmpty = false }: { controller: DepositController; language: Language; onOpen: (id: string) => void; search?: string; hideEmpty?: boolean }) {
   const t = copy[language]
   const sessions = controller.sessions.filter(session => `${depositProvider(session) === 'onramper' ? 'Onramper' : 'MoonPay'} ${session.amount} ${session.fiatCurrency} ${t.statuses[session.status]}`.toLowerCase().includes(search.trim().toLowerCase()))
   return <div className="deposit-history">
@@ -153,6 +153,6 @@ export function DepositHistory({ controller, language, onOpen, search = '' }: { 
           {session.transactionHash && !(session.provider === 'onramper' && session.mode === 'sandbox') && <a className="deposit-receipt" href={`${asset.explorer}/tx/${session.transactionHash}`} target="_blank" rel="noreferrer">{t.receipt}<ArrowUpRight size={15} /></a>}
         </div>}
       </React.Fragment>
-    })}</div> : <div className="portfolio-content-empty" role="status">{controller.error ? depositErrorMessage(controller.error, language) : language === 'zh' ? '暂无活动' : 'No activity yet'}</div>}
+    })}</div> : hideEmpty && !controller.error ? null : <div className="portfolio-content-empty" role="status">{controller.error ? depositErrorMessage(controller.error, language) : language === 'zh' ? '暂无活动' : 'No activity yet'}</div>}
   </div>
 }

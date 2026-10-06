@@ -11,6 +11,8 @@ import { useOnramperDemo } from './onramper-demo'
 import { isOnramperDemo } from '../lib/onramper-demo'
 import { portfolioAvatar } from '../lib/portfolio-avatar'
 import { assetLogo, tokenLogoError, type CatalogAsset as Asset } from '../lib/asset-catalog'
+import { useWithdrawals, type WithdrawalController } from './withdrawals-api'
+import { WithdrawalPage } from './withdrawal'
 import './portfolio.css'
 
 type Language = 'en' | 'zh'
@@ -18,7 +20,7 @@ type Props = { assets: Asset[]; language: Language; onInspect: (asset: Asset) =>
 type Account = {
   configured: boolean; ready: boolean; authenticated: boolean; email?: string; address?: string;
   walletReady: boolean; balances: WalletBalances | null; loading: boolean; error: boolean;
-  login: () => void; deposits?: DepositController;
+  login: () => void; deposits?: DepositController; withdrawals?: WithdrawalController;
 }
 const copy = {
   en: {
@@ -42,13 +44,16 @@ const copy = {
 function ConnectedPortfolio(props: Props) {
   const { ready, authenticated, user, login, getAccessToken } = usePrivy()
   const { wallets, ready: walletsReady } = useWallets()
-  const [balances, setBalances] = React.useState<WalletBalances | null>(null)
+  const [snapshot, setSnapshot] = React.useState<{ owner: string; balances: WalletBalances } | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState(false)
   const [refreshKey, setRefreshKey] = React.useState(0)
   const wallet = wallets.find(item => item.walletClientType === 'privy' || item.walletClientType === 'privy_v2')
   const address = authenticated && walletsReady ? wallet?.address : undefined
+  const balances = snapshot?.owner.toLowerCase() === address?.toLowerCase() ? snapshot?.balances ?? null : null
   const deposits = useDeposits(isOnramperDemo(window.location.search) ? undefined : address, getAccessToken)
+  const refreshBalance = React.useCallback(() => setRefreshKey(value => value + 1), [])
+  const withdrawals = useWithdrawals(address, wallet, refreshBalance)
   const completedDeposits = React.useRef('')
   React.useEffect(() => {
     const completed = deposits.sessions.filter(session => session.mode === 'live' && session.status === 'completed').map(session => session.id).join(',')
@@ -59,11 +64,11 @@ function ConnectedPortfolio(props: Props) {
     }
   }, [address, deposits.sessions])
   React.useEffect(() => {
-    if (!address) { setBalances(null); setError(false); setLoading(false); return }
+    if (!address) { setSnapshot(null); setError(false); setLoading(false); return }
     let active = true
-    setBalances(null); setLoading(true); setError(false)
+    setSnapshot(null); setLoading(true); setError(false)
     readWalletBalances(address, props.assets).then(result => {
-      if (active) { setBalances(result); setLoading(false) }
+      if (active) { setSnapshot({ owner: address, balances: result }); setLoading(false) }
     }).catch(() => { if (active) { setError(true); setLoading(false) } })
     return () => { active = false }
   }, [address, props.assets, refreshKey])
@@ -77,7 +82,7 @@ function ConnectedPortfolio(props: Props) {
   return <PortfolioView {...props} key={address ?? user?.id ?? 'guest'} account={{
     configured: true, ready, authenticated, walletReady: walletsReady,
     email: user?.email?.address ?? user?.google?.email ?? undefined,
-    address, balances, loading, error, deposits, login,
+    address, balances, loading, error, deposits, withdrawals, login,
   }} />
 }
 
@@ -94,7 +99,8 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
   const [section, setSection] = React.useState<'positions' | 'activity'>(() => new URLSearchParams(window.location.search).has('deposit') ? 'activity' : 'positions')
   const [search, setSearch] = React.useState('')
   const [hidden, setHidden] = React.useState(false)
-  const [depositPage, setDepositPage] = React.useState(() => new URLSearchParams(window.location.search).get('view') === 'deposit')
+  const [view, setView] = React.useState(() => new URLSearchParams(window.location.search).get('view') ?? '')
+  const depositPage = view === 'deposit'
   const demoCard = isOnramperDemo(window.location.search)
   const demo = useOnramperDemo(demoCard && depositPage)
   const [editing, setEditing] = React.useState(false)
@@ -124,14 +130,14 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
     return () => { active = false; controller.abort(); window.clearTimeout(timeout) }
   }, [account.balances])
   React.useEffect(() => {
-    const sync = () => setDepositPage(new URLSearchParams(window.location.search).get('view') === 'deposit')
+    const sync = () => setView(new URLSearchParams(window.location.search).get('view') ?? '')
     window.addEventListener('popstate', sync)
     return () => window.removeEventListener('popstate', sync)
   }, [])
-  const navigateDeposit = (open: boolean) => {
-    setDepositPage(open)
+  const navigateView = (next: 'deposit' | 'withdraw' | '') => {
+    setView(next)
     const url = new URL(window.location.href)
-    if (open) url.searchParams.set('view', 'deposit')
+    if (next) url.searchParams.set('view', next)
     else url.searchParams.delete('view')
     window.history.pushState(null, '', url.pathname + url.search + url.hash)
     window.scrollTo({ top: 0 })
@@ -147,14 +153,15 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
     // Callback parameters are navigation hints, never payment evidence.
     for (const key of ['deposit', 'transactionId', 'transactionStatus']) url.searchParams.delete(key)
     url.searchParams.delete('view')
-    setSection('activity'); setDepositPage(false)
+    setSection('activity'); setView('')
     window.history.replaceState(null, '', url.pathname + url.search + url.hash)
   }, [account.authenticated, account.deposits?.loading])
 
   const positionValue = holdings.every(token => prices[token.symbol] != null)
     ? holdings.reduce((sum, token) => sum + Number(token.quantity) * prices[token.symbol]!, 0) : null
   const placeholder = account.error ? t.error : !account.address ? t.preparing : t.loading
-  const cash = account.balances ? Number(account.balances.usdt) + Number(account.balances.usdc ?? '0') : null
+  const withdrawalActivity = currentWithdrawal(account.withdrawals, language, search)
+  const cash = account.balances ? Number(account.balances.usdt) : null
   const balance = cash !== null && Number.isFinite(cash) ? money(cash) : placeholder
   const value = account.balances && positionValue != null && Number.isFinite(positionValue) ? money(positionValue)
     : account.balances && holdings.some(token => prices[token.symbol] === null) ? t.unavailable : placeholder
@@ -171,25 +178,39 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
         <button type="button" className="portfolio-primary" disabled={!account.configured || !account.ready} onClick={account.login}>{account.ready ? t.login : t.checking}<ArrowRight size={18} /></button>
         {!account.configured && <small>{t.setup}</small>}
       </motion.div> : depositPage && account.address ? <motion.div key="deposit" initial={reduceMotion ? false : { opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : .2 }}>
-        <DepositPage address={account.address} language={language} onBack={() => navigateDeposit(false)}
+        <DepositPage address={account.address} language={language} onBack={() => navigateView('')}
           demo={demoCard} onCard={() => void (demoCard ? demo.checkout() : account.deposits?.checkout())}
           busy={demoCard ? demo.busy : account.deposits?.busy} error={demoCard ? demo.error : account.deposits?.error} />
+      </motion.div> : view === 'withdraw' && account.address && account.withdrawals ? <motion.div key="withdraw" initial={reduceMotion ? false : { opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : .2 }}>
+        <WithdrawalPage address={account.address} balance={account.balances?.usdt ?? null} language={language} controller={account.withdrawals} onBack={() => navigateView('')} />
       </motion.div> : <motion.div key="account" initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
         <div className="portfolio-account-head">
           <img className="portfolio-avatar" src={portfolioAvatar} alt="" />
           {editing ? <input className="portfolio-name-input" aria-label={t.name} autoFocus value={name} maxLength={40} onChange={event => setName(event.target.value)} onBlur={saveName} onKeyDown={event => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') { setEditing(false); setName(defaultName) } }} /> : <span className="portfolio-name">{name}</span>}
           <button className="portfolio-name-edit" type="button" aria-label={t.edit} onClick={() => setEditing(true)}><Pencil size={17} strokeWidth={2} /></button>
         </div>
-        <div className="portfolio-balance-row"><h1 title="USDT and USDC balances, displayed at a nominal US$1 per token" aria-live="polite">{hidden ? '••••••' : balance}</h1><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(current => !current)}>{hidden ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
+        <div className="portfolio-balance-row"><h1 title="USDT balance, displayed at a nominal US$1 per USDT" aria-live="polite">{hidden ? '••••••' : balance}</h1><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(current => !current)}>{hidden ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
         <div className="portfolio-position-value"><span>{t.positions}</span><strong aria-live="polite">{hidden ? '••••••' : value}</strong></div>
-        <div className="portfolio-action-row"><button type="button" disabled={!account.address || !account.walletReady} onClick={() => navigateDeposit(true)}>{t.deposit}</button><button type="button" disabled>{t.withdraw}</button></div>
+        <div className="portfolio-action-row"><button type="button" disabled={!account.address || !account.walletReady} onClick={() => navigateView('deposit')}>{t.deposit}</button><button type="button" disabled={!account.address || !account.walletReady || !account.withdrawals} onClick={() => navigateView('withdraw')}>{t.withdraw}</button></div>
         <div className="portfolio-tabs" role="tablist" aria-label={t.title}>{(['positions', 'activity'] as const).map(id => <button type="button" role="tab" id={`portfolio-tab-${id}`} aria-controls="portfolio-results" key={id} aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => { setSection(id); setSearch('') }}>{t[id]}</button>)}</div>
         <label className="portfolio-search"><Search size={20} strokeWidth={2} /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
         <div id="portfolio-results" role="tabpanel" aria-labelledby={`portfolio-tab-${section}`}>
-          {section === 'activity' && account.deposits ? <DepositHistory controller={account.deposits} language={language} search={search} onOpen={openDeposit} /> : section === 'positions' && positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <button type="button" className="portfolio-position-row" key={asset.symbol} onClick={() => onInspect(asset)}><img className={`brand-mark brand-mark--${asset.mark}`} src={assetLogo(asset)} alt="" loading="lazy" onError={tokenLogoError} /><span><strong>{asset.symbol}</strong><small>{asset.company}</small></span><strong>{hidden ? '••••' : displayQuantity(quantity)}</strong></button>)}</div>
+          {section === 'activity' && account.deposits ? <><WithdrawalActivity entry={withdrawalActivity} onOpen={() => navigateView('withdraw')} /><DepositHistory controller={account.deposits} language={language} search={search} onOpen={openDeposit} hideEmpty={Boolean(withdrawalActivity)} /></> : section === 'positions' && positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <button type="button" className="portfolio-position-row" key={asset.symbol} onClick={() => onInspect(asset)}><img className={`brand-mark brand-mark--${asset.mark}`} src={assetLogo(asset)} alt="" loading="lazy" onError={tokenLogoError} /><span><strong>{asset.symbol}</strong><small>{asset.company}</small></span><strong>{hidden ? '••••' : displayQuantity(quantity)}</strong></button>)}</div>
             : <div className="portfolio-content-empty" role="status">{section === 'positions' ? account.error ? t.error : account.loading || !account.address ? t.loading : t.noPositions : t.noActivity}</div>}
         </div>
       </motion.div>}
     </AnimatePresence>
   </section>
+}
+
+function currentWithdrawal(controller: WithdrawalController | undefined, language: Language, search: string) {
+  if (!controller?.plan || !controller.result) return null
+  const title = language === 'zh' ? 'USDT 提现' : 'USDT withdrawal'
+  const status = controller.phase === 'completed' ? language === 'zh' ? '已确认' : 'Confirmed' : controller.phase === 'failed' ? language === 'zh' ? '失败' : 'Failed' : language === 'zh' ? '等待确认' : 'Pending confirmation'
+  if (!`${title} ${controller.plan.amount} ${status}`.toLowerCase().includes(search.trim().toLowerCase())) return null
+  return { title, status, amount: controller.plan.amount }
+}
+function WithdrawalActivity({ entry, onOpen }: { entry: ReturnType<typeof currentWithdrawal>; onOpen: () => void }) {
+  if (!entry) return null
+  return <div className="withdrawal-activity"><button type="button" onClick={onOpen}><ArrowRight size={20} /><span><strong>{entry.amount} USDT</strong><small>{entry.title} · BNB Smart Chain</small></span><small>{entry.status}</small></button></div>
 }

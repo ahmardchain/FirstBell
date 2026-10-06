@@ -10,6 +10,7 @@ import { megaFuelConfigured } from './megafuel.ts'
 import { quoteResponse } from './quote-response.ts'
 import { getOnramperMode, getOnramperSetup, handleOnramperWebhook } from './onramper.ts'
 import { createOnramperDemoUrl } from '../lib/onramper-demo.ts'
+import { handleWithdrawalRequest } from './withdrawals.ts'
 
 const maxBodyBytes = 512
 
@@ -90,6 +91,12 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
     if (!id) return json({ error: 'unauthorized' }, 401)
     return handleDepositRequest(request, env, id)
   }
+  if (['/api/withdrawals/prepare', '/api/withdrawals/submit', '/api/withdrawals/status'].includes(pathname)) {
+    if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
+    const id = await getUserId(request, env)
+    if (!id) return json({ error: 'unauthorized' }, 401)
+    return handleWithdrawalRequest(request, env, id)
+  }
   if (pathname === '/api/trade/route') {
     return quoteResponse(request, async bounded => {
       if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
@@ -102,7 +109,7 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
     if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405)
     // Static readiness only. This does not claim an active/funded policy or make
     // a sponsor/RPC request; wallet-bound eligibility is checked per exact trade.
-    return json({ chainId: 56, paymentTokens: ['USDT', 'USDC'], executionMode: 'COW_RFQ', sponsorshipConfigured: megaFuelConfigured(env) })
+    return json({ chainId: 56, paymentTokens: ['USDT'], executionMode: 'COW_RFQ', sponsorshipConfigured: megaFuelConfigured(env) })
   }
   if (pathname === '/api/trade/prepare') {
     return quoteResponse(request, async bounded => {

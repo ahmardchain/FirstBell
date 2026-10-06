@@ -66,7 +66,7 @@ export function TradeConfirmation({ symbol, side, amount, onAmountChange, langua
   const [notice, setNotice] = React.useState('')
   const [expired, setExpired] = React.useState(false)
   const [refresh, setRefresh] = React.useState(0)
-  const [paymentToken, setPaymentToken] = React.useState<PaymentToken>('USDT')
+  const paymentToken: PaymentToken = 'USDT'
   const [quoteScheduler] = React.useState(createQuoteScheduler)
   const live = React.useRef({ address, identityToken, getAccessToken, active: true })
   live.current = { address, identityToken, getAccessToken, active: true }
@@ -322,7 +322,7 @@ export function TradeConfirmation({ symbol, side, amount, onAmountChange, langua
 
   return <>
     <label className="trade-amount-label" htmlFor="trade-amount">{side === 'buy' ? t.spend : t.quantity}</label>
-    <div className="trade-amount-field"><input id="trade-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} disabled={inputLocked} onChange={event => onAmountChange(event.target.value)} placeholder="0.00" />{side === 'buy' ? <select aria-label={t.payWith} value={paymentToken} disabled={inputLocked} onChange={event => setPaymentToken(event.target.value as PaymentToken)}><option value="USDT">USDT</option><option value="USDC">USDC</option></select> : <span>{symbol}</span>}</div>
+    <div className="trade-amount-field"><input id="trade-amount" type="number" inputMode="decimal" min="0" step="any" value={amount} disabled={inputLocked} onChange={event => onAmountChange(event.target.value)} placeholder="0.00" />{side === 'buy' ? <span>USDT</span> : <span>{symbol}</span>}</div>
     <div className="trade-sheet-row"><span>{t.receive}</span><strong>{plan && !expired ? `${displayQuantity(plan.route.outputAmount)} ${plan.route.outputSymbol}` : '—'}</strong></div>
     {plan && <>
       <div className="trade-sheet-row"><span>{t.minimum}</span><strong>{displayQuantity(formatUnits(BigInt(plan.minimumReceive), plan.outputDecimals))} {plan.route.outputSymbol}</strong></div>

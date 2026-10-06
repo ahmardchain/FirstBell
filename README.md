@@ -1,6 +1,6 @@
 # FirstBell
 
-FirstBell explores tokenized assets on BNB Smart Chain and supports reviewed CoW RFQ stock orders through Binance Web3 when configured. Home lists all 459 chain-56 tokens from the pinned Ondo token list, including stocks, ETFs and other issuer assets. The direct Trade flow supports USDT/USDC and server-side MegaFuel approval sponsorship. See [coverage, production setup and the funded 0 BNB acceptance test](docs/gas-sponsorship.md). Provider configuration, policy funding and real settlement verification are required; mocked tests do not establish live purchase success.
+FirstBell explores tokenized assets on BNB Smart Chain and supports reviewed CoW RFQ stock orders through Binance Web3 when configured. Home lists all 459 chain-56 tokens from the pinned Ondo token list, including stocks, ETFs and other issuer assets. The direct Trade flow uses USDT on BNB Smart Chain and server-side MegaFuel approval sponsorship. See [coverage, production setup and the funded 0 BNB acceptance test](docs/gas-sponsorship.md). Portfolio supports reviewed USDT withdrawals to a BSC address, with receipt verification and exact-transaction recovery. Provider configuration, policy funding and real settlement verification are required; mocked tests do not establish live purchase success.
 
 ## Hackathon report and integration requirement
 

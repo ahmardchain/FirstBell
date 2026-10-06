@@ -4,6 +4,7 @@ import { tokenAddresses } from '../lib/asset-catalog.ts'
 import { isPaymentToken, tradeCash } from '../lib/trade-assets.ts'
 import { RouteError, tradingClient } from './binance-trading.ts'
 import type { ApiEnv } from './env.ts'
+import { validateWithdrawalPlan, type WithdrawalPlan } from '../lib/withdrawal.ts'
 
 type Plan = Omit<AgentTradePlan, 'planToken'>
 type Approval = NonNullable<Plan['approval']>
@@ -45,8 +46,8 @@ export function validateApprovalAction(plan: Plan, approval: Approval) {
   } catch { throw new RouteError('invalid_sponsored_transaction', 400) }
 }
 
-async function checkPolicy(approval: Approval, owner: string, env: ApiEnv, signal?: AbortSignal) {
-  const gas = BigInt(approval.sponsorship!.gas)
+async function checkPolicy(approval: { to: string; data: Hex; sponsorship: { gas: string } }, owner: string, env: ApiEnv, signal?: AbortSignal) {
+  const gas = BigInt(approval.sponsorship.gas)
   const result = await rpc(env, 'pm_isSponsorable', [{ from: owner, to: approval.to, data: approval.data, value: '0x0', gas: toHex(gas) }], signal) as { Sponsorable?: boolean; SponsorPolicy?: string } | null
   if (!result || typeof result.Sponsorable !== 'boolean') throw new RouteError('sponsorship_unavailable')
   if (!result.Sponsorable) throw new RouteError('sponsorship_rejected', 409)
@@ -57,7 +58,7 @@ export async function sponsorApproval(approval: Approval, owner: Address, estima
   if (gas < 21_000n || gas > 200_000n) throw new RouteError('invalid_sponsored_transaction', 400)
   const prepared: Approval = { ...approval, gasFeeBnb: '0', sponsorship: { provider: 'megafuel', gas: gas.toString(), nonce: 0 } }
   // MegaFuel's pending nonce includes its own transaction pool; a normal RPC does not.
-  const [, nonceHex] = await Promise.all([checkPolicy(prepared, owner, env, signal), rpc(env, 'eth_getTransactionCount', [owner, 'pending'], signal)])
+  const [, nonceHex] = await Promise.all([checkPolicy({ ...prepared, sponsorship: prepared.sponsorship! }, owner, env, signal), rpc(env, 'eth_getTransactionCount', [owner, 'pending'], signal)])
   if (typeof nonceHex !== 'string' || !/^0x[0-9a-fA-F]+$/.test(nonceHex) || BigInt(nonceHex) > BigInt(Number.MAX_SAFE_INTEGER)) throw new RouteError('sponsorship_unavailable')
   return { ...prepared, sponsorship: { ...prepared.sponsorship!, nonce: Number(BigInt(nonceHex)) } }
 }
@@ -86,7 +87,7 @@ export async function relaySponsoredApproval(plan: Plan, raw: unknown, env: ApiE
     catch { /* A missing receipt is not success; retry only the identical signed bytes. */ }
   }
   if (Date.parse(plan.expiresAt) <= Date.now() + 5_000) throw new RouteError('stale_quote', 409)
-  const [, nonce] = await Promise.all([checkPolicy(plan.approval!, plan.route.walletAddress, env), retry ? Promise.resolve(null) : rpc(env, 'eth_getTransactionCount', [plan.route.walletAddress, 'pending'])])
+  const [, nonce] = await Promise.all([checkPolicy({ ...plan.approval!, sponsorship: plan.approval!.sponsorship! }, plan.route.walletAddress, env), retry ? Promise.resolve(null) : rpc(env, 'eth_getTransactionCount', [plan.route.walletAddress, 'pending'])])
   if (!retry && (typeof nonce !== 'string' || !/^0x[0-9a-fA-F]+$/.test(nonce) || BigInt(nonce) !== BigInt(plan.approval!.sponsorship!.nonce))) throw new RouteError('approval_nonce_changed', 409)
   try {
     const result = await rpc(env, 'eth_sendRawTransaction', [signed.raw])
@@ -97,4 +98,28 @@ export async function relaySponsoredApproval(plan: Plan, raw: unknown, env: ApiE
     // charge BNB as a fallback. Recovery keeps this deterministic transaction hash.
     return { hash: signed.hash, status: 'unknown' as const }
   }
+}
+
+// Withdrawal-specific exports keep the private RPC from becoming a generic gas
+// sponsor. Both callers validate the fixed USDT transfer, not arbitrary calldata.
+export async function sponsorWithdrawal(plan: WithdrawalPlan, env: ApiEnv, signal?: AbortSignal) {
+  validateWithdrawalPlan(plan, plan)
+  if (!plan.sponsored) throw new RouteError('invalid_withdrawal_plan', 400)
+  const [, nonceHex] = await Promise.all([
+    checkPolicy({ to: plan.tokenAddress, data: plan.data, sponsorship: { gas: plan.gas } }, plan.walletAddress, env, signal),
+    rpc(env, 'eth_getTransactionCount', [plan.walletAddress, 'pending'], signal),
+  ])
+  if (typeof nonceHex !== 'string' || !/^0x[0-9a-fA-F]+$/.test(nonceHex) || BigInt(nonceHex) > BigInt(Number.MAX_SAFE_INTEGER)) throw new RouteError('sponsorship_unavailable')
+  return Number(BigInt(nonceHex))
+}
+
+export async function relayMegaFuelWithdrawal(plan: WithdrawalPlan, raw: Hex, retry: boolean, env: ApiEnv, beforeDispatch: () => Promise<void>) {
+  // Signed bytes are also independently validated by the withdrawal handler.
+  const nonce = await sponsorWithdrawal(plan, env)
+  if (!retry && nonce !== plan.nonce) throw new RouteError('withdrawal_nonce_changed', 409)
+  await beforeDispatch()
+  try {
+    const result = await rpc(env, 'eth_sendRawTransaction', [raw])
+    return same(result, keccak256(raw)) ? 'pending' as const : 'unknown' as const
+  } catch { return 'unknown' as const }
 }

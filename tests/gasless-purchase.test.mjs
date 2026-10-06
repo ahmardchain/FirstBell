@@ -3,7 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { privateKeyToAccount } from 'viem/accounts'
 import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, encodeFunctionData, encodeFunctionResult, erc20Abi, keccak256, multicall3Abi, parseTransaction } from 'viem'
 import { COW_ORDER_FIELDS, COW_RELAYER, COW_SETTLEMENT, validateAgentTradePlan } from '../lib/agent-trading.ts'
-import { BSC_USDC } from '../lib/trade-assets.ts'
+import { BSC_USDT } from '../lib/funding.ts'
 import { tokenAddresses } from '../lib/asset-catalog.ts'
 import { executeReviewedTrade } from '../lib/trade-execution.ts'
 import { prepareAgentTrade, prepareTokenApproval, submitAgentTrade, checkAgentOrder, sealTradeTicket } from '../worker/agent-trading.ts'
@@ -21,25 +21,25 @@ const credentials = { apiKey: 'fixture-binance-key', secretKey: 'fixture-binance
 const env = { MEGAFUEL_API_KEY: 'fixture-megafuel-key', MEGAFUEL_POLICY_UUID: '11111111-1111-1111-1111-111111111111' }
 const rawAmount = 5n * 10n ** 18n, output = 25n * 10n ** 15n
 const stock = tokenAddresses.NVDAon, settlementHash = `0x${'cd'.repeat(32)}`
-const request = { symbol: 'NVDAon', side: 'buy', amount: '5', walletAddress: owner, paymentToken: 'USDC' }
+const request = { symbol: 'NVDAon', side: 'buy', amount: '5', walletAddress: owner, paymentToken: 'USDT' }
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 beforeEach(() => clearTradingMetadataCache())
 const envelope = data => ({ code: 0, success: true, timestamp: Date.now(), data })
 const token = address => ({ tokenContractAddress: address, decimal: '18' })
 function fixture() {
-  const s = { bnb: 0n, usdc: rawAmount, stock: 0n, allowance: 0n, nonce: 0, sponsorable: true, simulation: true,
+  const s = { bnb: 0n, usdt: rawAmount, stock: 0n, allowance: 0n, nonce: 0, sponsorable: true, simulation: true,
     mined: true, approvalStatus: '0x1', settlementStatus: 'FILLED', lostAck: false, invalidFill: false, calls: [], transactions: new Map(), submitted: new Map() }
   const typed = () => ({ domain: { name: 'Gnosis Protocol', version: 'v2', chainId: 56, verifyingContract: COW_SETTLEMENT }, types: { Order: COW_ORDER_FIELDS.map(field => ({ ...field })) }, primaryType: 'Order', message: {
-    sellToken: BSC_USDC.address, buyToken: stock, receiver: owner, sellAmount: rawAmount.toString(), buyAmount: output.toString(), validTo: Math.floor(Date.now() / 1000) + 600,
+    sellToken: BSC_USDT.address, buyToken: stock, receiver: owner, sellAmount: rawAmount.toString(), buyAmount: output.toString(), validTo: Math.floor(Date.now() / 1000) + 600,
     appData: `0x${'00'.repeat(32)}`, feeAmount: '0', kind: 'sell', partiallyFillable: false, sellTokenBalance: 'erc20', buyTokenBalance: 'erc20' } })
   const route = () => ({ quoteId: 'fixture-route', vendorName: 'CowSwap', binanceChainId: '56', executionMode: 'RFQ', approveTarget: COW_RELAYER,
-    fromTokenAmount: rawAmount.toString(), toTokenAmount: output.toString(), fromToken: token(BSC_USDC.address), toToken: token(stock) })
+    fromTokenAmount: rawAmount.toString(), toTokenAmount: output.toString(), fromToken: token(BSC_USDT.address), toToken: token(stock) })
   const transfer = (address, from, to, value, index) => ({ address, data: encodeAbiParameters([{ type: 'uint256' }], [value]), topics: encodeEventTopics({ abi: erc20Abi, eventName: 'Transfer', args: { from, to } }),
     blockHash: `0x${'bc'.repeat(32)}`, blockNumber: '0x64', transactionHash: settlementHash, transactionIndex: '0x0', logIndex: `0x${index}`, removed: false })
   const receipt = (hash, to, status, logs = []) => ({ transactionHash: hash, transactionIndex: '0x0', blockHash: `0x${'bc'.repeat(32)}`, blockNumber: '0x64', from: owner, to,
     cumulativeGasUsed: '0x186a0', gasUsed: '0x186a0', effectiveGasPrice: '0x0', contractAddress: null, logsBloom: `0x${'00'.repeat(256)}`, status, type: '0x0', logs })
-  const balanceOf = address => address.toLowerCase() === BSC_USDC.address.toLowerCase() ? s.usdc : address.toLowerCase() === stock.toLowerCase() ? s.stock : 0n
+  const balanceOf = address => address.toLowerCase() === BSC_USDT.address.toLowerCase() ? s.usdt : address.toLowerCase() === stock.toLowerCase() ? s.stock : 0n
   const contractResult = (address, data) => {
     const call = decodeFunctionData({ abi: erc20Abi, data })
     const result = call.functionName === 'balanceOf' ? balanceOf(address) : call.functionName === 'allowance' ? s.allowance : call.functionName === 'approve' ? s.simulation : 18
@@ -78,7 +78,7 @@ function fixture() {
             if (s.approvalStatus === '0x1') { s.allowance = decodeFunctionData({ abi: erc20Abi, data: tx.data }).args[1]; s.nonce = tx.nonce + 1 }
             result = receipt(hash, tx.to, s.approvalStatus)
           } else if (hash === settlementHash) {
-            result = receipt(hash, COW_SETTLEMENT, '0x1', [transfer(BSC_USDC.address, owner, COW_RELAYER, rawAmount, 0), transfer(stock, COW_SETTLEMENT, owner, s.invalidFill ? 1n : output, 1)])
+            result = receipt(hash, COW_SETTLEMENT, '0x1', [transfer(BSC_USDT.address, owner, COW_RELAYER, rawAmount, 0), transfer(stock, COW_SETTLEMENT, owner, s.invalidFill ? 1n : output, 1)])
           } else result = null
         } else if (call.method === 'eth_call') {
           const tx = call.params[0]
@@ -98,7 +98,7 @@ function fixture() {
     assert.equal(u.hostname, 'web3.binance.com')
     s.calls.push({ provider: 'binance', method: u.pathname, body })
     if (u.pathname.endsWith('/supported/chain')) return Response.json(envelope([{ binanceChainId: '56' }]))
-    if (u.pathname.endsWith('/quote')) { assert.equal(u.searchParams.get('fromTokenAddress').toLowerCase(), BSC_USDC.address.toLowerCase()); return Response.json(envelope([route()])) }
+    if (u.pathname.endsWith('/quote')) { assert.equal(u.searchParams.get('fromTokenAddress').toLowerCase(), BSC_USDT.address.toLowerCase()); return Response.json(envelope([route()])) }
     if (u.pathname.endsWith('/swap')) return Response.json(envelope({ executionMode: 'RFQ', routerResult: route(), rfq: { vendor: 'CowSwap', orderId: 'fixture-rfq-order', signingScheme: 'EIP712', typedDataToSign: typed() } }))
     if (u.pathname.endsWith('/order/submit')) {
       if (!s.submitted.has(body.requestId)) { assert.ok(s.allowance >= rawAmount); s.submitted.set(body.requestId, body.userSignature) }
@@ -106,13 +106,13 @@ function fixture() {
       return Response.json(envelope({ orderId: 'fixture-submitted-order', status: 'PENDING_VENDOR' }))
     }
     if (u.pathname.endsWith('/order/fixture-submitted-order')) {
-      if (s.settlementStatus === 'FILLED') { s.usdc = 0n; s.stock = output; s.allowance = 0n }
+      if (s.settlementStatus === 'FILLED') { s.usdt = 0n; s.stock = output; s.allowance = 0n }
       return Response.json(envelope({ orderId: 'fixture-submitted-order', status: s.settlementStatus, txHash: s.settlementStatus === 'FILLED' ? settlementHash : null }))
     }
     throw new Error(`unexpected provider path ${u.pathname}`)
   }
   s.prepare = async () => {
-    const plan = await prepareAgentTrade('NVDAon', 'buy', '5', owner, credentials, undefined, { paymentToken: 'USDC', env })
+    const plan = await prepareAgentTrade('NVDAon', 'buy', '5', owner, credentials, undefined, { paymentToken: 'USDT', env })
     return { ...plan, planToken: await sealTradeTicket({ plan }, 'did:privy:fixture', credentials.secretKey, 'plan') }
   }
   return s
@@ -126,7 +126,7 @@ const execution = (s, overrides = {}) => ({
   signing: data => signer.signTypedData(data), onApproval: () => {}, onSigned: () => {}, submit: attempt => submitAgentTrade(attempt.plan, attempt.signature, credentials), ...overrides,
 })
 
-test('fixture: first USDC purchase with exactly 0 BNB approves, fills and appears in the portfolio', async () => {
+test('fixture: first USDT purchase with exactly 0 BNB approves, fills and appears in the portfolio', async () => {
   const s = fixture(), plan = await s.prepare()
   assert.equal(s.bnb, 0n)
   assert.equal(plan.approval.gasFeeBnb, '0')
@@ -139,7 +139,7 @@ test('fixture: first USDC purchase with exactly 0 BNB approves, fills and appear
   const filled = await checkAgentOrder(result.order.orderId, plan, credentials)
   assert.equal(filled.status, 'FILLED'); assert.equal(filled.txHash, settlementHash)
   const balances = await readWalletBalances(owner, [{ symbol: 'NVDAon', address: stock }])
-  assert.equal(balances.bnb, '0'); assert.equal(balances.usdc, '0'); assert.equal(balances.tokens[0].quantity, '0.025')
+  assert.equal(balances.bnb, '0'); assert.equal(balances.usdt, '0'); assert.equal(balances.tokens[0].quantity, '0.025')
   assert.equal(s.calls.filter(c => c.method === 'eth_sendRawTransaction').length, 1)
   assert.equal(s.calls.filter(c => c.method.endsWith('/quote')).length, 1)
   assert.equal(s.calls.some(c => c.method === 'eth_gasPrice'), false)
@@ -152,17 +152,17 @@ test('fixture: repeat purchase with allowance makes no approval or sponsor calls
   assert.equal(result.kind, 'order'); assert.equal(s.calls.some(c => c.provider === 'megafuel'), false)
 })
 
-test('fixture: insufficient USDC and rejected sponsorship cannot send a transaction', async () => {
-  const s = fixture(); s.usdc = 1n
+test('fixture: insufficient USDT and rejected sponsorship cannot send a transaction', async () => {
+  const s = fixture(); s.usdt = 1n
   await assert.rejects(s.prepare, /insufficient_balance/)
-  s.usdc = rawAmount; s.sponsorable = false
+  s.usdt = rawAmount; s.sponsorable = false
   await assert.rejects(s.prepare, /sponsorship_rejected/)
   assert.equal(s.calls.some(c => c.method === 'eth_sendRawTransaction'), false)
 })
 
 test('fixture: missing sponsor configuration stops a 0 BNB approval before simulation/signing', async () => {
   const s = fixture()
-  await assert.rejects(() => prepareAgentTrade('NVDAon', 'buy', '5', owner, credentials, undefined, { paymentToken: 'USDC', env: {} }), /sponsorship_not_configured/)
+  await assert.rejects(() => prepareAgentTrade('NVDAon', 'buy', '5', owner, credentials, undefined, { paymentToken: 'USDT', env: {} }), /sponsorship_not_configured/)
   assert.equal(s.calls.some(c => c.provider === 'megafuel' || c.method === 'eth_estimateGas'), false)
 })
 
@@ -209,7 +209,7 @@ test('fixture: nonzero insufficient permission uses sponsored reset then exact a
   const s = fixture(); s.allowance = 1n; const plan = await s.prepare()
   assert.equal(plan.approval.reset, true)
   const result = await executeReviewedTrade(plan, request, execution(s, {
-    nextApproval: async previous => ({ ...previous, approval: await prepareTokenApproval(BSC_USDC.address, owner, rawAmount.toString(), s.allowance, credentials, undefined, env) }),
+    nextApproval: async previous => ({ ...previous, approval: await prepareTokenApproval(BSC_USDT.address, owner, rawAmount.toString(), s.allowance, credentials, undefined, env) }),
     submit: attempt => { assert.equal(attempt.plan.typedDataHash, plan.typedDataHash); assert.equal(attempt.plan.requestId, plan.requestId); return submitAgentTrade(attempt.plan, attempt.signature, credentials) },
   }))
   assert.equal(result.kind, 'order'); assert.equal(s.bnb, 0n)
@@ -245,7 +245,7 @@ test('fixture: nonce or sponsor changes between review and Confirm never silentl
 test('capabilities exposes configuration presence without secrets or spending-provider calls', async () => {
   const s = fixture()
   const read = await handleApiRequest(new Request('https://firstbell.test/api/trade/capabilities'), { ...env, PRIVY_APP_ID: 'fixture-app' })
-  assert.deepEqual(await read.json(), { chainId: 56, paymentTokens: ['USDT', 'USDC'], executionMode: 'COW_RFQ', sponsorshipConfigured: true })
+  assert.deepEqual(await read.json(), { chainId: 56, paymentTokens: ['USDT'], executionMode: 'COW_RFQ', sponsorshipConfigured: true })
   assert.equal(s.calls.length, 0)
   const absent = await handleApiRequest(new Request('https://firstbell.test/api/trade/capabilities'), { PRIVY_APP_ID: 'fixture-app' })
   assert.equal((await absent.json()).sponsorshipConfigured, false)
@@ -291,7 +291,7 @@ test('fixture: a lost order acknowledgement can recover the same dispatch after 
   globalThis.fetch = async (url, init) => {
     const response = await provider(url, init)
     if (new URL(url).pathname.endsWith('/order/submit') && drop) {
-      drop = false; s.usdc = 0n; s.allowance = 0n; s.stock = output
+      drop = false; s.usdt = 0n; s.allowance = 0n; s.stock = output
       throw new Error('fixture: lost response after order dispatch')
     }
     return response

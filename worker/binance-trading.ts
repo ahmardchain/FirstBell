@@ -168,11 +168,8 @@ export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amou
     return true
   })
   const decimals = readTokenDecimals(symbol)
-  const cashDecimals = paymentToken === 'USDC' ? cachedMetadata('bsc-usdc-decimals', async () => {
-    if (await tradingClient.readContract({ address: cash.address, abi: erc20Abi, functionName: 'decimals' }) !== cash.decimals) throw new RouteError('invalid_provider_response')
-  }) : Promise.resolve()
   const [[, , tokenDecimals], quoted] = await Promise.all([
-    Promise.all([supported, rpc, decimals, cashDecimals]),
+    Promise.all([supported, rpc, decimals]),
     (async () => {
       const inputAmount = buyAmount ?? toRawAmount(amount, await decimals)
       const startedAt = Date.now()

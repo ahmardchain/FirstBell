@@ -20,6 +20,22 @@ export async function handleAccountRequest(request: Request, env: FundingEnv, st
   if (!id || !/^did:privy:[a-zA-Z0-9_-]{3,128}$/.test(id)) return json({ error: 'Invalid account' }, 400)
 
   const now = new Date().toISOString()
+  if (new URL(request.url).pathname === '/withdrawal-attempt') {
+    if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+    const body = await request.json() as { action: string; id: string; walletAddress: string; nonce: number; hash: string; planHash: string }
+    if (!['get', 'start'].includes(body?.action) || !/^[a-f0-9-]{36}$/.test(body.id) || !/^0x[a-f0-9]{40}$/.test(body.walletAddress)
+      || !Number.isSafeInteger(body.nonce) || body.nonce < 0 || !/^0x[a-fA-F0-9]{64}$/.test(body.hash) || !/^0x[a-fA-F0-9]{64}$/.test(body.planHash)) return json({ error: 'Invalid withdrawal attempt' }, 400)
+    type Attempt = Omit<typeof body, 'action'> & { createdAt: number }
+    const attempts = (await storage.get<Attempt[]>('withdrawalAttempts') ?? []).filter(item => item.createdAt > Date.now() - 86_400_000)
+    const previous = attempts.find(item => item.id === body.id)
+    if (previous && (previous.hash !== body.hash || previous.planHash !== body.planHash || previous.nonce !== body.nonce || previous.walletAddress !== body.walletAddress)) return json({ error: 'Withdrawal attempt mismatch' }, 409)
+    if (body.action === 'start' && !previous) {
+      if (attempts.length >= 256 || attempts.some(item => item.walletAddress === body.walletAddress && item.nonce === body.nonce)) return json({ error: 'Withdrawal nonce already reserved' }, 409)
+      attempts.push({ id: body.id, walletAddress: body.walletAddress, nonce: body.nonce, hash: body.hash, planHash: body.planHash, createdAt: Date.now() })
+      await storage.put('withdrawalAttempts', attempts)
+    }
+    return json({ started: Boolean(previous) || body.action === 'start' })
+  }
   if (new URL(request.url).pathname === '/trade-attempt') {
     if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
     const body = await request.json() as { action: string; requestId: string; typedDataHash: string; signatureHash: string; orderId?: string }
