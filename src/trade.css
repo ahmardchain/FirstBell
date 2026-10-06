@@ -76,6 +76,8 @@
 .trade-amount-field input { min-width:0; width:100%; padding:15px 18px; border:0; outline:0; background:none; color:var(--foreground); font-size:28px; font-weight:600; }
 .trade-amount-field input::-webkit-inner-spin-button,.trade-amount-field input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .trade-amount-field span { padding:0 18px; font:500 12px 'IBM Plex Mono',monospace; }
+.trade-amount-field select { margin-right:16px; padding:8px 4px; border:0; border-radius:8px; background:var(--background); color:var(--foreground); font:500 12px 'IBM Plex Mono',monospace; cursor:pointer; }
+.trade-amount-field select:focus-visible { outline:2px solid var(--foreground); outline-offset:2px; }
 .trade-sheet-row { display:flex; justify-content:space-between; gap:15px; padding:18px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .trade-sheet-row span { color:var(--muted); }
 .trade-sheet-row strong { font-weight:600; }

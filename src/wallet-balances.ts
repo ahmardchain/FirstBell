@@ -1,6 +1,7 @@
 import { createPublicClient, erc20Abi, formatUnits, http, isAddress, type Address } from 'viem'
 import { bsc } from 'viem/chains'
 import { BSC_USDT } from '../lib/funding.ts'
+import { BSC_USDC } from '../lib/trade-assets.ts'
 
 const client = createPublicClient({
   chain: bsc,
@@ -8,13 +9,13 @@ const client = createPublicClient({
 })
 
 export type TokenPosition = { symbol: string; address: Address; quantity: string; raw: bigint }
-export type WalletBalances = { bnb: string; usdt: string; tokens: TokenPosition[]; checkedAt: Date }
+export type WalletBalances = { bnb: string; usdt: string; usdc: string; tokens: TokenPosition[]; checkedAt: Date }
 
 export async function readWalletBalances(walletAddress: string, tokens: { symbol: string; address: string }[]): Promise<WalletBalances> {
   if (!isAddress(walletAddress)) throw new Error('Invalid wallet address')
   if (tokens.some(token => !isAddress(token.address))) throw new Error('Invalid token contract')
   const owner = walletAddress as Address
-  const contracts = [BSC_USDT, ...tokens].map(token => ({ address: token.address as Address,
+  const contracts = [BSC_USDT, BSC_USDC, ...tokens].map(token => ({ address: token.address as Address,
     abi: erc20Abi, functionName: 'balanceOf' as const, args: [owner] as const }))
   const readBalances = async () => {
     const values: bigint[] = []
@@ -26,18 +27,18 @@ export async function readWalletBalances(walletAddress: string, tokens: { symbol
     return values
   }
   const [native, values] = await Promise.all([client.getBalance({ address: owner }), readBalances()])
-  const held = tokens.filter((_, index) => values[index + 1] > 0n)
+  const held = tokens.filter((_, index) => values[index + 2] > 0n)
   const decimals = held.length ? await client.multicall({
     contracts: held.map(token => ({ address: token.address as Address, abi: erc20Abi, functionName: 'decimals' as const })),
     allowFailure: false, batchSize: 32_768,
   }) : []
   const units = new Map(held.map((token, index) => [token.address.toLowerCase(), decimals[index]]))
   const positions = tokens.map((token, index) => {
-    const raw = values[index + 1]
+    const raw = values[index + 2]
     return { symbol: token.symbol, address: token.address as Address, raw,
       quantity: raw > 0n ? formatUnits(raw, units.get(token.address.toLowerCase())!) : '0' }
   })
-  return { bnb: formatUnits(native, 18), usdt: formatUnits(values[0], BSC_USDT.decimals), tokens: positions, checkedAt: new Date() }
+  return { bnb: formatUnits(native, 18), usdt: formatUnits(values[0], BSC_USDT.decimals), usdc: formatUnits(values[1], BSC_USDC.decimals), tokens: positions, checkedAt: new Date() }
 }
 
 export function displayQuantity(value: string, places = 6) {

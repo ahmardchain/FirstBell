@@ -6,6 +6,7 @@ import { binanceFailure } from './binance-api.ts'
 import { handleDepositRequest } from './deposits.ts'
 import { handleTradingRoute } from './trading.ts'
 import { handleAgentTrade } from './agent-trading.ts'
+import { megaFuelConfigured } from './megafuel.ts'
 import { quoteResponse } from './quote-response.ts'
 import { getOnramperMode, getOnramperSetup, handleOnramperWebhook } from './onramper.ts'
 import { createOnramperDemoUrl } from '../lib/onramper-demo.ts'
@@ -97,6 +98,12 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
       return handleTradingRoute(bounded, env, id)
     })
   }
+  if (pathname === '/api/trade/capabilities') {
+    if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405)
+    // Static readiness only. This does not claim an active/funded policy or make
+    // a sponsor/RPC request; wallet-bound eligibility is checked per exact trade.
+    return json({ chainId: 56, paymentTokens: ['USDT', 'USDC'], executionMode: 'COW_RFQ', sponsorshipConfigured: megaFuelConfigured(env) })
+  }
   if (pathname === '/api/trade/prepare') {
     return quoteResponse(request, async bounded => {
       if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
@@ -105,7 +112,7 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
       return handleAgentTrade(bounded, env, id)
     })
   }
-  if (['/api/trade/submit', '/api/trade/status'].includes(pathname)) {
+  if (['/api/trade/submit', '/api/trade/status', '/api/trade/approval/submit', '/api/trade/approval/refresh'].includes(pathname)) {
     if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
     const id = await getUserId(request, env)
     if (!id) return json({ error: 'unauthorized' }, 401)

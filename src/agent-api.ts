@@ -2,8 +2,10 @@ import { validateAgentTradePlan, type AgentOrder, type AgentTradePlan } from '..
 import type { WalletSession } from '../lib/wallet-session.ts'
 import { PREPARE_TIMEOUT_MS } from '../lib/quote-timeout.ts'
 import { TradeRequestError } from '../lib/trade-error.ts'
+import { keccak256, type Hex } from 'viem'
+import type { PaymentToken } from '../lib/trade-assets.ts'
 
-async function post(path: 'prepare' | 'submit' | 'status', body: Record<string, unknown>, session: WalletSession, signal?: AbortSignal): Promise<Record<string, unknown>> {
+async function post(path: 'prepare' | 'submit' | 'status' | 'approval/submit' | 'approval/refresh', body: Record<string, unknown>, session: WalletSession, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const timeout = AbortSignal.timeout(path === 'prepare' ? PREPARE_TIMEOUT_MS : 30_000)
   try {
     const response = await fetch(`/api/trade/${path}`, { method: 'POST', cache: 'no-store',
@@ -15,14 +17,31 @@ async function post(path: 'prepare' | 'submit' | 'status', body: Record<string, 
     if (!result) throw new Error('invalid_provider_response')
     return result
   } catch (error) {
-    if (timeout.aborted && !signal?.aborted) throw new Error(path === 'submit' ? 'submission_unknown' : 'quote_timeout')
+    if (timeout.aborted && !signal?.aborted) throw new Error(path === 'submit' ? 'submission_unknown' : path === 'approval/submit' ? 'approval_submission_unknown' : 'quote_timeout')
     throw error
   }
 }
 
-export async function prepareTrade(input: { symbol: string; side: 'buy' | 'sell'; amount: string; walletAddress: string }, session: WalletSession, signal?: AbortSignal): Promise<AgentTradePlan> {
+export async function prepareTrade(input: { symbol: string; side: 'buy' | 'sell'; amount: string; walletAddress: string; paymentToken?: PaymentToken; sponsorApproval?: boolean }, session: WalletSession, signal?: AbortSignal): Promise<AgentTradePlan> {
   const result = await post('prepare', input, session, signal)
   return validateAgentTradePlan(result.plan, input)
+}
+
+export async function relayApproval(plan: AgentTradePlan, rawTransaction: Hex, session: WalletSession, retry = false): Promise<Hex> {
+  const result = await post('approval/submit', { planToken: plan.planToken, walletAddress: plan.route.walletAddress, rawTransaction, retry }, session)
+  const approval = result.approval as { hash?: string; status?: string } | undefined
+  const hash = keccak256(rawTransaction)
+  if (approval?.hash?.toLowerCase() !== hash.toLowerCase() || !['pending', 'unknown'].includes(approval.status ?? '')) throw new Error('approval_submission_unknown')
+  // Even 'pending' is only an acknowledgement. A real receipt is still required.
+  return hash
+}
+
+export async function refreshApproval(plan: AgentTradePlan, session: WalletSession): Promise<AgentTradePlan> {
+  const result = await post('approval/refresh', { planToken: plan.planToken, walletAddress: plan.route.walletAddress }, session)
+  const paymentToken = (plan.route.side === 'buy' ? plan.route.inputSymbol : plan.route.outputSymbol) as PaymentToken
+  const next = validateAgentTradePlan(result.plan, { symbol: plan.route.symbol, side: plan.route.side, amount: plan.route.inputAmount, walletAddress: plan.route.walletAddress, paymentToken })
+  if (next.typedDataHash !== plan.typedDataHash || next.requestId !== plan.requestId || next.orderQuoteId !== plan.orderQuoteId || next.expiresAt !== plan.expiresAt) throw new Error('invalid_order_payload')
+  return next
 }
 
 function orderResponse(value: unknown): AgentOrder {

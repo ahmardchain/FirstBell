@@ -1,11 +1,13 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { decodeEventLog, encodeFunctionData, erc20Abi, formatUnits, hashTypedData, isAddress, parseUnits, verifyTypedData, type Address, type Hex } from 'viem'
-import { BSC_USDT } from '../lib/funding.ts'
+import { isPaymentToken, tradeCash, type PaymentToken } from '../lib/trade-assets.ts'
 import { COW_RELAYER, COW_SETTLEMENT, validateOrderTypedData, type AgentOrder, type AgentTradePlan } from '../lib/agent-trading.ts'
 import { getQuoteContext, getTradingInputAmount, RouteError, tradingClient, tradingRequest, type Credentials } from './binance-trading.ts'
 import { assets, isSymbol, parseQuantity } from './market.ts'
 import { verifyWalletIdentity, WalletVerificationError } from './wallet-verification.ts'
 import type { ApiEnv } from './env.ts'
+import { megaFuelConfigured, relaySponsoredApproval, sponsorApproval } from './megafuel.ts'
+import { tradeAttempt } from './trade-attempts.ts'
 
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -28,16 +30,48 @@ export async function openTradeTicket(token: unknown, userId: string, secret: st
   } catch { throw new RouteError('invalid_order_ticket', 403) }
 }
 
-export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials, signal?: AbortSignal): Promise<Omit<AgentTradePlan, 'planToken'>> {
+export async function prepareTokenApproval(inputToken: Address, owner: Address, rawAmount: string, allowance: bigint, credentials: Credentials, signal?: AbortSignal, env?: ApiEnv): Promise<AgentTradePlan['approval']> {
+  signal?.throwIfAborted()
+  if (allowance >= BigInt(rawAmount)) return null
+  const reset = allowance > 0n, approvalAmount = reset ? 0n : BigInt(rawAmount)
+  const data = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [COW_RELAYER, approvalAmount] })
+  const approval = { chainId: 56 as const, to: inputToken, data, value: '0' as const, amount: approvalAmount.toString(), spender: COW_RELAYER, reset, gasFeeBnb: '0', simulated: true as const }
+  if (env && megaFuelConfigured(env)) {
+    // A zero-price call checks actual approve() behaviour without needing BNB.
+    // Binance's simulation schema has no gasPrice override, so keep it for the
+    // existing self-paid path and simulate sponsored calls directly on BSC.
+    const [simulation, gas] = await Promise.all([
+      tradingClient.simulateContract({ address: inputToken, abi: erc20Abi, functionName: 'approve', args: [COW_RELAYER, approvalAmount], account: owner, gasPrice: 0n }),
+      tradingClient.estimateGas({ account: owner, to: inputToken, data, value: 0n, gasPrice: 0n }),
+    ])
+    if (simulation.result !== true) throw new RouteError('simulation_failed', 409)
+    signal?.throwIfAborted()
+    return sponsorApproval(approval, owner, gas, env, signal)
+  }
+  const nativePromise = tradingClient.getBalance({ address: owner })
+  if (env && await nativePromise === 0n) throw new RouteError('sponsorship_not_configured', 409)
+  const [simulation, gas, gasPrice, native] = await Promise.all([
+    tradingRequest('POST', '/api/v1/dex/pre-transaction/simulate', { binanceChainId: '56', evmTx: { from: owner, to: inputToken, value: '0', data } }, credentials, signal),
+    tradingClient.estimateGas({ account: owner, to: inputToken, data, value: 0n }),
+    tradingClient.getGasPrice(), nativePromise,
+  ])
+  if (object(simulation.data)?.status !== 'SUCCESS') throw new RouteError('simulation_failed', 409)
+  const gasBudget = gas * gasPrice * 12n / 10n
+  if (native < gasBudget) throw new RouteError(env ? 'sponsorship_not_configured' : 'insufficient_gas', 409)
+  return { ...approval, gasFeeBnb: formatUnits(gasBudget, 18) }
+}
+
+export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials, signal?: AbortSignal, options: { paymentToken?: PaymentToken; env?: ApiEnv } = {}): Promise<Omit<AgentTradePlan, 'planToken'>> {
   if (!isSymbol(symbol) || !['buy', 'sell'].includes(side) || !parseQuantity(amount) || !isAddress(walletAddress)) throw new RouteError('invalid_trade_request', 400)
   const cancel = new AbortController()
   const bounded = signal ? AbortSignal.any([signal, cancel.signal]) : cancel.signal
   bounded.throwIfAborted()
-  const inputToken = side === 'buy' ? BSC_USDT.address : assets[symbol]
+  const cash = tradeCash(options.paymentToken)
+  const inputToken = side === 'buy' ? cash.address : assets[symbol]
   // Amount units and real wallet reads do not depend on an RFQ response.
   // Sell decimals share the verified metadata read with quote preparation.
-  const inputAmountPromise = getTradingInputAmount(symbol, side, amount)
-  const contextPromise = getQuoteContext(symbol, side, amount, walletAddress, credentials, true, bounded).then(context => {
+  const inputAmountPromise = getTradingInputAmount(symbol, side, amount, options.paymentToken)
+  const contextPromise = getQuoteContext(symbol, side, amount, walletAddress, credentials, true, bounded, options.paymentToken).then(context => {
     if (context.providerRoute.approveTarget && !same(context.providerRoute.approveTarget, COW_RELAYER)) throw new RouteError('invalid_order_payload')
     return context
   })
@@ -50,17 +84,17 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
   const allowancePromise = tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'allowance', args: [walletAddress as Address, COW_RELAYER] })
   const builtPromise = contextPromise.then(async context => {
     bounded.throwIfAborted()
-    const inputDecimals = side === 'buy' ? BSC_USDT.decimals : context.tokenDecimals
-    const outputDecimals = side === 'buy' ? context.tokenDecimals : BSC_USDT.decimals
+    const inputDecimals = side === 'buy' ? cash.decimals : context.tokenDecimals
+    const outputDecimals = side === 'buy' ? context.tokenDecimals : cash.decimals
     const swap = await tradingRequest('GET', '/api/v1/dex/aggregator/swap', { binanceChainId: '56', amount: context.rawAmount,
-      fromTokenAddress: inputToken, toTokenAddress: side === 'buy' ? assets[symbol] : BSC_USDT.address,
+      fromTokenAddress: inputToken, toTokenAddress: side === 'buy' ? assets[symbol] : cash.address,
       userWalletAddress: walletAddress, quoteId: context.providerRoute.quoteId, slippagePercent: '0.5' }, credentials, bounded)
     const data = object(swap.data), rfq = object(data?.rfq), router = object(data?.routerResult)
     if (data?.executionMode !== 'RFQ' || rfq?.vendor !== 'CowSwap' || !id(rfq.orderId)
       || (rfq.signingScheme && String(rfq.signingScheme).toLowerCase() !== 'eip712')
       || !router || router.binanceChainId !== '56' || router.vendorName !== 'CowSwap' || router.fromTokenAmount !== context.rawAmount
       || !same(object(router.fromToken)?.tokenContractAddress, inputToken)
-      || !same(object(router.toToken)?.tokenContractAddress, side === 'buy' ? assets[symbol] : BSC_USDT.address)
+      || !same(object(router.toToken)?.tokenContractAddress, side === 'buy' ? assets[symbol] : cash.address)
       || typeof router.toTokenAmount !== 'string' || router.toTokenAmount !== parseUnits(context.route.outputAmount, outputDecimals).toString()) throw new RouteError('invalid_order_payload')
     try {
       return { inputDecimals, outputDecimals, orderQuoteId: rfq.orderId,
@@ -68,23 +102,7 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
     } catch (error) { throw new RouteError(error instanceof Error ? error.message : 'invalid_order_payload') }
   })
   const approvalPromise = Promise.all([inputAmountPromise, balancePromise, allowancePromise]).then(async ([rawAmount, , allowance]): Promise<AgentTradePlan['approval']> => {
-    bounded.throwIfAborted()
-    if (allowance >= BigInt(rawAmount)) return null
-    // Simulate the exact spend to the pinned relayer while the quote is still
-    // loading. No wallet prompt is possible until the quote and build validate.
-    const reset = allowance > 0n
-    const approvalAmount = reset ? 0n : BigInt(rawAmount)
-    const calldata = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [COW_RELAYER, approvalAmount] })
-    const [simulation, gas, gasPrice, native] = await Promise.all([
-      tradingRequest('POST', '/api/v1/dex/pre-transaction/simulate', { binanceChainId: '56', evmTx: { from: walletAddress, to: inputToken, value: '0', data: calldata } }, credentials, bounded),
-      tradingClient.estimateGas({ account: walletAddress as Address, to: inputToken, data: calldata, value: 0n }),
-      tradingClient.getGasPrice(), tradingClient.getBalance({ address: walletAddress as Address }),
-    ])
-    if (object(simulation.data)?.status !== 'SUCCESS') throw new RouteError('simulation_failed', 409)
-    const gasBudget = gas * gasPrice * 12n / 10n
-    if (native < gasBudget) throw new RouteError('insufficient_gas', 409)
-    return { chainId: 56, to: inputToken, data: calldata, value: '0', amount: approvalAmount.toString(), spender: COW_RELAYER,
-      reset, gasFeeBnb: formatUnits(gasBudget, 18), simulated: true }
+    return prepareTokenApproval(inputToken, walletAddress as Address, rawAmount, allowance, credentials, bounded, options.env)
   })
   try {
     const [context, built, approval, inputAmount] = await Promise.all([contextPromise, builtPromise, approvalPromise, inputAmountPromise])
@@ -97,16 +115,28 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
   } catch (error) { cancel.abort(error); throw error }
 }
 
-export async function submitAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, signature: string, credentials: Credentials) {
-  if (plan.approval) throw new RouteError('approval_required', 409)
-  if (Date.parse(plan.expiresAt) <= Date.now() + 3_000) throw new RouteError('stale_quote', 409)
+export async function submitAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, signature: string, credentials: Credentials, recovery?: {
+  started: boolean; orderId: string | null; beforeDispatch: () => Promise<void>
+}) {
+  if (!recovery?.started && Date.parse(plan.expiresAt) <= Date.now() + 3_000) throw new RouteError('stale_quote', 409)
   if (!/^0x[a-fA-F0-9]{130}$/.test(signature)) throw new RouteError('invalid_order_signature', 400)
-  const typedData = validateOrderTypedData(plan.typedData, plan)
+  // Only a durable, matching prior dispatch may recover an expired/spent order.
+  // It reuses the exact signature, quote and requestId for provider idempotency.
+  const typedData = validateOrderTypedData(plan.typedData, plan, recovery?.started ? Date.parse(plan.expiresAt) - 10_000 : Date.now())
   if (hashTypedData(typedData) !== plan.typedDataHash || !await verifyTypedData({ ...typedData, address: plan.route.walletAddress as Address, signature: signature as Hex }))
     throw new RouteError('invalid_order_signature', 403)
-  const inputToken = plan.route.side === 'buy' ? BSC_USDT.address : assets[plan.route.symbol]
-  const allowance = await tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'allowance', args: [plan.route.walletAddress as Address, COW_RELAYER] })
-  if (allowance < BigInt(plan.rawAmount)) throw new RouteError('approval_required', 409)
+  if (recovery?.orderId) return { orderId: recovery.orderId, status: 'PENDING_VENDOR' as const, txHash: null, inputAmount: null, outputAmount: null }
+  if (!recovery?.started) {
+    const cash = tradeCash((plan.route.side === 'buy' ? plan.route.inputSymbol : plan.route.outputSymbol) as PaymentToken)
+    const inputToken = plan.route.side === 'buy' ? cash.address : assets[plan.route.symbol]
+    const [allowance, balance] = await Promise.all([
+      tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'allowance', args: [plan.route.walletAddress as Address, COW_RELAYER] }),
+      tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'balanceOf', args: [plan.route.walletAddress as Address] }),
+    ])
+    if (balance < BigInt(plan.rawAmount)) throw new RouteError('insufficient_balance', 409)
+    if (allowance < BigInt(plan.rawAmount)) throw new RouteError('approval_required', 409)
+  }
+  await recovery?.beforeDispatch()
   const result = await tradingRequest('POST', '/api/v1/dex/aggregator/order/submit', { requestId: plan.requestId,
     userSignature: signature, vendor: 'CowSwap', quoteId: plan.orderQuoteId, signingScheme: 'EIP712' }, credentials)
   const order = object(result.data)
@@ -129,8 +159,9 @@ export async function checkAgentOrder(orderId: string, plan: Pick<AgentTradePlan
   const tip = await tradingClient.getBlockNumber({ cacheTime: 0 })
   if (tip < receipt.blockNumber + 1n) return { ...base, status: 'CONFIRMING', txHash }
   if (receipt.status !== 'success' || !same(receipt.to, COW_SETTLEMENT)) throw new RouteError('settlement_not_verified', 409)
-  const owner = plan.route.walletAddress, inputToken = plan.route.side === 'buy' ? BSC_USDT.address : assets[plan.route.symbol]
-  const outputToken = plan.route.side === 'buy' ? assets[plan.route.symbol] : BSC_USDT.address
+  const cash = tradeCash((plan.route.side === 'buy' ? plan.route.inputSymbol : plan.route.outputSymbol) as PaymentToken)
+  const owner = plan.route.walletAddress, inputToken = plan.route.side === 'buy' ? cash.address : assets[plan.route.symbol]
+  const outputToken = plan.route.side === 'buy' ? assets[plan.route.symbol] : cash.address
   let spent = 0n, received = 0n
   for (const log of receipt.logs) {
     if (!same(log.address, inputToken) && !same(log.address, outputToken)) continue
@@ -170,12 +201,13 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
     if (typeof body.walletAddress !== 'string' || !isAddress(body.walletAddress)) throw new RouteError('invalid_trade_request', 400)
     const path = new URL(request.url).pathname
     let ticket
-    if (path !== '/api/trade/prepare') ticket = await openTradeTicket(path === '/api/trade/submit' ? body.planToken : body.receiptToken, userId, credentials.secretKey, path === '/api/trade/submit' ? 'plan' : 'receipt')
+    if (path !== '/api/trade/prepare') ticket = await openTradeTicket(path === '/api/trade/status' ? body.receiptToken : body.planToken, userId, credentials.secretKey, path === '/api/trade/status' ? 'receipt' : 'plan')
     const plan = ticket?.plan as Omit<AgentTradePlan, 'planToken'> | undefined
     if (ticket && (!plan || !same(plan.route?.walletAddress, body.walletAddress))) throw new RouteError('wallet_not_verified', 403)
     if (!await verifyWalletIdentity(request.headers.get('privy-id-token'), env, userId, body.walletAddress)) throw new RouteError('wallet_not_verified', 403)
     const stub = env.ACCOUNTS.get(env.ACCOUNTS.idFromName(userId))
-    const allowed = await stub.fetch(new Request('https://account.internal/quote-rate', { method: 'POST', headers: { 'X-Privy-DID': userId } }))
+    const limitPath = path === '/api/trade/prepare' ? 'quote-rate' : path === '/api/trade/status' ? 'trade-status-rate' : 'trade-write-rate'
+    const allowed = await stub.fetch(new Request(`https://account.internal/${limitPath}`, { method: 'POST', headers: { 'X-Privy-DID': userId } }))
     if (!allowed.ok) {
       const failure = object(await allowed.json())
       const reason = ['account_storage_not_configured', 'account_storage_unavailable'].includes(String(failure?.error)) ? failure!.error : 'rate_limited'
@@ -183,13 +215,33 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
     }
     if (path === '/api/trade/prepare') {
       if (typeof body.symbol !== 'string' || !isSymbol(body.symbol) || (body.side !== 'buy' && body.side !== 'sell') || !parseQuantity(body.amount)) throw new RouteError('invalid_trade_request', 400)
-      const prepared = await prepareAgentTrade(body.symbol, body.side, body.amount as string, body.walletAddress, credentials, request.signal)
+      if (body.paymentToken !== undefined && !isPaymentToken(body.paymentToken)) throw new RouteError('invalid_trade_request', 400)
+      if (body.sponsorApproval !== undefined && typeof body.sponsorApproval !== 'boolean') throw new RouteError('invalid_trade_request', 400)
+      const prepared = await prepareAgentTrade(body.symbol, body.side, body.amount as string, body.walletAddress, credentials, request.signal, { paymentToken: body.paymentToken as PaymentToken | undefined, env: body.sponsorApproval === true ? env : undefined })
       const planToken = await sealTradeTicket({ plan: prepared }, userId, credentials.secretKey, 'plan')
       return json({ plan: { ...prepared, planToken } })
     }
+    if (path === '/api/trade/approval/submit' && plan) return json({ approval: await relaySponsoredApproval(plan, body.rawTransaction, env, body.retry === true) })
+    if (path === '/api/trade/approval/refresh' && plan) {
+      if (Date.parse(plan.expiresAt) <= Date.now() + 5_000) throw new RouteError('stale_quote', 409)
+      const cash = tradeCash((plan.route.side === 'buy' ? plan.route.inputSymbol : plan.route.outputSymbol) as PaymentToken)
+      const inputToken = plan.route.side === 'buy' ? cash.address : assets[plan.route.symbol]
+      const owner = plan.route.walletAddress as Address
+      const [allowance, balance] = await Promise.all([
+        tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'allowance', args: [owner, COW_RELAYER] }),
+        tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'balanceOf', args: [owner] }),
+      ])
+      if (balance < BigInt(plan.rawAmount)) throw new RouteError('insufficient_balance', 409)
+      const prepared = { ...plan, approval: await prepareTokenApproval(inputToken, owner, plan.rawAmount, allowance, credentials, request.signal, env) }
+      return json({ plan: { ...prepared, planToken: await sealTradeTicket({ plan: prepared }, userId, credentials.secretKey, 'plan') } })
+    }
     if (path === '/api/trade/submit') {
       if (!plan || typeof body.signature !== 'string') throw new RouteError('invalid_order_signature', 400)
-      const submitted = await submitAgentTrade(plan, body.signature, credentials)
+      const previous = await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'get')
+      const submitted = await submitAgentTrade(plan, body.signature, credentials, { ...previous,
+        beforeDispatch: async () => { await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature as string, 'start') },
+      })
+      await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'complete', submitted.orderId)
       const receiptToken = await sealTradeTicket({ plan, orderId: submitted.orderId }, userId, credentials.secretKey, 'receipt')
       return json({ order: { ...submitted, receiptToken } })
     }

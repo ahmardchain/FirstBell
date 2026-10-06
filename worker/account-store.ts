@@ -20,14 +20,42 @@ export async function handleAccountRequest(request: Request, env: FundingEnv, st
   if (!id || !/^did:privy:[a-zA-Z0-9_-]{3,128}$/.test(id)) return json({ error: 'Invalid account' }, 400)
 
   const now = new Date().toISOString()
+  if (new URL(request.url).pathname === '/trade-attempt') {
+    if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+    const body = await request.json() as { action: string; requestId: string; typedDataHash: string; signatureHash: string; orderId?: string }
+    if (!['get', 'start', 'complete'].includes(body?.action) || !/^[a-f0-9-]{36}$/.test(body.requestId)
+      || !/^0x[a-fA-F0-9]{64}$/.test(body.typedDataHash) || !/^0x[a-fA-F0-9]{64}$/.test(body.signatureHash)
+      || (body.action === 'complete' && !/^[A-Za-z0-9_-]{1,256}$/.test(body.orderId ?? ''))) return json({ error: 'Invalid trade attempt' }, 400)
+    type Attempt = { requestId: string; typedDataHash: string; signatureHash: string; createdAt: number; orderId: string | null }
+    let attempts = (await storage.get<Attempt[]>('tradeAttempts') ?? []).filter(item => item.createdAt > Date.now() - 86_400_000)
+    let previous = attempts.find(item => item.requestId === body.requestId)
+    if (previous && (previous.typedDataHash !== body.typedDataHash || previous.signatureHash !== body.signatureHash)) return json({ error: 'Trade attempt mismatch' }, 409)
+    if (body.action !== 'get') {
+      if (!previous) {
+        if (body.action === 'complete') return json({ error: 'Trade attempt missing' }, 409)
+        previous = { requestId: body.requestId, typedDataHash: body.typedDataHash, signatureHash: body.signatureHash, createdAt: Date.now(), orderId: null }
+        attempts.push(previous)
+      }
+      if (body.action === 'complete') {
+        if (previous.orderId && previous.orderId !== body.orderId) return json({ error: 'Trade attempt mismatch' }, 409)
+        previous.orderId = body.orderId!
+      }
+      attempts = attempts.slice(-512)
+      await storage.put('tradeAttempts', attempts)
+    }
+    return json({ started: Boolean(previous), orderId: previous?.orderId ?? null })
+  }
   if (new URL(request.url).pathname.startsWith('/deposits')) {
     return handleStoredDeposits(request, env, storage)
   }
-  if (new URL(request.url).pathname === '/quote-rate') {
+  const ratePath = new URL(request.url).pathname
+  if (['/quote-rate', '/trade-write-rate', '/trade-status-rate'].includes(ratePath)) {
     if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
-    const timestamps = (await storage.get<number[]>('quoteTimes') ?? []).filter(value => value > Date.now() - 60_000)
-    if (timestamps.length >= 6) return json({ error: 'Quote limit reached. Try again in a minute.' }, 429)
-    await storage.put('quoteTimes', [...timestamps, Date.now()])
+    const key = ratePath === '/quote-rate' ? 'quoteTimes' : `${ratePath.slice(1)}Times`
+    const limit = ratePath === '/quote-rate' ? 6 : ratePath === '/trade-write-rate' ? 12 : 60
+    const timestamps = (await storage.get<number[]>(key) ?? []).filter(value => value > Date.now() - 60_000)
+    if (timestamps.length >= limit) return json({ error: 'Request limit reached. Try again in a minute.' }, 429)
+    await storage.put(key, [...timestamps, Date.now()])
     return json({ allowed: true })
   }
   const account = await storage.get<Account>('account') ?? {

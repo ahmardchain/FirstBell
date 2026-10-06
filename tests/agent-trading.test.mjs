@@ -113,7 +113,7 @@ test('approval is simulated and capped to this spend and pinned relayer; reset p
   assert.equal(decoded.functionName, 'approve'); assert.equal(decoded.args[0].toLowerCase(), COW_RELAYER.toLowerCase()); assert.equal(decoded.args[1], BigInt(amount))
   assert.equal(prepared.approval.simulated, true); assert.equal(calls.find(call => call.path.endsWith('/simulate')).body.evmTx.to, BSC_USDT.address)
   assert.equal(calls.some(call => call.path.endsWith('/order/submit')), false)
-  await assert.rejects(() => submitAgentTrade(prepared, '0x', credentials), /approval_required/)
+  await assert.rejects(async () => submitAgentTrade(prepared, await signer.signTypedData(prepared.typedData), credentials), /approval_required/)
   allowance = 1n; const reset = await prepareAgentTrade('NVDAon', 'buy', '5', wallet, credentials); assert.equal(reset.approval.reset, true); assert.equal(reset.approval.amount, '0')
   simulationState = 'FAILED'; await assert.rejects(() => prepareAgentTrade('NVDAon', 'buy', '5', wallet, credentials), /simulation_failed/)
 })
@@ -227,7 +227,7 @@ test('filled requires provider settlement, two confirmations and correct wallet 
 })
 test('unauthenticated, oversized and cross-origin requests fail before reaching a provider', async () => {
   mock(); const env = { PRIVY_APP_ID: 'fixture-app', BINANCE_WEB3_API_KEY: credentials.apiKey, BINANCE_WEB3_SECRET_KEY: credentials.secretKey, ACCOUNTS: {} }
-  for (const path of ['prepare', 'submit', 'status']) assert.equal((await handleApiRequest(new Request(`https://firstbell.test/api/trade/${path}`, { method: 'POST', body: '{}' }), env)).status, 401)
+  for (const path of ['prepare', 'submit', 'status', 'approval/submit', 'approval/refresh']) assert.equal((await handleApiRequest(new Request(`https://firstbell.test/api/trade/${path}`, { method: 'POST', body: '{}' }), env)).status, 401)
   const cross = await handleAgentTrade(new Request('https://firstbell.test/api/trade/prepare', { method: 'POST', headers: { Origin: 'https://attacker.test', 'Content-Type': 'application/json' }, body: '{}' }), env, 'did:privy:fixture123')
   assert.equal(cross.status, 403)
   const big = await handleAgentTrade(new Request('https://firstbell.test/api/trade/prepare', { method: 'POST', headers: { Origin: 'https://firstbell.test', 'Content-Type': 'application/json' }, body: 'a'.repeat(24_001) }), env, 'did:privy:fixture123')

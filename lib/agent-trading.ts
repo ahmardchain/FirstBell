@@ -1,6 +1,6 @@
 import { decodeFunctionData, erc20Abi, getAddress, hashTypedData, parseUnits, type Address, type Hex } from 'viem'
 import { tokenAddresses } from './asset-catalog.ts'
-import { BSC_USDT } from './funding.ts'
+import { isPaymentToken, tradeCash, type PaymentToken } from './trade-assets.ts'
 import type { TradingRoute } from './trading.ts'
 
 // CoW Protocol's published deployment and Order schema. Never sign a raw hash,
@@ -18,7 +18,8 @@ export type AgentTradePlan = {
   route: TradingRoute; inputDecimals: number; outputDecimals: number; rawAmount: string; minimumReceive: string;
   feeAmount: string; slippagePercent: '0.5'; expiresAt: string; requestId: string; orderQuoteId: string;
   typedData: OrderTypedData; typedDataHash: Hex;
-  approval: null | { chainId: 56; to: Address; data: Hex; value: '0'; amount: string; spender: Address; reset: boolean; gasFeeBnb: string; simulated: true };
+  approval: null | { chainId: 56; to: Address; data: Hex; value: '0'; amount: string; spender: Address; reset: boolean; gasFeeBnb: string; simulated: true;
+    sponsorship?: { provider: 'megafuel'; gas: string; nonce: number } };
   planToken: string;
 }
 export type AgentOrder = { orderId: string; status: 'PENDING_VENDOR' | 'PENDING_ONCHAIN' | 'CONFIRMING' | 'FILLED' | 'FAILED' | 'EXPIRED' | 'CANCELLED'; txHash: Hex | null; inputAmount: string | null; outputAmount: string | null; receiptToken: string }
@@ -38,8 +39,11 @@ export function validateOrderTypedData(value: unknown, plan: Pick<AgentTradePlan
     || !Array.isArray(types.Order) || types.Order.length !== COW_ORDER_FIELDS.length
     || COW_ORDER_FIELDS.some((field, index) => obj((types.Order as unknown[])[index])?.name !== field.name || obj((types.Order as unknown[])[index])?.type !== field.type)
     || Object.keys(message).length !== COW_ORDER_FIELDS.length || COW_ORDER_FIELDS.some(field => !Object.hasOwn(message, field.name))) throw new Error('unsupported_order_schema')
-  const sellToken = plan.route.side === 'buy' ? BSC_USDT.address : tokenAddresses[plan.route.symbol]
-  const buyToken = plan.route.side === 'buy' ? tokenAddresses[plan.route.symbol] : BSC_USDT.address
+  const cashSymbol = plan.route.side === 'buy' ? plan.route.inputSymbol : plan.route.outputSymbol
+  if (!isPaymentToken(cashSymbol)) throw new Error('invalid_order_payload')
+  const cash = tradeCash(cashSymbol)
+  const sellToken = plan.route.side === 'buy' ? cash.address : tokenAddresses[plan.route.symbol]
+  const buyToken = plan.route.side === 'buy' ? tokenAddresses[plan.route.symbol] : cash.address
   const quotedOutput = parseUnits(plan.route.outputAmount, plan.outputDecimals)
   const validTo = Number(message.validTo)
   if (!integer(message.sellAmount) || !integer(message.buyAmount) || !integer(message.feeAmount)
@@ -55,15 +59,16 @@ export function validateOrderTypedData(value: unknown, plan: Pick<AgentTradePlan
     types: { Order: COW_ORDER_FIELDS.map(field => ({ ...field })) }, primaryType: 'Order', message }
 }
 
-export function validateAgentTradePlan(value: unknown, request: { symbol: string; side: 'buy' | 'sell'; amount: string; walletAddress: string }): AgentTradePlan {
+export function validateAgentTradePlan(value: unknown, request: { symbol: string; side: 'buy' | 'sell'; amount: string; walletAddress: string; paymentToken?: PaymentToken }): AgentTradePlan {
   const plan = value as AgentTradePlan
   const route = plan?.route
+  const cash = tradeCash(request.paymentToken)
   if (!route || route.source !== 'binance-web3' || route.chainId !== 56 || route.executionMode !== 'RFQ' || route.executable !== false
     || route.symbol !== request.symbol || route.side !== request.side || route.inputAmount !== request.amount || !sameAddress(route.walletAddress, request.walletAddress)
-    || route.inputSymbol !== (request.side === 'buy' ? 'USDT' : request.symbol) || route.outputSymbol !== (request.side === 'buy' ? request.symbol : 'USDT')
+    || route.inputSymbol !== (request.side === 'buy' ? cash.symbol : request.symbol) || route.outputSymbol !== (request.side === 'buy' ? request.symbol : cash.symbol)
     || !integer(plan.rawAmount) || !Number.isInteger(plan.inputDecimals) || plan.inputDecimals < 0 || plan.inputDecimals > 36
     || !Number.isInteger(plan.outputDecimals) || plan.outputDecimals < 0 || plan.outputDecimals > 36
-    || (request.side === 'buy' ? plan.inputDecimals : plan.outputDecimals) !== BSC_USDT.decimals
+    || (request.side === 'buy' ? plan.inputDecimals : plan.outputDecimals) !== cash.decimals
     || plan.rawAmount !== parseUnits(request.amount, plan.inputDecimals).toString() || plan.slippagePercent !== '0.5'
     || typeof plan.planToken !== 'string' || plan.planToken.length > 20_000 || !plan.planToken
     || !/^[a-f0-9-]{36}$/.test(plan.requestId) || !/^[a-zA-Z0-9_-]{1,256}$/.test(plan.orderQuoteId)
@@ -73,12 +78,15 @@ export function validateAgentTradePlan(value: unknown, request: { symbol: string
     || plan.minimumReceive !== BigInt(typedData.message.buyAmount as string).toString() || plan.feeAmount !== typedData.message.feeAmount) throw new Error('invalid_order_payload')
   if (plan.approval) {
     const approval = plan.approval
-    const token = request.side === 'buy' ? BSC_USDT.address : tokenAddresses[request.symbol]
+    const token = request.side === 'buy' ? cash.address : tokenAddresses[request.symbol]
     const decoded = decodeFunctionData({ abi: erc20Abi, data: approval.data })
     if (approval.chainId !== 56 || approval.value !== '0' || !sameAddress(approval.to, token) || !sameAddress(approval.spender, COW_RELAYER)
       || decoded.functionName !== 'approve' || !sameAddress(decoded.args?.[0], COW_RELAYER)
       || decoded.args?.[1] !== BigInt(approval.reset ? '0' : plan.rawAmount) || approval.amount !== decoded.args?.[1].toString()
-      || approval.simulated !== true || !/^\d+(?:\.\d+)?$/.test(approval.gasFeeBnb)) throw new Error('invalid_order_payload')
+      || approval.simulated !== true || !/^\d+(?:\.\d+)?$/.test(approval.gasFeeBnb)
+      || (approval.sponsorship && (approval.sponsorship.provider !== 'megafuel' || approval.gasFeeBnb !== '0'
+        || !/^[1-9]\d{0,5}$/.test(approval.sponsorship.gas) || Number(approval.sponsorship.gas) < 21_000 || Number(approval.sponsorship.gas) > 200_000
+        || !Number.isSafeInteger(approval.sponsorship.nonce) || approval.sponsorship.nonce < 0))) throw new Error('invalid_order_payload')
   }
   return { ...plan, typedData, ...(plan.approval ? { approval: { ...plan.approval, to: getAddress(plan.approval.to) } } : {}) }
 }

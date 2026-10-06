@@ -1,6 +1,6 @@
 import { createPublicClient, erc20Abi, formatUnits, http, isAddress, parseUnits } from 'viem'
 import { bsc } from 'viem/chains'
-import { BSC_USDT } from '../lib/funding.ts'
+import { tradeCash, type PaymentToken } from '../lib/trade-assets.ts'
 import { validUsdMinimum } from '../lib/trade-error.ts'
 import type { TradingRoute } from '../lib/trading.ts'
 import { signPath } from './binance-rwa.ts'
@@ -45,9 +45,9 @@ function toRawAmount(amount: string, decimals: number) {
   if (!units(raw)) throw new RouteError('invalid_amount', 400)
   return raw
 }
-export async function getTradingInputAmount(symbol: Symbol, side: 'buy' | 'sell', amount: string) {
+export async function getTradingInputAmount(symbol: Symbol, side: 'buy' | 'sell', amount: string, paymentToken: PaymentToken = 'USDT') {
   if (!isSymbol(symbol) || !['buy', 'sell'].includes(side) || !parseQuantity(amount)) throw new RouteError('invalid_trade_request', 400)
-  return toRawAmount(amount, side === 'buy' ? BSC_USDT.decimals : await readTokenDecimals(symbol))
+  return toRawAmount(amount, side === 'buy' ? tradeCash(paymentToken).decimals : await readTokenDecimals(symbol))
 }
 async function credentialScope(credentials: Credentials) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([credentials.apiKey, credentials.secretKey])))
@@ -113,17 +113,18 @@ export async function tradingRequest(method: 'GET' | 'POST', endpoint: string, i
 }
 
 export function normalizeRoutes(result: Json, request: {
-  symbol: Symbol; side: 'buy' | 'sell'; amount: string; rawAmount: string; walletAddress: string; tokenDecimals: number; startedAt: number
+  symbol: Symbol; side: 'buy' | 'sell'; amount: string; rawAmount: string; walletAddress: string; tokenDecimals: number; startedAt: number; paymentToken?: PaymentToken
 }): TradingRoute {
   if (!Array.isArray(result.data)) throw new RouteError('invalid_provider_response')
   if (typeof result.timestamp !== 'number' || !Number.isSafeInteger(result.timestamp)
     || result.timestamp < request.startedAt - 30_000 || result.timestamp > Date.now() + 10_000
     || Date.now() - request.startedAt >= 30_000) throw new RouteError('stale_quote')
   const buying = request.side === 'buy'
-  const fromAddress = buying ? BSC_USDT.address : assets[request.symbol]
-  const toAddress = buying ? assets[request.symbol] : BSC_USDT.address
-  const fromDecimals = buying ? BSC_USDT.decimals : request.tokenDecimals
-  const toDecimals = buying ? request.tokenDecimals : BSC_USDT.decimals
+  const cash = tradeCash(request.paymentToken)
+  const fromAddress = buying ? cash.address : assets[request.symbol]
+  const toAddress = buying ? assets[request.symbol] : cash.address
+  const fromDecimals = buying ? cash.decimals : request.tokenDecimals
+  const toDecimals = buying ? request.tokenDecimals : cash.decimals
   const matchesToken = (value: unknown, address: string, decimals: number) => {
     const token = object(value)
     return typeof token?.tokenContractAddress === 'string' && token.tokenContractAddress.toLowerCase() === address.toLowerCase()
@@ -139,21 +140,22 @@ export function normalizeRoutes(result: Json, request: {
   const route = routes.reduce((best, candidate) => BigInt(candidate.toTokenAmount as string) > BigInt(best.toTokenAmount as string) ? candidate : best)
   return {
     source: 'binance-web3', chainId: 56, symbol: request.symbol, side: request.side, walletAddress: request.walletAddress,
-    inputAmount: request.amount, inputSymbol: buying ? 'USDT' : request.symbol,
-    outputAmount: formatUnits(BigInt(route.toTokenAmount as string), toDecimals), outputSymbol: buying ? request.symbol : 'USDT',
+    inputAmount: request.amount, inputSymbol: buying ? cash.symbol : request.symbol,
+    outputAmount: formatUnits(BigInt(route.toTokenAmount as string), toDecimals), outputSymbol: buying ? request.symbol : cash.symbol,
     vendor: route.vendorName as string, executionMode: 'RFQ', checkedAt: new Date().toISOString(),
     // This is a display refresh deadline, not a binding execution guarantee.
     refreshAt: new Date(request.startedAt + 30_000).toISOString(), executable: false,
   }
 }
 
-export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials, executableOnly = false, signal?: AbortSignal) {
+export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amount: string, walletAddress: string, credentials: Credentials, executableOnly = false, signal?: AbortSignal, paymentToken: PaymentToken = 'USDT') {
   if (!isSymbol(symbol) || !['buy', 'sell'].includes(side) || !parseQuantity(amount) || !isAddress(walletAddress)) throw new RouteError('invalid_trade_request', 400)
   if (!credentials.apiKey || !credentials.secretKey) throw new RouteError('not_configured')
   signal?.throwIfAborted()
   // Buy input units are already known. Do not serialize a live quote behind
   // independent output metadata/RPC discovery. Sells still await real decimals.
-  const buyAmount = side === 'buy' ? toRawAmount(amount, BSC_USDT.decimals) : null
+  const cash = tradeCash(paymentToken)
+  const buyAmount = side === 'buy' ? toRawAmount(amount, cash.decimals) : null
   const scope = await credentialScope(credentials)
   signal?.throwIfAborted()
   const supported = cachedMetadata(`${scope}:bsc-support`, async () => {
@@ -166,15 +168,18 @@ export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amou
     return true
   })
   const decimals = readTokenDecimals(symbol)
+  const cashDecimals = paymentToken === 'USDC' ? cachedMetadata('bsc-usdc-decimals', async () => {
+    if (await tradingClient.readContract({ address: cash.address, abi: erc20Abi, functionName: 'decimals' }) !== cash.decimals) throw new RouteError('invalid_provider_response')
+  }) : Promise.resolve()
   const [[, , tokenDecimals], quoted] = await Promise.all([
-    Promise.all([supported, rpc, decimals]),
+    Promise.all([supported, rpc, decimals, cashDecimals]),
     (async () => {
       const inputAmount = buyAmount ?? toRawAmount(amount, await decimals)
       const startedAt = Date.now()
       const result = await tradingRequest('GET', '/api/v1/dex/aggregator/quote', {
         binanceChainId: '56', amount: inputAmount,
-        fromTokenAddress: side === 'buy' ? BSC_USDT.address : assets[symbol],
-        toTokenAddress: side === 'buy' ? assets[symbol] : BSC_USDT.address,
+        fromTokenAddress: side === 'buy' ? cash.address : assets[symbol],
+        toTokenAddress: side === 'buy' ? assets[symbol] : cash.address,
         userWalletAddress: walletAddress,
       }, credentials, signal)
       return { rawAmount: inputAmount, startedAt, result }
@@ -185,14 +190,14 @@ export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amou
   // Only the audited CoW Order schema is executable. Other RFQ vendors remain
   // available to the existing read-only route checker.
   const selected = executableOnly && Array.isArray(result.data) ? { ...result, data: result.data.filter(row => object(row)?.vendorName === 'CowSwap') } : result
-  const context = { symbol, side, amount, rawAmount, walletAddress, tokenDecimals, startedAt }
+  const context = { symbol, side, amount, rawAmount, walletAddress, tokenDecimals, startedAt, paymentToken }
   const route = normalizeRoutes(selected, context)
   const providerRoute = (selected.data as Json[]).find(row => row.vendorName === route.vendor
     && row.binanceChainId === '56' && row.executionMode === 'RFQ' && row.fromTokenAmount === rawAmount && units(row.toTokenAmount)
-    && sameToken(row.fromToken, side === 'buy' ? BSC_USDT.address : assets[symbol], side === 'buy' ? BSC_USDT.decimals : tokenDecimals)
-    && sameToken(row.toToken, side === 'buy' ? assets[symbol] : BSC_USDT.address, side === 'buy' ? tokenDecimals : BSC_USDT.decimals)
+    && sameToken(row.fromToken, side === 'buy' ? cash.address : assets[symbol], side === 'buy' ? cash.decimals : tokenDecimals)
+    && sameToken(row.toToken, side === 'buy' ? assets[symbol] : cash.address, side === 'buy' ? tokenDecimals : cash.decimals)
     && typeof row.quoteId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(row.quoteId)
-    && formatUnits(BigInt(row.toTokenAmount), side === 'buy' ? tokenDecimals : BSC_USDT.decimals) === route.outputAmount)!
+    && formatUnits(BigInt(row.toTokenAmount), side === 'buy' ? tokenDecimals : cash.decimals) === route.outputAmount)!
   if (!providerRoute) throw new RouteError('invalid_provider_response')
   return { route, providerRoute, ...context }
 }

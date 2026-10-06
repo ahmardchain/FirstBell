@@ -1,6 +1,6 @@
 # FirstBell
 
-FirstBell is a landing page and research app for exploring tokenized assets on BNB Smart Chain. Home lists all 459 chain-56 tokens from the pinned Ondo token list, with names, symbols, contracts and public source links. This includes stocks, ETFs, portfolios and the issuer's other listed tokens. Market data and indicative quotes are available when their providers respond; order execution is not available yet.
+FirstBell explores tokenized assets on BNB Smart Chain and supports reviewed CoW RFQ stock orders through Binance Web3 when configured. Home lists all 459 chain-56 tokens from the pinned Ondo token list, including stocks, ETFs and other issuer assets. The direct Trade flow supports USDT/USDC and server-side MegaFuel approval sponsorship. See [coverage, production setup and the funded 0 BNB acceptance test](docs/gas-sponsorship.md). Provider configuration, policy funding and real settlement verification are required; mocked tests do not establish live purchase success.
 
 ## Hackathon report and integration requirement
 

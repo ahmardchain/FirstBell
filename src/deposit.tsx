@@ -63,15 +63,15 @@ export function DepositPage({ address, language, onBack, onCard, busy = false, e
 }) {
   const t = language === 'zh' ? {
     title: '充值', back: '返回', manual: '手动转入', exchange: '从交易所充值', card: '添加资金',
-    last: '上次使用', network: 'BNB 智能链', cardHint: 'Onramper', receive: '接收 USDT 或 BNB',
+    last: '上次使用', network: 'BNB 智能链', cardHint: 'Onramper', receive: '接收 USDT、USDC 或 BNB',
     address: '钱包地址', copy: '复制地址', copied: '已复制', copyError: '无法复制，请选中地址后复制。',
-    note: '请使用 BNB 智能链（BEP20）转入 USDT 或 BNB。', exchangeNote: '在交易所选择提现，使用 BNB 智能链（BEP20）和下方地址。',
+    note: '请使用 BNB 智能链（BEP20）转入 USDT、USDC 或 BNB。', exchangeNote: '在交易所选择提现，使用 BNB 智能链（BEP20）和下方地址。',
     qr: '钱包地址二维码', qrError: '二维码暂不可用，请复制下方地址。',
   } : {
     title: 'Deposit', back: 'Back', manual: 'Transfer Manually', exchange: 'Deposit from Exchange', card: 'Add Money',
-    last: 'Last Used', network: 'BNB Smart Chain', cardHint: 'Onramper', receive: 'Receive USDT or BNB',
+    last: 'Last Used', network: 'BNB Smart Chain', cardHint: 'Onramper', receive: 'Receive USDT, USDC or BNB',
     address: 'Wallet address', copy: 'Copy address', copied: 'Copied', copyError: 'Could not copy. Select the address to copy it.',
-    note: 'Send USDT or BNB using BNB Smart Chain (BEP20).', exchangeNote: 'Choose Withdraw in your exchange, then select BNB Smart Chain (BEP20) and use this address.',
+    note: 'Send USDT, USDC or BNB using BNB Smart Chain (BEP20).', exchangeNote: 'Choose Withdraw in your exchange, then select BNB Smart Chain (BEP20) and use this address.',
     qr: 'Wallet address QR code', qrError: 'QR unavailable. Copy the address below.',
   }
   const [method, setMethod] = React.useState<'methods' | 'manual' | 'exchange'>('methods')

@@ -102,3 +102,35 @@ test('an expired order cannot open wallet confirmation', async () => {
   await assert.rejects(executeReviewedTrade(reviewed, request, io), /invalid_order_payload/)
   assert.deepEqual(io.calls, [])
 })
+
+test('direct Confirm continues from a successful approval into the exact reviewed order', async () => {
+  const reviewed = plan(true)
+  const io = ports({ continueAfterApproval: true, submit: async attempt => {
+    assert.equal(attempt.plan.typedDataHash, reviewed.typedDataHash)
+    assert.equal(attempt.plan.requestId, reviewed.requestId)
+    assert.equal(attempt.plan.orderQuoteId, reviewed.orderQuoteId)
+    return order
+  } })
+  assert.deepEqual(await executeReviewedTrade(reviewed, request, io), { kind: 'order', order })
+  assert.deepEqual(io.calls.filter(call => call !== 'wallet'), ['chain', 'approve', 'approval-pending', 'receipt', 'sign', 'signed'])
+})
+
+test('a quote expiring while permission confirms cannot be signed automatically', async t => {
+  let clock = Date.now()
+  t.mock.method(Date, 'now', () => clock)
+  const reviewed = plan(true)
+  const io = ports({ continueAfterApproval: true, waitApproval: async () => { clock += 601_000; return { status: 'success' } } })
+  await assert.rejects(executeReviewedTrade(reviewed, request, io), /stale_quote/)
+  assert.equal(io.calls.includes('sign'), false)
+  assert.equal(io.calls.includes('submit'), false)
+})
+
+test('a changed permission-refresh order requires a fresh review before signing', async () => {
+  const reviewed = plan(true)
+  reviewed.approval.reset = true; reviewed.approval.amount = '0'
+  reviewed.approval.data = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [COW_RELAYER, 0n] })
+  const changed = plan(true); changed.requestId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+  const io = ports({ continueAfterApproval: true, nextApproval: async () => changed })
+  await assert.rejects(executeReviewedTrade(reviewed, request, io), /invalid_order_payload/)
+  assert.equal(io.calls.includes('sign'), false)
+})

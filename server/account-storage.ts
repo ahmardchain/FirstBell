@@ -23,7 +23,7 @@ return 1
 const quoteRateScript = `
 local now = tonumber(ARGV[1])
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - 60000)
-if redis.call('ZCARD', KEYS[1]) >= 6 then return 0 end
+if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then return 0 end
 redis.call('ZADD', KEYS[1], now, ARGV[2])
 redis.call('PEXPIRE', KEYS[1], 61000)
 return 1
@@ -83,9 +83,11 @@ export function createAccountNamespace(env: Omit<ApiEnv, 'ACCOUNTS'> & StorageEn
       const key = `firstbell:accounts:v1:${name}`
       try {
         credentials(env)
-        if (new URL(request.url).pathname === '/quote-rate') {
+        const ratePath = new URL(request.url).pathname
+        if (['/quote-rate', '/trade-write-rate', '/trade-status-rate'].includes(ratePath)) {
           if (request.method !== 'POST') return fail('Method not allowed', 405)
-          const allowed = await command(['EVAL', quoteRateScript, 1, `firstbell:quote-rate:v1:${name}`, Date.now(), crypto.randomUUID()])
+          const limit = ratePath === '/quote-rate' ? 6 : ratePath === '/trade-write-rate' ? 12 : 60
+          const allowed = await command(['EVAL', quoteRateScript, 1, `firstbell:${ratePath.slice(1)}:v1:${name}`, Date.now(), crypto.randomUUID(), limit])
           if (allowed !== 0 && allowed !== 1) throw new AccountStorageError('account_storage_unavailable')
           return allowed === 1 ? Response.json({ allowed: true }, { headers: { 'Cache-Control': 'no-store' } })
             : fail('Quote limit reached. Try again in a minute.', 429)

@@ -33,7 +33,7 @@ function redisFixture(initial = {}) {
     const key = command[3]
     if (command[1].includes('ZREMRANGEBYSCORE')) {
       const timestamps = (records.get(key) ?? []).filter(value => value > command[4] - 60_000)
-      const allowed = timestamps.length < 6
+      const allowed = timestamps.length < (command[6] ?? 6)
       records.set(key, allowed ? [...timestamps, command[4]] : timestamps)
       return Response.json({ result: allowed ? 1 : 0 })
     }
@@ -82,6 +82,32 @@ test('quote limit uses one atomic call, survives new instances and never loads o
   const before = db.commands.length
   assert.equal((await stub(fast()).fetch(internal(user, 'GET', undefined, '/quote-rate'))).status, 405)
   assert.equal(db.commands.length, before)
+})
+
+test('trade writes and settlement polls have separate atomic limits from quotes', async () => {
+  const db = redisFixture(), store = stub(namespace(db))
+  for (let i = 0; i < 6; i++) assert.equal((await store.fetch(internal(user, 'POST', undefined, '/quote-rate'))).status, 200)
+  for (let i = 0; i < 12; i++) assert.equal((await store.fetch(internal(user, 'POST', undefined, '/trade-write-rate'))).status, 200)
+  assert.equal((await store.fetch(internal(user, 'POST', undefined, '/trade-write-rate'))).status, 429)
+  for (let i = 0; i < 60; i++) assert.equal((await store.fetch(internal(user, 'POST', undefined, '/trade-status-rate'))).status, 200)
+  assert.equal((await store.fetch(internal(user, 'POST', undefined, '/trade-status-rate'))).status, 429)
+  assert.equal((await store.fetch(internal(user, 'POST', undefined, '/quote-rate'))).status, 429)
+})
+
+test('trade dispatch records survive instances, bind the exact signature/order and preserve account data', async () => {
+  const db = redisFixture()
+  const attempt = { requestId: '11111111-1111-1111-1111-111111111111', typedDataHash: `0x${'aa'.repeat(32)}`, signatureHash: `0x${'bb'.repeat(32)}` }
+  const call = (action, extra = {}, id = user) => stub(namespace(db), id).fetch(internal(id, 'POST', { ...attempt, action, ...extra }, '/trade-attempt'))
+  assert.deepEqual(await (await call('get')).json(), { started: false, orderId: null })
+  assert.deepEqual(await (await call('start')).json(), { started: true, orderId: null })
+  assert.equal((await call('start', { signatureHash: `0x${'cc'.repeat(32)}` })).status, 409)
+  assert.deepEqual(await (await call('complete', { orderId: 'fixture-rfq-order' })).json(), { started: true, orderId: 'fixture-rfq-order' })
+  assert.deepEqual(await (await call('get')).json(), { started: true, orderId: 'fixture-rfq-order' })
+  assert.equal((await call('complete', { orderId: 'different-order' })).status, 409)
+  assert.deepEqual(await (await call('get', {}, otherUser)).json(), { started: false, orderId: null })
+  assert.equal((await stub(namespace(db)).fetch(internal(user, 'PUT', { symbol: 'NVDAon', saved: true }))).status, 200)
+  assert.deepEqual((await (await stub(namespace(db)).fetch(internal())).json()).account.saved, ['NVDAon'])
+  assert.equal((await call('get')).status, 200)
 })
 
 test('storage errors fail closed, do not leak provider credentials, and do not retry ambiguous writes', async () => {

@@ -154,7 +154,8 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
   const positionValue = holdings.every(token => prices[token.symbol] != null)
     ? holdings.reduce((sum, token) => sum + Number(token.quantity) * prices[token.symbol]!, 0) : null
   const placeholder = account.error ? t.error : !account.address ? t.preparing : t.loading
-  const balance = account.balances && Number.isFinite(Number(account.balances.usdt)) ? money(Number(account.balances.usdt)) : placeholder
+  const cash = account.balances ? Number(account.balances.usdt) + Number(account.balances.usdc ?? '0') : null
+  const balance = cash !== null && Number.isFinite(cash) ? money(cash) : placeholder
   const value = account.balances && positionValue != null && Number.isFinite(positionValue) ? money(positionValue)
     : account.balances && holdings.some(token => prices[token.symbol] === null) ? t.unavailable : placeholder
   const saveName = () => {
@@ -179,7 +180,7 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
           {editing ? <input className="portfolio-name-input" aria-label={t.name} autoFocus value={name} maxLength={40} onChange={event => setName(event.target.value)} onBlur={saveName} onKeyDown={event => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') { setEditing(false); setName(defaultName) } }} /> : <span className="portfolio-name">{name}</span>}
           <button className="portfolio-name-edit" type="button" aria-label={t.edit} onClick={() => setEditing(true)}><Pencil size={17} strokeWidth={2} /></button>
         </div>
-        <div className="portfolio-balance-row"><h1 title="USDT balance, displayed at US$1 per USDT" aria-live="polite">{hidden ? '••••••' : balance}</h1><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(current => !current)}>{hidden ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
+        <div className="portfolio-balance-row"><h1 title="USDT and USDC balances, displayed at a nominal US$1 per token" aria-live="polite">{hidden ? '••••••' : balance}</h1><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(current => !current)}>{hidden ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
         <div className="portfolio-position-value"><span>{t.positions}</span><strong aria-live="polite">{hidden ? '••••••' : value}</strong></div>
         <div className="portfolio-action-row"><button type="button" disabled={!account.address || !account.walletReady} onClick={() => navigateDeposit(true)}>{t.deposit}</button><button type="button" disabled>{t.withdraw}</button></div>
         <div className="portfolio-tabs" role="tablist" aria-label={t.title}>{(['positions', 'activity'] as const).map(id => <button type="button" role="tab" id={`portfolio-tab-${id}`} aria-controls="portfolio-results" key={id} aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => { setSection(id); setSearch('') }}>{t[id]}</button>)}</div>

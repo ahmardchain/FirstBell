@@ -35,6 +35,8 @@ Use **Project → Settings → Environment Variables**. Configure Production, an
 | --- | --- |
 | `BINANCE_WEB3_API_KEY` | Existing Binance Web3 Developer Portal API Key; required for Binance market feeds and route checks |
 | `BINANCE_WEB3_SECRET_KEY` | Its matching Secret Key; server signing only |
+| `MEGAFUEL_API_KEY` | Server-only NodeReal key owning a funded private BSC MegaFuel policy; see [gas sponsorship](gas-sponsorship.md) |
+| `MEGAFUEL_POLICY_UUID` | Matching private policy UUID; never a `VITE_` variable |
 | `PRIVY_VERIFICATION_KEY` | Optional Privy dashboard **verification public key**, in PEM format. Valid keys verify locally; missing, stale or malformed keys use Privy's app-specific published keys. This is not the Privy App Secret. |
 | `UPSTASH_REDIS_REST_URL` | REST endpoint of your persistent Upstash Redis database; required for account features |
 | `UPSTASH_REDIS_REST_TOKEN` | Matching read/write REST token; server only |

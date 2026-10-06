@@ -16,6 +16,8 @@ export interface ApiEnv {
   ONDO_API_KEY?: string
   BINANCE_WEB3_API_KEY?: string
   BINANCE_WEB3_SECRET_KEY?: string
+  MEGAFUEL_API_KEY?: string
+  MEGAFUEL_POLICY_UUID?: string
   MOONPAY_PUBLISHABLE_KEY?: string
   MOONPAY_SECRET_KEY?: string
   MOONPAY_ENVIRONMENT?: string

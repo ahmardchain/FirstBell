@@ -30,6 +30,8 @@ export function createVercelHandler(environment: Record<string, string | undefin
       PRIVY_APP_SECRET: environment.PRIVY_APP_SECRET,
       BINANCE_WEB3_API_KEY: environment.BINANCE_WEB3_API_KEY,
       BINANCE_WEB3_SECRET_KEY: environment.BINANCE_WEB3_SECRET_KEY,
+      MEGAFUEL_API_KEY: environment.MEGAFUEL_API_KEY,
+      MEGAFUEL_POLICY_UUID: environment.MEGAFUEL_POLICY_UUID,
       ONDO_API_KEY: environment.ONDO_API_KEY,
       MOONPAY_PUBLISHABLE_KEY: environment.MOONPAY_PUBLISHABLE_KEY,
       MOONPAY_SECRET_KEY: environment.MOONPAY_SECRET_KEY,
