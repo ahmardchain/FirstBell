@@ -6,7 +6,7 @@ export function createQuoteScheduler() {
   const run = <T,>(action: () => Promise<T>): Promise<T> => { clear(); return action() }
   const schedule = (action: () => Promise<unknown>) => {
     clear()
-    timer = setTimeout(() => { timer = undefined; void action() }, 750)
+    timer = setTimeout(() => { timer = undefined; void action() }, 350)
   }
   return { clear, run, schedule }
 }

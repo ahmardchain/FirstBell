@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from 'jose'
 import { decodeEventLog, encodeFunctionData, erc20Abi, formatUnits, hashTypedData, isAddress, parseUnits, verifyTypedData, type Address, type Hex } from 'viem'
 import { BSC_USDT } from '../lib/funding.ts'
 import { COW_RELAYER, COW_SETTLEMENT, validateOrderTypedData, type AgentOrder, type AgentTradePlan } from '../lib/agent-trading.ts'
-import { getQuoteContext, RouteError, tradingClient, tradingRequest, type Credentials } from './binance-trading.ts'
+import { getQuoteContext, getTradingInputAmount, RouteError, tradingClient, tradingRequest, type Credentials } from './binance-trading.ts'
 import { assets, isSymbol, parseQuantity } from './market.ts'
 import { verifyWalletIdentity, WalletVerificationError } from './wallet-verification.ts'
 import type { ApiEnv } from './env.ts'
@@ -32,15 +32,19 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
   if (!isSymbol(symbol) || !['buy', 'sell'].includes(side) || !parseQuantity(amount) || !isAddress(walletAddress)) throw new RouteError('invalid_trade_request', 400)
   const cancel = new AbortController()
   const bounded = signal ? AbortSignal.any([signal, cancel.signal]) : cancel.signal
+  bounded.throwIfAborted()
   const inputToken = side === 'buy' ? BSC_USDT.address : assets[symbol]
-  // Real wallet reads start with the quote. An unfunded buy fails as soon as
-  // balanceOf returns instead of waiting through quote + order construction.
+  // Amount units and real wallet reads do not depend on an RFQ response.
+  // Sell decimals share the verified metadata read with quote preparation.
+  const inputAmountPromise = getTradingInputAmount(symbol, side, amount)
   const contextPromise = getQuoteContext(symbol, side, amount, walletAddress, credentials, true, bounded).then(context => {
     if (context.providerRoute.approveTarget && !same(context.providerRoute.approveTarget, COW_RELAYER)) throw new RouteError('invalid_order_payload')
     return context
   })
-  const balancePromise = tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'balanceOf', args: [walletAddress as Address] }).then(balance => {
-    if (side === 'buy' && balance < parseUnits(amount, BSC_USDT.decimals)) throw new RouteError('insufficient_balance', 409)
+  const balancePromise = Promise.all([inputAmountPromise,
+    tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'balanceOf', args: [walletAddress as Address] }),
+  ]).then(([inputAmount, balance]) => {
+    if (balance < BigInt(inputAmount)) throw new RouteError('insufficient_balance', 409)
     return balance
   })
   const allowancePromise = tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'allowance', args: [walletAddress as Address, COW_RELAYER] })
@@ -63,13 +67,11 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
         typedData: validateOrderTypedData(rfq.typedDataToSign, { route: context.route, rawAmount: context.rawAmount, inputDecimals, outputDecimals }) }
     } catch (error) { throw new RouteError(error instanceof Error ? error.message : 'invalid_order_payload') }
   })
-  const approvalPromise = Promise.all([contextPromise, balancePromise, allowancePromise]).then(async ([context, balance, allowance]): Promise<AgentTradePlan['approval']> => {
+  const approvalPromise = Promise.all([inputAmountPromise, balancePromise, allowancePromise]).then(async ([rawAmount, , allowance]): Promise<AgentTradePlan['approval']> => {
     bounded.throwIfAborted()
-    const rawAmount = context.rawAmount
-    if (balance < BigInt(rawAmount)) throw new RouteError('insufficient_balance', 409)
     if (allowance >= BigInt(rawAmount)) return null
-    // The fixed approval simulation and gas reads can overlap the unsigned RFQ
-    // build. Nothing is sent to the wallet until BOTH results are validated.
+    // Simulate the exact spend to the pinned relayer while the quote is still
+    // loading. No wallet prompt is possible until the quote and build validate.
     const reset = allowance > 0n
     const approvalAmount = reset ? 0n : BigInt(rawAmount)
     const calldata = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [COW_RELAYER, approvalAmount] })
@@ -85,7 +87,8 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
       reset, gasFeeBnb: formatUnits(gasBudget, 18), simulated: true }
   })
   try {
-    const [context, built, approval] = await Promise.all([contextPromise, builtPromise, approvalPromise])
+    const [context, built, approval, inputAmount] = await Promise.all([contextPromise, builtPromise, approvalPromise, inputAmountPromise])
+    if (context.rawAmount !== inputAmount) throw new RouteError('invalid_order_payload')
     const { inputDecimals, outputDecimals, orderQuoteId, typedData } = built
     bounded.throwIfAborted()
     return { route: context.route, rawAmount: context.rawAmount, inputDecimals, outputDecimals, minimumReceive: typedData.message.buyAmount as string,

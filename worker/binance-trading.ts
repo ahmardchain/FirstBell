@@ -32,6 +32,23 @@ function cachedMetadata<T>(key: string, read: () => Promise<T>): Promise<T> {
   return entry.promise as Promise<T>
 }
 export function clearTradingMetadataCache() { metadata.clear() }
+function readTokenDecimals(symbol: Symbol) {
+  return cachedMetadata(`bsc-decimals:${assets[symbol].toLowerCase()}`, async () => {
+    const value = await tradingClient.readContract({ address: assets[symbol], abi: erc20Abi, functionName: 'decimals' })
+    if (!Number.isInteger(value) || value < 0 || value > 36) throw new RouteError('invalid_provider_response')
+    return value
+  })
+}
+function toRawAmount(amount: string, decimals: number) {
+  if ((amount.split('.')[1]?.length ?? 0) > decimals) throw new RouteError('invalid_amount', 400)
+  const raw = parseUnits(amount, decimals).toString()
+  if (!units(raw)) throw new RouteError('invalid_amount', 400)
+  return raw
+}
+export async function getTradingInputAmount(symbol: Symbol, side: 'buy' | 'sell', amount: string) {
+  if (!isSymbol(symbol) || !['buy', 'sell'].includes(side) || !parseQuantity(amount)) throw new RouteError('invalid_trade_request', 400)
+  return toRawAmount(amount, side === 'buy' ? BSC_USDT.decimals : await readTokenDecimals(symbol))
+}
 async function credentialScope(credentials: Credentials) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([credentials.apiKey, credentials.secretKey])))
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
@@ -134,15 +151,9 @@ export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amou
   if (!isSymbol(symbol) || !['buy', 'sell'].includes(side) || !parseQuantity(amount) || !isAddress(walletAddress)) throw new RouteError('invalid_trade_request', 400)
   if (!credentials.apiKey || !credentials.secretKey) throw new RouteError('not_configured')
   signal?.throwIfAborted()
-  const toRaw = (decimals: number) => {
-    if ((amount.split('.')[1]?.length ?? 0) > decimals) throw new RouteError('invalid_amount', 400)
-    const raw = parseUnits(amount, decimals).toString()
-    if (!units(raw)) throw new RouteError('invalid_amount', 400)
-    return raw
-  }
   // Buy input units are already known. Do not serialize a live quote behind
   // independent output metadata/RPC discovery. Sells still await real decimals.
-  const buyAmount = side === 'buy' ? toRaw(BSC_USDT.decimals) : null
+  const buyAmount = side === 'buy' ? toRawAmount(amount, BSC_USDT.decimals) : null
   const scope = await credentialScope(credentials)
   signal?.throwIfAborted()
   const supported = cachedMetadata(`${scope}:bsc-support`, async () => {
@@ -154,23 +165,19 @@ export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amou
     if (await tradingClient.getChainId() !== 56) throw new RouteError('chain_unavailable')
     return true
   })
-  const decimals = cachedMetadata(`bsc-decimals:${assets[symbol].toLowerCase()}`, async () => {
-    const value = await tradingClient.readContract({ address: assets[symbol], abi: erc20Abi, functionName: 'decimals' })
-    if (!Number.isInteger(value) || value < 0 || value > 36) throw new RouteError('invalid_provider_response')
-    return value
-  })
+  const decimals = readTokenDecimals(symbol)
   const [[, , tokenDecimals], quoted] = await Promise.all([
     Promise.all([supported, rpc, decimals]),
     (async () => {
-      const rawAmount = buyAmount ?? toRaw(await decimals)
+      const inputAmount = buyAmount ?? toRawAmount(amount, await decimals)
       const startedAt = Date.now()
       const result = await tradingRequest('GET', '/api/v1/dex/aggregator/quote', {
-        binanceChainId: '56', amount: rawAmount,
+        binanceChainId: '56', amount: inputAmount,
         fromTokenAddress: side === 'buy' ? BSC_USDT.address : assets[symbol],
         toTokenAddress: side === 'buy' ? assets[symbol] : BSC_USDT.address,
         userWalletAddress: walletAddress,
       }, credentials, signal)
-      return { rawAmount, startedAt, result }
+      return { rawAmount: inputAmount, startedAt, result }
     })(),
   ])
   const { rawAmount, startedAt, result } = quoted

@@ -18,9 +18,9 @@ test('typing several amounts prepares only the latest amount after the pause', c
   const scheduler = createQuoteScheduler()
   const requests = []
   scheduler.schedule(async () => { requests.push('2') })
-  context.mock.timers.tick(500)
+  context.mock.timers.tick(200)
   scheduler.schedule(async () => { requests.push('25') })
-  context.mock.timers.tick(749)
+  context.mock.timers.tick(349)
   assert.deepEqual(requests, [])
   context.mock.timers.tick(1)
   assert.deepEqual(requests, ['25'])

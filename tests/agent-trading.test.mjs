@@ -20,21 +20,22 @@ const credentials = { apiKey: 'fixture-key', secretKey: 'fixture-secret' }
 const amount = '5000000000000000000', output = '25000000000000000', txHash = `0x${'ab'.repeat(32)}`
 const now = () => Math.floor(Date.now() / 1000)
 const typed = () => ({ domain: { name: 'Gnosis Protocol', version: 'v2', chainId: 56, verifyingContract: COW_SETTLEMENT }, types: { Order: COW_ORDER_FIELDS.map(field => ({ ...field })) }, primaryType: 'Order', message: {
-  sellToken: BSC_USDT.address, buyToken: tokenAddresses.NVDAon, receiver: wallet, sellAmount: amount, buyAmount: output, validTo: now() + 600,
+  sellToken: tradeSide === 'buy' ? BSC_USDT.address : tokenAddresses.NVDAon, buyToken: tradeSide === 'buy' ? tokenAddresses.NVDAon : BSC_USDT.address, receiver: wallet, sellAmount: amount, buyAmount: output, validTo: now() + 600,
   appData: `0x${'00'.repeat(32)}`, feeAmount: '0', kind: 'sell', partiallyFillable: false, sellTokenBalance: 'erc20', buyTokenBalance: 'erc20',
 } })
 const envelope = data => ({ code: 0, success: true, timestamp: Date.now(), data })
 const token = address => ({ tokenContractAddress: address, decimal: '18' })
 const route = () => ({ quoteId: 'route-id', vendorName: 'CowSwap', binanceChainId: '56', executionMode: 'RFQ', fromTokenAmount: amount, toTokenAmount: output,
-  fromToken: token(BSC_USDT.address), toToken: token(tokenAddresses.NVDAon), approveTarget: COW_RELAYER })
-let calls, allowance, balance, orderState, confirmations, typedOverride, simulationState, receiptMismatch
+  fromToken: token(tradeSide === 'buy' ? BSC_USDT.address : tokenAddresses.NVDAon), toToken: token(tradeSide === 'buy' ? tokenAddresses.NVDAon : BSC_USDT.address), approveTarget: COW_RELAYER })
+let calls, allowance, balance, orderState, confirmations, typedOverride, simulationState, receiptMismatch, tradeSide
 const log = (address, from, to, value, index) => ({ address, data: encodeAbiParameters([{ type: 'uint256' }], [value]), topics: encodeEventTopics({ abi: erc20Abi, eventName: 'Transfer', args: { from, to } }),
   blockHash: `0x${'bc'.repeat(32)}`, blockNumber: '0x64', transactionHash: txHash, transactionIndex: '0x0', logIndex: `0x${index}`, removed: false })
 const receipt = () => ({ transactionHash: txHash, transactionIndex: '0x0', blockHash: `0x${'bc'.repeat(32)}`, blockNumber: '0x64', from: wallet, to: COW_SETTLEMENT,
   cumulativeGasUsed: '0x5208', gasUsed: '0x5208', effectiveGasPrice: '0x1', contractAddress: null, logsBloom: `0x${'00'.repeat(256)}`, status: '0x1', type: '0x0', logs: [
     log(BSC_USDT.address, wallet, COW_RELAYER, BigInt(amount), 0), log(tokenAddresses.NVDAon, COW_SETTLEMENT, wallet, receiptMismatch ? 1n : BigInt(output), 1),
   ] })
-function mock() {
+function mock(side = 'buy') {
+  tradeSide = side
   calls = []; allowance = BigInt(amount); balance = BigInt(amount); orderState = 'PENDING_VENDOR'; confirmations = 2; typedOverride = null; simulationState = 'SUCCESS'; receiptMismatch = false
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url)
@@ -138,6 +139,40 @@ test('approval simulation starts while the unsigned RFQ build is still pending',
     assert.equal(prepared.orderQuoteId, 'vendor-order-id')
     assert.equal(calls.some(call => call.path.endsWith('/order/submit')), false)
   } finally { release() }
+})
+
+for (const side of ['buy', 'sell']) test(`${side} approval checks finish while the provider quote is still pending`, { timeout: 1500 }, async () => {
+  mock(side); allowance = 0n
+  const fixtureFetch = globalThis.fetch
+  let release, simulated, completed = false
+  const quoteGate = new Promise(resolve => { release = resolve })
+  const simulationGate = new Promise(resolve => { simulated = resolve })
+  globalThis.fetch = async (url, options) => {
+    const path = new URL(url).pathname
+    if (path.endsWith('/quote')) await quoteGate
+    const response = await fixtureFetch(url, options)
+    if (path.endsWith('/simulate')) simulated()
+    return response
+  }
+  const pending = prepareAgentTrade('NVDAon', side, '5', wallet, credentials).then(plan => { completed = true; return plan })
+  try {
+    await simulationGate
+    assert.equal(completed, false, 'a permission check alone cannot authorize a trade')
+    assert.equal(calls.some(call => call.path.endsWith('/swap')), false, 'order build still awaits a fresh quote')
+    release()
+    const prepared = await pending
+    assert.equal(prepared.approval.to, side === 'buy' ? BSC_USDT.address : tokenAddresses.NVDAon)
+    assert.equal(prepared.approval.amount, amount)
+    assert.equal(validateAgentTradePlan({ ...prepared, planToken: 'fixture-ticket' }, { symbol: 'NVDAon', side, amount: '5', walletAddress: wallet }).rawAmount, amount)
+    assert.equal(calls.some(call => call.path.endsWith('/order/submit')), false)
+  } finally { release() }
+})
+
+test('completed early approval checks cannot bypass an invalid order build', async () => {
+  mock(); allowance = 0n
+  typedOverride = { ...typed(), domain: { ...typed().domain, chainId: 97 } }
+  await assert.rejects(() => prepareAgentTrade('NVDAon', 'buy', '5', wallet, credentials), /unsupported_order_schema|invalid_order_payload/)
+  assert.equal(calls.some(call => call.path.endsWith('/order/submit')), false)
 })
 
 test('an unfunded wallet stops preparation without waiting for a stalled quote', { timeout: 1500 }, async () => {
