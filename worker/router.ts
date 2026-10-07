@@ -55,7 +55,7 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
   const pathname = new URL(request.url).pathname
   if (!pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
   if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok',
-    agentTrading: { configured: Boolean(env.BINANCE_WEB3_API_KEY?.trim() && env.BINANCE_WEB3_SECRET_KEY?.trim()), chainId: 56, executionVendor: 'CowSwap', confirmationRequired: true },
+    agentTrading: { configured: Boolean(env.BINANCE_WEB3_API_KEY?.trim() && env.BINANCE_WEB3_SECRET_KEY?.trim()), chainId: 56, executionVendor: 'CowSwap', quoteSources: ['binance-web3', 'cow-protocol'], confirmationRequired: true },
     walletVerification: { serverLookupConfigured: Boolean(env.PRIVY_APP_SECRET?.trim()) },
     cardFunding: env.CARD_FUNDING_PROVIDER === 'moonpay'
       ? { provider: 'moonpay', configured: Boolean(env.MOONPAY_PUBLISHABLE_KEY?.trim() && env.MOONPAY_SECRET_KEY?.trim()) }

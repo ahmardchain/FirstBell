@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
 import { privateKeyToAccount } from 'viem/accounts'
-import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, encodeFunctionData, encodeFunctionResult, erc20Abi, keccak256, multicall3Abi, parseTransaction } from 'viem'
+import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, encodeFunctionData, encodeFunctionResult, erc20Abi, keccak256, multicall3Abi, parseTransaction, toHex } from 'viem'
 import { COW_ORDER_FIELDS, COW_RELAYER, COW_SETTLEMENT, validateAgentTradePlan } from '../lib/agent-trading.ts'
 import { BSC_USDT } from '../lib/funding.ts'
 import { tokenAddresses } from '../lib/asset-catalog.ts'
 import { executeReviewedTrade } from '../lib/trade-execution.ts'
 import { prepareAgentTrade, prepareTokenApproval, submitAgentTrade, checkAgentOrder, sealTradeTicket } from '../worker/agent-trading.ts'
 import { clearTradingMetadataCache, tradingClient } from '../worker/binance-trading.ts'
+import { cowOrderUid } from '../worker/cow-trading.ts'
 import { relaySponsoredApproval, validateSignedApproval } from '../worker/megafuel.ts'
 import { readWalletBalances } from '../src/wallet-balances.ts'
 import { handleApiRequest } from '../worker/router.ts'
@@ -143,6 +144,35 @@ test('fixture: first USDT purchase with exactly 0 BNB approves, fills and appear
   assert.equal(s.calls.filter(c => c.method === 'eth_sendRawTransaction').length, 1)
   assert.equal(s.calls.filter(c => c.method.endsWith('/quote')).length, 1)
   assert.equal(s.calls.some(c => c.method === 'eth_gasPrice'), false)
+})
+
+test('fixture: a direct CoW fallback retains the sponsored 0 BNB purchase and verified portfolio flow', async () => {
+  const s = fixture(), original = globalThis.fetch
+  let plan, submissions = 0
+  globalThis.fetch = async (url, init) => {
+    const u = new URL(url)
+    if (u.hostname === 'web3.binance.com' && u.pathname.endsWith('/quote')) return Response.json(envelope([]))
+    if (u.hostname !== 'api.cow.fi') return original(url, init)
+    if (u.pathname.endsWith('/quote')) return Response.json({ id: 123, from: owner, expiration: new Date(Date.now() + 120_000).toISOString(), quote: {
+      sellToken: BSC_USDT.address, buyToken: stock, receiver: owner, sellAmount: rawAmount.toString(), buyAmount: output.toString(),
+      validTo: Math.floor(Date.now() / 1000) + 120, appData: keccak256(toHex('{}')), feeAmount: '0', kind: 'sell', partiallyFillable: false,
+      sellTokenBalance: 'erc20', buyTokenBalance: 'erc20', signingScheme: 'eip712' } })
+    if (u.pathname.endsWith('/orders')) { submissions++; assert.ok(s.allowance >= rawAmount); return Response.json(cowOrderUid(plan)) }
+    if (u.pathname.includes('/orders/')) {
+      s.usdt = 0n; s.stock = output; s.allowance = 0n
+      return Response.json({ ...plan.typedData.message, uid: cowOrderUid(plan), owner, status: 'fulfilled' })
+    }
+    assert.equal(u.pathname, '/bnb/api/v2/trades')
+    return Response.json([{ orderUid: cowOrderUid(plan), owner, sellToken: BSC_USDT.address, buyToken: stock, txHash: settlementHash }])
+  }
+  plan = await s.prepare()
+  assert.equal(plan.route.source, 'cow-protocol'); assert.equal(plan.approval.sponsorship.provider, 'megafuel')
+  const result = await executeReviewedTrade(plan, request, execution(s))
+  const filled = await checkAgentOrder(result.order.orderId, plan, credentials)
+  assert.equal(filled.status, 'FILLED'); assert.equal(filled.txHash, settlementHash); assert.equal(submissions, 1)
+  const balances = await readWalletBalances(owner, [{ symbol: 'NVDAon', address: stock }])
+  assert.equal(balances.bnb, '0'); assert.equal(balances.usdt, '0'); assert.equal(balances.tokens[0].quantity, '0.025')
+  assert.equal(s.calls.filter(c => c.method === 'eth_sendRawTransaction').length, 1)
 })
 
 test('fixture: repeat purchase with allowance makes no approval or sponsor calls', async () => {

@@ -16,6 +16,14 @@ Deposits, new trades and Portfolio cash use **BSC USDT** (`0x55d398326f99059ff77
 
 **A passing mainnet 0 BNB purchase has not been recorded.** Regression tests use mocked providers/RPC and a public, unfunded fixture signer. Policy funding, live route availability and Privy signing on a real account must still be verified. There is no claim of a measured under-one-minute mainnet purchase.
 
+## Quote recovery
+
+Binance may return only an RFQ vendor whose signing schema FirstBell does not execute, or reject an amount under its own minimum. Those cases now request a fresh direct CoW quote for the identical BSC USDT/stock contracts, wallet, side and amount. Quotes never increase the spend or change the cash token. Provider access, compliance, market-closed and invalid payload errors do not trigger this fallback. CoW can also return no liquidity, fees exceeding the amount or a timeout; an available quote is not a promised fill.
+
+The direct path uses only `https://api.cow.fi/bnb`: `POST /api/v1/quote`, reviewed EIP-712 signing, `POST /api/v1/orders`, `GET /api/v1/orders/{uid}` and `GET /api/v2/trades?orderUid=...`. It uses the same pinned CoW contracts and MegaFuel approval flow. The order UID binds its typed-data digest, owner and expiry. Recovery checks or resubmits that same signed order; a provider acknowledgement never means Purchased. A matching trade and independent successful BSC receipt with the expected token transfers and two confirmations are required. Application data is fixed to an empty JSON object and cannot carry user-selected hooks.
+
+Firsthand public-fixture API checks on 2026-10-07 returned quotes for 1 USDT → TSLAon and 10 USDT → NVDAon. These read-only offers used an unfunded fixture address; no user order or payment was submitted. They do not establish a universal $1 minimum, issuer eligibility, policy funding or a completed purchase.
+
 ## Activate the private policy
 
 1. Follow [NodeReal Sponsor Guidelines](https://docs.nodereal.io/docs/megafuel-sponsor-guidelines). Create a **private/type 1** BSC mainnet policy owned by your NodeReal API key. Set an active time window and bounded total/daily/per-wallet spending and transaction limits. New policies have no funds; fund it through the provider's documented dashboard process and verify the credited balance there.

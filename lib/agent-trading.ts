@@ -63,7 +63,7 @@ export function validateAgentTradePlan(value: unknown, request: { symbol: string
   const plan = value as AgentTradePlan
   const route = plan?.route
   const cash = tradeCash(request.paymentToken)
-  if (!route || route.source !== 'binance-web3' || route.chainId !== 56 || route.executionMode !== 'RFQ' || route.executable !== false
+  if (!route || !['binance-web3', 'cow-protocol'].includes(route.source) || route.chainId !== 56 || route.executionMode !== 'RFQ' || route.executable !== false
     || route.symbol !== request.symbol || route.side !== request.side || route.inputAmount !== request.amount || !sameAddress(route.walletAddress, request.walletAddress)
     || route.inputSymbol !== (request.side === 'buy' ? cash.symbol : request.symbol) || route.outputSymbol !== (request.side === 'buy' ? request.symbol : cash.symbol)
     || !integer(plan.rawAmount) || !Number.isInteger(plan.inputDecimals) || plan.inputDecimals < 0 || plan.inputDecimals > 36
@@ -72,6 +72,7 @@ export function validateAgentTradePlan(value: unknown, request: { symbol: string
     || plan.rawAmount !== parseUnits(request.amount, plan.inputDecimals).toString() || plan.slippagePercent !== '0.5'
     || typeof plan.planToken !== 'string' || plan.planToken.length > 20_000 || !plan.planToken
     || !/^[a-f0-9-]{36}$/.test(plan.requestId) || !/^[a-zA-Z0-9_-]{1,256}$/.test(plan.orderQuoteId)
+    || (route.source === 'cow-protocol' && (!/^[1-9]\d{0,15}$/.test(plan.orderQuoteId) || !Number.isSafeInteger(Number(plan.orderQuoteId))))
     || !/^\d+(?:\.\d+)?$/.test(route.outputAmount)) throw new Error('invalid_order_payload')
   const typedData = validateOrderTypedData(plan.typedData, plan)
   if (hashTypedData(typedData) !== plan.typedDataHash || Date.parse(plan.expiresAt) !== Number(typedData.message.validTo) * 1000

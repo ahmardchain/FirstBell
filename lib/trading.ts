@@ -1,5 +1,5 @@
 export type TradingRoute = {
-  source: 'binance-web3'
+  source: 'binance-web3' | 'cow-protocol'
   chainId: 56
   symbol: string
   side: 'buy' | 'sell'
