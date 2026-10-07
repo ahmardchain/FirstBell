@@ -97,7 +97,10 @@ export default function FirstBellApp() {
   const savedWrite = React.useRef(Promise.resolve())
   const [selected, setSelected] = React.useState<Asset | null>(null)
   const [workingAsset, setWorkingAsset] = React.useState<Asset>(assets.find(a => a.symbol === 'NVDAon')!)
-  const [tradeEntry, setTradeEntry] = React.useState<'buy' | null>(() => tab === 'trade' && new URLSearchParams(window.location.search).get('side') === 'buy' ? 'buy' : null)
+  const [tradeEntry, setTradeEntry] = React.useState<'buy' | 'sell' | null>(() => {
+    const side = new URLSearchParams(window.location.search).get('side')
+    return tab === 'trade' && (side === 'buy' || side === 'sell') ? side : null
+  })
   const [tradeBusy, setTradeBusy] = React.useState(false)
   const tradeBusyRef = React.useRef(false)
   const updateTradeBusy = React.useCallback((busy: boolean) => { tradeBusyRef.current = busy; setTradeBusy(busy) }, [])
@@ -215,7 +218,8 @@ export default function FirstBellApp() {
         </section>
       </>}
       {tab === 'trade' && <TradeWorkspace assets={assets} asset={workingAsset} onAssetChange={setWorkingAsset} onInspect={setSelected} language={language} initialSide={tradeEntry} onBusyChange={updateTradeBusy} />}
-      {tab === 'portfolio' && <PortfolioWorkspace assets={assets} language={language} onInspect={setSelected} />}
+      {tab === 'portfolio' && <PortfolioWorkspace assets={assets} language={language} onInspect={setSelected}
+        onSell={asset => { setWorkingAsset(asset); setTradeEntry('sell'); switchTab('trade') }} />}
       </motion.div></AnimatePresence>
       {agentOpened && <div hidden={tab !== 'agent'}><AgentWorkspace language={language} /></div>}
     </main>
