@@ -11,9 +11,10 @@ export interface StockCardProps extends Omit<HTMLMotionProps<'div'>, 'children'>
   logoClassName?: string
   ticker: string
   name: string
-  /** A verified token price in USD; null means the feed is unavailable. */
+  /** A verified price or position value in USD; null means the feed is unavailable. */
   price: number | null
   change: number | null
+  priceLabel?: string
   changeLabel?: string
   buyDisabled?: boolean
   children?: React.ReactNode
@@ -31,7 +32,7 @@ export interface StockCardProps extends Omit<HTMLMotionProps<'div'>, 'children'>
 
 const StockCard = React.forwardRef<HTMLDivElement, StockCardProps>(
   ({ className, logoSrc, logoClassName, ticker, name, price, change, onBuy, onInspect,
-    actions, children, changeLabel, buyDisabled, loading = false, locale = 'en-US', buyLabel = 'Buy', inspectLabel = 'Open asset file',
+    actions, children, priceLabel, changeLabel, buyDisabled, loading = false, locale = 'en-US', buyLabel = 'Buy', inspectLabel = 'Open asset file',
     loadingLabel = 'Loading…', unavailableLabel = 'Price unavailable', changeUnavailableLabel = 'No data', ...props }, ref) => {
     const reduceMotion = useReducedMotion()
     const hasPrice = typeof price === 'number' && Number.isFinite(price) && price > 0
@@ -59,6 +60,7 @@ const StockCard = React.forwardRef<HTMLDivElement, StockCardProps>(
           : <div className="stock-card-identity flex min-w-0 items-center gap-3">{identity}</div>}
         <div className="stock-card-market flex shrink-0 items-center gap-3 md:gap-5">
           <div className="stock-card-quote text-right tabular-nums">
+            {priceLabel && <span className="stock-card-price-label">{priceLabel}</span>}
             <p className={cn('stock-card-price m-0 font-semibold', hasPrice ? 'text-lg text-foreground' : 'text-sm text-muted-foreground')}>
               {loading ? loadingLabel : formattedPrice}
             </p>

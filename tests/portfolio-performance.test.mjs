@@ -44,6 +44,16 @@ test('remaining holdings use weighted average purchase cost after multiple buys 
   assert.ok(positionPerformance('NVDAon', '0.15', 100, orders).gain < 0)
 })
 
+test('a one-USDT purchase gains or loses value from its actual purchase price', () => {
+  const purchase = order('one-usdt', 'buy', '1', '0.005')
+  const gain = positionPerformance('NVDAon', '0.005', 202, [purchase])
+  const loss = positionPerformance('NVDAon', '0.005', 198, [purchase])
+  assert.equal(gain.value, 1.01); assert.ok(Math.abs(gain.gain - .01) < 1e-12); assert.ok(Math.abs(gain.gainPct - 1) < 1e-10)
+  assert.equal(loss.value, .99); assert.ok(Math.abs(loss.gain + .01) < 1e-12); assert.ok(Math.abs(loss.gainPct + 1) < 1e-10)
+  const flat = positionPerformance('NVDAon', '0.005', 200, [purchase])
+  assert.equal(flat.value, 1); assert.equal(flat.gain, 0); assert.equal(flat.gainPct, 0)
+})
+
 test('quotes, failed orders, missing purchases and incoming token transfers do not invent gains', () => {
   const filled = order('b1', 'buy', '10', '0.1')
   assert.equal(positionPerformance('NVDAon', '0.1', 150, [{ ...filled, status: 'PENDING_VENDOR' }]), null)
