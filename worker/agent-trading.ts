@@ -8,7 +8,8 @@ import { verifyWalletIdentity, WalletVerificationError } from './wallet-verifica
 import type { ApiEnv } from './env.ts'
 import { megaFuelConfigured, relaySponsoredApproval, sponsorApproval } from './megafuel.ts'
 import { tradeAttempt } from './trade-attempts.ts'
-import { checkCowOrder, cowOrderUid, getCowTrade, submitCowOrder } from './cow-trading.ts'
+import { cancelCowOrder, checkCowOrder, cowOrderUid, getCowTrade, submitCowOrder } from './cow-trading.ts'
+import { cowCancellationTypedData } from '../lib/order-cancellation.ts'
 
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -208,6 +209,30 @@ export async function checkAgentOrder(orderId: string, plan: Pick<AgentTradePlan
   return { orderId, status: 'FILLED', txHash, inputAmount: formatUnits(spent, plan.inputDecimals), outputAmount: formatUnits(received, plan.outputDecimals) }
 }
 
+function orderReceipt(order: Omit<AgentOrder, 'receiptToken'>, plan: Omit<AgentTradePlan, 'planToken'>, receiptToken: string): AgentOrder {
+  return { ...order, receiptToken, trade: { symbol: plan.route.symbol, side: plan.route.side, amount: plan.route.inputAmount,
+    inputSymbol: plan.route.inputSymbol, outputSymbol: plan.route.outputSymbol, expiresAt: plan.expiresAt, source: plan.route.source },
+    canCancel: plan.route.source === 'cow-protocol' && order.status === 'PENDING_VENDOR' && !order.cancellationRequested }
+}
+
+export async function cancelAgentOrder(orderId: string, plan: Omit<AgentTradePlan, 'planToken'>, signature: unknown, credentials: Credentials): Promise<Omit<AgentOrder, 'receiptToken'>> {
+  if (plan.route.source !== 'cow-protocol') throw new RouteError('cancellation_unavailable', 409)
+  if (!same(orderId, cowOrderUid(plan))) throw new RouteError('invalid_order_payload', 400)
+  if (typeof signature !== 'string' || !/^0x[a-fA-F0-9]{130}$/.test(signature)
+    || !await verifyTypedData({ ...cowCancellationTypedData(orderId, plan.route.walletAddress), address: plan.route.walletAddress as Address, signature: signature as Hex })) throw new RouteError('invalid_order_signature', 403)
+  const current = await checkAgentOrder(orderId, plan, credentials)
+  if (current.status !== 'PENDING_VENDOR') return current
+  try { await cancelCowOrder(orderId, signature as Hex) }
+  catch (error) {
+    // These explicit rejections can race a fill/cancel/expiry. Re-read rather
+    // than inventing a terminal result; ambiguous writes remain unknown.
+    if (!(error instanceof RouteError) || error.reason !== 'order_not_open') throw error
+    return checkAgentOrder(orderId, plan, credentials)
+  }
+  try { return { ...await checkAgentOrder(orderId, plan, credentials), cancellationRequested: true } }
+  catch { throw new RouteError('cancellation_unknown', 503) }
+}
+
 export async function recoverAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, signature: string, credentials: Credentials, previous: { started: boolean; orderId: string | null }): Promise<Omit<AgentOrder, 'receiptToken'> | null> {
   if (!/^0x[a-fA-F0-9]{130}$/.test(signature)) throw new RouteError('invalid_order_signature', 400)
   const typedData = validateOrderTypedData(plan.typedData, plan, Date.parse(plan.expiresAt) - 10_000)
@@ -248,8 +273,9 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
     if (typeof body.walletAddress !== 'string' || !isAddress(body.walletAddress)) throw new RouteError('invalid_trade_request', 400)
     const path = new URL(request.url).pathname
     const reading = path === '/api/trade/status' || path === '/api/trade/recover'
+    const receiptRequest = path === '/api/trade/status' || path === '/api/trade/cancel'
     let ticket
-    if (path !== '/api/trade/prepare') ticket = await openTradeTicket(path === '/api/trade/status' ? body.receiptToken : body.planToken, userId, credentials.secretKey, path === '/api/trade/status' ? 'receipt' : 'plan', reading)
+    if (path !== '/api/trade/prepare') ticket = await openTradeTicket(receiptRequest ? body.receiptToken : body.planToken, userId, credentials.secretKey, receiptRequest ? 'receipt' : 'plan', reading)
     const plan = ticket?.plan as Omit<AgentTradePlan, 'planToken'> | undefined
     if (ticket && (!plan || !same(plan.route?.walletAddress, body.walletAddress))) throw new RouteError('wallet_not_verified', 403)
     if (!await verifyWalletIdentity(request.headers.get('privy-id-token'), env, userId, body.walletAddress)) throw new RouteError('wallet_not_verified', 403)
@@ -291,7 +317,7 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
       })
       await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'complete', submitted.orderId)
       const receiptToken = await sealTradeTicket({ plan, orderId: submitted.orderId }, userId, credentials.secretKey, 'receipt')
-      return json({ order: { ...submitted, receiptToken } })
+      return json({ order: orderReceipt(submitted, plan, receiptToken) })
     }
     if (path === '/api/trade/recover' && plan) {
       if (typeof body.signature !== 'string') throw new RouteError('invalid_order_signature', 400)
@@ -299,9 +325,10 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
       const recovered = await recoverAgentTrade(plan, body.signature, credentials, previous)
       if (!recovered) return json({ order: null })
       const receiptToken = await sealTradeTicket({ plan, orderId: recovered.orderId }, userId, credentials.secretKey, 'receipt')
-      return json({ order: { ...recovered, receiptToken } })
+      return json({ order: orderReceipt(recovered, plan, receiptToken) })
     }
-    if (path === '/api/trade/status' && plan && id(ticket?.orderId)) return json({ order: { ...await checkAgentOrder(ticket.orderId, plan, credentials), receiptToken: body.receiptToken } })
+    if (path === '/api/trade/cancel' && plan && id(ticket?.orderId)) return json({ order: orderReceipt(await cancelAgentOrder(ticket.orderId, plan, body.signature, credentials), plan, body.receiptToken as string) })
+    if (path === '/api/trade/status' && plan && id(ticket?.orderId)) return json({ order: orderReceipt(await checkAgentOrder(ticket.orderId, plan, credentials), plan, body.receiptToken as string) })
     return json({ error: 'not_found' }, 404)
   } catch (error) {
     if (error instanceof WalletVerificationError) return json({ error: error.message }, error.status)

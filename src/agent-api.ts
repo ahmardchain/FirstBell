@@ -4,8 +4,10 @@ import { PREPARE_TIMEOUT_MS } from '../lib/quote-timeout.ts'
 import { TradeRequestError } from '../lib/trade-error.ts'
 import { keccak256, type Hex } from 'viem'
 import type { PaymentToken } from '../lib/trade-assets.ts'
+import { cowCancellationTypedData } from '../lib/order-cancellation.ts'
+import { tokenAddresses } from '../lib/asset-catalog.ts'
 
-async function post(path: 'prepare' | 'submit' | 'status' | 'recover' | 'approval/submit' | 'approval/refresh', body: Record<string, unknown>, session: WalletSession, signal?: AbortSignal): Promise<Record<string, unknown>> {
+async function post(path: 'prepare' | 'submit' | 'status' | 'recover' | 'cancel' | 'approval/submit' | 'approval/refresh', body: Record<string, unknown>, session: WalletSession, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const timeout = AbortSignal.timeout(path === 'prepare' ? PREPARE_TIMEOUT_MS : 30_000)
   try {
     const response = await fetch(`/api/trade/${path}`, { method: 'POST', cache: 'no-store',
@@ -17,7 +19,8 @@ async function post(path: 'prepare' | 'submit' | 'status' | 'recover' | 'approva
     if (!result) throw new Error('invalid_provider_response')
     return result
   } catch (error) {
-    if (timeout.aborted && !signal?.aborted) throw new Error(path === 'submit' ? 'submission_unknown' : path === 'approval/submit' ? 'approval_submission_unknown' : 'quote_timeout')
+    if (timeout.aborted && !signal?.aborted) throw new Error(path === 'submit' ? 'submission_unknown' : path === 'cancel' ? 'cancellation_unknown' : path === 'approval/submit' ? 'approval_submission_unknown' : 'quote_timeout')
+    if (path === 'cancel' && !(error instanceof TradeRequestError)) throw new Error('cancellation_unknown')
     throw error
   }
 }
@@ -51,7 +54,22 @@ function orderResponse(value: unknown): AgentOrder {
     || typeof order.receiptToken !== 'string' || !order.receiptToken || order.receiptToken.length > 20_000
     || (order.txHash !== null && !/^0x[a-fA-F0-9]{64}$/.test(order.txHash))
     || (order.status === 'FILLED' && (!order.txHash || !/^\d+(?:\.\d+)?$/.test(order.inputAmount ?? '') || !/^\d+(?:\.\d+)?$/.test(order.outputAmount ?? '')))) throw new Error('invalid_provider_response')
+  const trade = order.trade
+  if (trade && (!Object.hasOwn(tokenAddresses, trade.symbol) || !['buy', 'sell'].includes(trade.side)
+    || !/^\d+(?:\.\d+)?$/.test(trade.amount) || !['USDT', 'USDC'].includes(trade.side === 'buy' ? trade.inputSymbol : trade.outputSymbol)
+    || (trade.side === 'buy' ? trade.outputSymbol : trade.inputSymbol) !== trade.symbol
+    || !['binance-web3', 'cow-protocol'].includes(trade.source) || !Number.isFinite(Date.parse(trade.expiresAt)))) throw new Error('invalid_provider_response')
+  if (order.canCancel !== undefined && typeof order.canCancel !== 'boolean'
+    || order.cancellationRequested !== undefined && typeof order.cancellationRequested !== 'boolean'
+    || order.canCancel && (!trade || trade.source !== 'cow-protocol' || order.status !== 'PENDING_VENDOR')) throw new Error('invalid_provider_response')
   return order
+}
+export async function cancelTradeOrder(order: AgentOrder, walletAddress: string, signature: string, session: WalletSession): Promise<AgentOrder> {
+  cowCancellationTypedData(order.orderId, walletAddress)
+  const result = await post('cancel', { receiptToken: order.receiptToken, walletAddress, signature }, session)
+  const checked = orderResponse(result.order)
+  if (checked.orderId !== order.orderId || checked.receiptToken !== order.receiptToken) throw new Error('invalid_provider_response')
+  return checked
 }
 export async function submitTrade(plan: AgentTradePlan, signature: string, session: WalletSession): Promise<AgentOrder> {
   const result = await post('submit', { planToken: plan.planToken, signature, walletAddress: plan.route.walletAddress }, session)

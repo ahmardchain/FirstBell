@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
 import { privateKeyToAccount } from 'viem/accounts'
-import { encodeAbiParameters, encodeEventTopics, erc20Abi, hashTypedData } from 'viem'
+import { concatHex, encodeAbiParameters, encodeEventTopics, erc20Abi, hashStruct, hashTypedData, keccak256 } from 'viem'
+import { exportSPKI, generateKeyPair, SignJWT } from 'jose'
+import { handleApiRequest } from '../worker/router.ts'
 import { BSC_USDT } from '../lib/funding.ts'
 import { tokenAddresses } from '../lib/asset-catalog.ts'
 import { COW_SETTLEMENT, COW_RELAYER, validateAgentTradePlan } from '../lib/agent-trading.ts'
 import { clearTradingMetadataCache, tradingClient } from '../worker/binance-trading.ts'
-import { prepareAgentTrade, submitAgentTrade, checkAgentOrder, recoverAgentTrade } from '../worker/agent-trading.ts'
+import { prepareAgentTrade, submitAgentTrade, checkAgentOrder, recoverAgentTrade, cancelAgentOrder, sealTradeTicket } from '../worker/agent-trading.ts'
+import { cowCancellationTypedData } from '../lib/order-cancellation.ts'
 import { cowOrderUid, getCowTrade } from '../worker/cow-trading.ts'
 
 // Every provider/RPC call is mocked; this unfunded signer is a public fixture.
@@ -22,7 +25,8 @@ const envelope = data => ({ code: 0, success: true, timestamp: Date.now(), data 
 function fixture(side = 'buy', amount = '5') {
   const s = { raw: BigInt(amount) * 10n ** 18n, fee: 10n ** 15n, output: 25n * 10n ** 15n, calls: [], binance: 'other-vendor',
     balance: 10n ** 20n, allowance: 10n ** 20n, quoteMutation: null, status: 'open', acknowledged: true,
-    stored: null, plan: null, badUid: false, duplicate: false, rejection: null, trades: 'valid', confirmations: 2, mismatch: false, mined: true, cancelledQuote: false }
+    stored: null, plan: null, badUid: false, duplicate: false, rejection: null, trades: 'valid', confirmations: 2, mismatch: false, mined: true, cancelledQuote: false,
+    cancelOutcome: 'cancelled', cancelError: null, cancelUnknown: false, cancelStatusUnknown: false }
   const sellToken = side === 'buy' ? BSC_USDT.address : stock, buyToken = side === 'buy' ? stock : BSC_USDT.address
   const order = () => ({ ...s.plan.typedData.message, uid: cowOrderUid(s.plan), owner, status: s.status })
   tradingClient.readContract = async args => args.functionName === 'decimals' ? 18 : args.functionName === 'balanceOf' ? s.balance : s.allowance
@@ -60,6 +64,14 @@ function fixture(side = 'buy', amount = '5') {
       return Response.json(value)
     }
     if (u.pathname.endsWith('/orders')) {
+      if (init.method === 'DELETE') {
+        assert.deepEqual(body.orderUids, [cowOrderUid(s.plan)]); assert.equal(body.signingScheme, 'eip712')
+        assert.match(body.signature, /^0x[a-fA-F0-9]{130}$/)
+        if (s.cancelError) { s.status = s.cancelOutcome; return Response.json({ errorType: s.cancelError, description: 'redacted fixture' }, { status: 400 }) }
+        s.status = s.cancelOutcome
+        if (s.cancelUnknown) throw new Error('fixture lost cancellation acknowledgement')
+        return side === 'sell' ? new Response(null, { status: 200 }) : Response.json('Cancelled')
+      }
       // Current CoW orderbook rejects the quote's legacy fee in signed orders.
       if (body.feeAmount !== '0') return Response.json({ errorType: 'NonZeroFee', description: 'Fee must be zero' }, { status: 400 })
       assert.equal(body.from, owner); assert.equal(body.quoteId, 123); assert.equal(body.appData, '{}')
@@ -71,7 +83,10 @@ function fixture(side = 'buy', amount = '5') {
       if (s.duplicate) return Response.json({ errorType: 'DuplicatedOrder' }, { status: 400 })
       return Response.json(s.badUid ? `0x${'aa'.repeat(56)}` : cowOrderUid(s.plan))
     }
-    if (u.pathname.includes('/orders/')) return s.stored ? Response.json(order()) : new Response('', { status: 404 })
+    if (u.pathname.includes('/orders/')) {
+      if (s.cancelStatusUnknown && s.calls.some(call => call.method === 'DELETE')) throw new Error('fixture status unavailable')
+      return s.stored ? Response.json(order()) : new Response('', { status: 404 })
+    }
     assert.equal(u.pathname, '/bnb/api/v2/trades')
     assert.equal(u.searchParams.get('orderUid'), cowOrderUid(s.plan)); assert.equal(u.searchParams.get('limit'), '2')
     return Response.json(s.trades === 'missing' ? [] : [{ orderUid: s.trades === 'wrong' ? `0x${'aa'.repeat(56)}` : cowOrderUid(s.plan), owner, sellToken, buyToken, txHash }])
@@ -249,4 +264,110 @@ test('direct quote construction remains read-only and fresh across repeated call
   await getCowTrade('NVDAon', 'buy', '5', owner)
   assert.equal(s.calls.filter(call => call.path.endsWith('/quote')).length, 2)
   assert.equal(s.calls.some(call => call.path.endsWith('/orders')), false)
+})
+
+test('cancellation hashing matches the published CoW model type hash, with exactly one owned UID', async () => {
+  const s = fixture(), plan = await s.prepare(), uid = cowOrderUid(plan)
+  const data = cowCancellationTypedData(uid, owner)
+  // CoW model::order::OrderCancellations::TYPE_HASH, rather than a hash derived
+  // from the application's own chosen field names (the Rust comment is stale).
+  const typeHash = '0x4c89efb91ae246f78d2fe68b47db2fa1444a121a4f2dc3fda7a5a408c2e3588e'
+  const expected = keccak256(concatHex([typeHash, keccak256(concatHex([keccak256(uid)]))]))
+  assert.equal(hashStruct({ data: data.message, primaryType: data.primaryType, types: data.types }), expected)
+  assert.deepEqual(data.message.orderUids, [uid]); assert.equal(data.domain.chainId, 56); assert.equal(data.domain.verifyingContract, COW_SETTLEMENT)
+  assert.throws(() => cowCancellationTypedData(uid, `0x${'22'.repeat(20)}`), /invalid_order_payload/)
+  assert.throws(() => cowCancellationTypedData('oc-o-provider-id', owner), /invalid_order_payload/)
+})
+
+for (const side of ['buy', 'sell']) test(`fixture: ${side} cancellation signs the original UID, uses DELETE and checks the actual result`, async () => {
+  const s = fixture(side), plan = await s.prepare(); await s.submit()
+  const before = s.calls.length, uid = cowOrderUid(plan), signature = await signer.signTypedData(cowCancellationTypedData(uid, owner))
+  const result = await cancelAgentOrder(uid, plan, signature, credentials)
+  assert.equal(result.status, 'CANCELLED'); assert.equal(result.txHash, null); assert.equal(result.cancellationRequested, true)
+  assert.deepEqual(s.calls.slice(before).map(c => c.method), ['GET', 'DELETE', 'GET'])
+  assert.deepEqual(s.calls.find(c => c.method === 'DELETE').body, { orderUids: [uid], signature, signingScheme: 'eip712' })
+})
+
+test('another signer, UID, batch, domain or original trade signature cannot cancel', async () => {
+  const s = fixture(), plan = await s.prepare(); await s.submit()
+  const uid = cowOrderUid(plan), before = s.calls.length, data = cowCancellationTypedData(uid, owner)
+  const other = privateKeyToAccount(`0x${'22'.repeat(32)}`)
+  for (const signature of [await other.signTypedData(data), await signer.signTypedData(plan.typedData),
+    await signer.signTypedData({ ...data, domain: { ...data.domain, chainId: 1 } }),
+    await signer.signTypedData({ ...data, message: { orderUids: [uid, uid] } })]) await assert.rejects(() => cancelAgentOrder(uid, plan, signature, credentials), /invalid_order_signature/)
+  await assert.rejects(() => cancelAgentOrder(`0x${'aa'.repeat(56)}`, plan, '0x' + 'aa'.repeat(65), credentials), /invalid_order_payload/)
+  await assert.rejects(() => cancelAgentOrder(uid, { ...plan, route: { ...plan.route, source: 'binance-web3' } }, '0x', credentials), /cancellation_unavailable/)
+  assert.equal(s.calls.length, before)
+})
+
+test('filled, expired and already cancelled orders return their actual status without another cancellation', async () => {
+  const s = fixture(), plan = await s.prepare(); await s.submit()
+  const uid = cowOrderUid(plan), signature = await signer.signTypedData(cowCancellationTypedData(uid, owner))
+  for (const [provider, expected] of [['fulfilled', 'FILLED'], ['expired', 'EXPIRED'], ['cancelled', 'CANCELLED']]) {
+    s.status = provider
+    assert.equal((await cancelAgentOrder(uid, plan, signature, credentials)).status, expected)
+  }
+  assert.equal(s.calls.some(c => c.method === 'DELETE'), false)
+})
+
+test('a cancellation racing settlement returns the verified fill or confirming state, never an invented cancellation', async () => {
+  const s = fixture(), plan = await s.prepare(); await s.submit()
+  const uid = cowOrderUid(plan), signature = await signer.signTypedData(cowCancellationTypedData(uid, owner))
+  s.cancelOutcome = 'fulfilled'
+  let result = await cancelAgentOrder(uid, plan, signature, credentials)
+  assert.equal(result.status, 'FILLED'); assert.equal(result.inputAmount, '5'); assert.equal(result.outputAmount, '0.025')
+  s.status = 'open'; s.confirmations = 1
+  result = await cancelAgentOrder(uid, plan, signature, credentials)
+  assert.equal(result.status, 'CONFIRMING'); assert.equal(result.inputAmount, null)
+})
+
+test('lost cancellation acknowledgements and unreadable follow-up statuses preserve an unknown outcome', async () => {
+  const s = fixture(), plan = await s.prepare(); await s.submit()
+  const uid = cowOrderUid(plan), signature = await signer.signTypedData(cowCancellationTypedData(uid, owner))
+  s.cancelUnknown = true
+  await assert.rejects(() => cancelAgentOrder(uid, plan, signature, credentials), /cancellation_unknown/)
+  assert.equal((await checkAgentOrder(uid, plan, credentials)).status, 'CANCELLED')
+  s.status = 'open'; s.cancelUnknown = false; s.cancelStatusUnknown = true
+  // Clear previous calls so this fixture fails only after this cancellation.
+  s.calls = []
+  await assert.rejects(() => cancelAgentOrder(uid, plan, signature, credentials), /cancellation_unknown/)
+  assert.equal(s.calls.filter(c => c.method === 'DELETE').length, 1)
+})
+
+test('a missing order is unknown, and a provider fill-race rejection is reconciled read-only', async () => {
+  const s = fixture(), plan = await s.prepare(), uid = cowOrderUid(plan), signature = await signer.signTypedData(cowCancellationTypedData(uid, owner))
+  await assert.rejects(() => cancelAgentOrder(uid, plan, signature, credentials), /order_not_found/)
+  assert.equal(s.calls.some(c => c.method === 'DELETE'), false)
+  await s.submit(); s.cancelError = 'OrderFullyExecuted'; s.cancelOutcome = 'fulfilled'
+  assert.equal((await cancelAgentOrder(uid, plan, signature, credentials)).status, 'FILLED')
+})
+
+test('authenticated cancellation uses only the account-bound receipt and write limit, rejecting invalid ownership and tickets', async () => {
+  const s = fixture(), plan = await s.prepare(); await s.submit()
+  const uid = cowOrderUid(plan), signature = await signer.signTypedData(cowCancellationTypedData(uid, owner))
+  const pair = await generateKeyPair('ES256'), app = 'fixture-cancellation-app', user = 'did:privy:canceltest'
+  const identity = await new SignJWT({ linked_accounts: JSON.stringify([{ type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: owner }]) })
+    .setProtectedHeader({ alg: 'ES256' }).setSubject(user).setIssuer('privy.io').setAudience(app).setExpirationTime('1h').sign(pair.privateKey)
+  let allowed = true, lastRatePath
+  const env = { PRIVY_APP_ID: app, PRIVY_VERIFICATION_KEY: await exportSPKI(pair.publicKey), BINANCE_WEB3_API_KEY: credentials.apiKey, BINANCE_WEB3_SECRET_KEY: credentials.secretKey,
+    ACCOUNTS: { idFromName: id => id, get: () => ({ fetch: async req => { lastRatePath = new URL(req.url).pathname; return Response.json({ allowed }, { status: allowed ? 200 : 429 }) } }) } }
+  const receiptToken = await sealTradeTicket({ plan, orderId: uid }, user, credentials.secretKey, 'receipt')
+  const call = (body = {}, headers = {}) => handleApiRequest(new Request('https://firstbell.test/api/trade/cancel', { method: 'POST',
+    headers: { Origin: 'https://firstbell.test', 'Content-Type': 'application/json', Authorization: `Bearer ${identity}`, 'privy-id-token': identity, ...headers },
+    body: JSON.stringify({ walletAddress: owner, receiptToken, signature, orderId: 'ignored-client-id', ...body }) }), env)
+  assert.equal((await call({}, { Authorization: '' })).status, 401)
+  assert.equal((await call({}, { Origin: 'https://attacker.test' })).status, 403)
+  assert.equal((await call({ walletAddress: `0x${'22'.repeat(20)}` })).status, 403)
+  assert.equal((await call({ receiptToken: await sealTradeTicket({ plan, orderId: uid }, 'did:privy:other', credentials.secretKey, 'receipt') })).status, 403)
+  const key = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`firstbell-agent-orders-v1:${credentials.secretKey}`)))
+  const expired = await new SignJWT({ plan, orderId: uid, kind: 'receipt' }).setProtectedHeader({ alg: 'HS256', typ: 'JWT' }).setIssuer('firstbell-agent')
+    .setAudience('firstbell-receipt').setSubject(user).setIssuedAt(Math.floor(Date.now()/1000)-200).setExpirationTime(Math.floor(Date.now()/1000)-100).sign(key)
+  assert.equal((await call({ receiptToken: expired })).status, 403)
+  allowed = false; assert.equal((await call()).status, 429)
+  assert.equal(s.calls.some(c => c.method === 'DELETE'), false)
+  allowed = true; const response = await call(); assert.equal(response.status, 200); assert.equal(lastRatePath, '/trade-write-rate')
+  const result = (await response.json()).order
+  assert.equal(result.orderId, uid); assert.equal(result.status, 'CANCELLED'); assert.equal(result.canCancel, false)
+  assert.equal(result.trade.symbol, 'NVDAon'); assert.equal(result.trade.amount, '5'); assert.equal(result.trade.inputSymbol, 'USDT')
+  assert.equal(s.calls.filter(c => c.method === 'DELETE').length, 1)
 })

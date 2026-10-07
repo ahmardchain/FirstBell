@@ -2,7 +2,7 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { getIdentityToken, useIdentityToken, usePrivy, useSendTransaction, useSignTransaction, useSignTypedData, useWallets } from '@privy-io/react-auth'
-import { Check, ExternalLink, LoaderCircle, RefreshCw, X } from 'lucide-react'
+import { LoaderCircle, RefreshCw, X } from 'lucide-react'
 import { createPublicClient, formatUnits, http, keccak256, type Hex } from 'viem'
 import { bsc } from 'viem/chains'
 import { terminalOrder, type AgentOrder, type AgentTradePlan } from '../lib/agent-trading'
@@ -12,12 +12,14 @@ import { withWalletSession, type WalletSession } from '../lib/wallet-session'
 import { PREPARE_TIMEOUT_MS } from '../lib/quote-timeout'
 import { createQuoteScheduler } from '../lib/quote-scheduler'
 import { TradeRequestError } from '../lib/trade-error'
-import { checkTrade, prepareTrade, recoverTrade, refreshApproval, relayApproval, submitTrade } from './agent-api'
+import { cancelTradeOrder, checkTrade, prepareTrade, recoverTrade, refreshApproval, relayApproval, submitTrade } from './agent-api'
+import { cowCancellationTypedData, needsOrderCheck } from '../lib/order-cancellation'
+import { TradeOrders } from './trade-orders'
 import type { PaymentToken } from '../lib/trade-assets'
 import { displayQuantity } from './wallet-balances'
 import { BSC_USDT } from '../lib/funding'
 import { useTradeBalance } from './use-trade-balance'
-import { clearSignedTrade, clearTradeApproval, readSignedTrades, readTradeReceipts, storeSignedTrade, storeTradeReceipt } from '../lib/trade-storage'
+import { clearSignedTrade, clearTradeApproval, mergeTradeOrder, readSignedTrades, readTradeHistory, readTradeReceipts, storeSignedTrade, storeTradeReceipt } from '../lib/trade-storage'
 
 const client = createPublicClient({ chain: bsc, transport: http('https://bsc-dataseed.bnbchain.org', { timeout: 10_000, retryCount: 0 }) })
 const words = {
@@ -32,6 +34,7 @@ const words = {
     available: 'Available', balanceLoading: 'Loading balance…', balanceUnavailable: 'Balance unavailable', balanceLogin: 'Log in to see your balance', balanceRefresh: 'Refresh available balance',
     buy: 'Buy', sell: 'Sell', confirmBuy: 'Confirm buy', confirmSell: 'Confirm sell', closeReview: 'Close confirmation', total: 'You spend', tradeComplete: 'Trade complete',
     minimumOrder: (value: string | null) => value ? `The provider requires a trade worth at least $${value}. Choose an amount that meets it.` : 'This amount is below the provider’s minimum trade value. Choose a larger amount.',
+    cancellationErrors: { cancellation_unknown: 'Cancellation is unconfirmed. Keep checking this order; it may still fill.', cancellation_unavailable: 'Cancellation is unavailable on this route.', rejected: 'Cancellation was not signed. The order remains active.' },
     sponsorshipErrors: { sponsorship_not_configured: 'Network fee coverage is not available yet. No transaction was sent.', sponsorship_rejected: 'Network fee coverage was declined. No transaction was sent.', sponsorship_unavailable: 'Network fee coverage is temporarily unavailable. Retry.', invalid_sponsored_transaction: 'The signed permission does not match this order. Nothing was sent.', approval_nonce_changed: 'Wallet activity changed. Refresh the permission for this order.', approval_submission_unknown: 'Token permission is still unconfirmed. Check this same transaction.', approval_timeout: 'Token permission is taking longer than expected. Check this same transaction.' },
     errors: { insufficient_balance: 'Not enough of the spending token in your wallet.', insufficient_gas: 'Add a little BNB for the network fee.', unauthorized: 'Sign in again and retry.', session_unavailable: 'Your session could not be loaded. Retry.', session_refresh_failed: 'Sign in again to refresh your session.', session_timeout: 'Your sign-in session took too long. Retry.', wallet_not_verified: 'Your wallet could not be verified. Sign in again.', wallet_verification_unavailable: 'Wallet verification is temporarily unavailable.', wallet_verification_not_configured: 'Wallet verification needs to be enabled.', account_not_configured: 'Account verification needs to be configured.', not_configured: 'Trading needs to be configured.', wallet_loading: 'Your wallet is still being prepared.', wallet_changed: 'Your wallet changed. Review a new quote.', wallet_rejected: 'Wallet confirmation cancelled. No order submitted.', quote_timeout: 'The quote took too long. Retry.', no_verified_route: 'No supported route for this token and amount.', chain_unavailable: 'BSC routes are unavailable right now.', market_closed: 'Trading is unavailable while this market is closed.', rate_limited: 'Wait a minute before getting another quote.', order_fee_changed: 'The provider changed its fee format. Get a fresh quote and confirm again.', stale_quote: 'Quote expired. Get a fresh quote.', invalid_amount: 'Check the amount and its decimal places.', invalid_trade_request: 'Enter a valid amount.', unsupported_order_schema: 'This route cannot be safely signed yet.', invalid_order_payload: 'The order does not match your trade. Get a new quote.', invalid_order_signature: 'The wallet signature does not match this order.', simulation_failed: 'Token approval could not be verified. Nothing was sent.', approval_required: 'Token approval is required. Get a fresh quote.', approval_failed: 'Token approval failed. Get a fresh quote.', settlement_not_verified: 'Settlement could not be verified. Check the order again.', provider_auth_error: 'Trading provider access needs to be checked.', provider_error: 'The trading provider could not complete this request. Retry.' },
   },
@@ -46,6 +49,7 @@ const words = {
     available: '可用余额', balanceLoading: '正在加载余额…', balanceUnavailable: '余额暂不可用', balanceLogin: '登录以查看余额', balanceRefresh: '刷新可用余额',
     buy: '买入', sell: '卖出', confirmBuy: '确认买入', confirmSell: '确认卖出', closeReview: '关闭确认', total: '支付数量', tradeComplete: '交易完成',
     minimumOrder: (value: string | null) => value ? `服务商要求交易价值至少为 ${value} 美元。请选择符合要求的金额。` : '此金额低于服务商的最低交易价值，请增加金额。',
+    cancellationErrors: { cancellation_unknown: '取消结果尚未确认。请继续查询，此订单仍可能成交。', cancellation_unavailable: '此路线暂不支持取消。', rejected: '未签署取消请求，订单仍有效。' },
     sponsorshipErrors: { sponsorship_not_configured: '网络费代付尚不可用，未发送交易。', sponsorship_rejected: '网络费代付被拒绝，未发送交易。', sponsorship_unavailable: '网络费代付暂不可用，请重试。', invalid_sponsored_transaction: '授权签名与订单不符，未发送交易。', approval_nonce_changed: '钱包活动已改变，请刷新此订单的授权。', approval_submission_unknown: '代币授权尚未确认，请查询同一笔交易。', approval_timeout: '代币授权确认较慢，请查询同一笔交易。' },
     errors: { insufficient_balance: '钱包中的支付代币不足。', insufficient_gas: '请添加少量 BNB 支付网络费用。', unauthorized: '请重新登录后重试。', session_unavailable: '无法加载登录状态，请重试。', session_refresh_failed: '请重新登录以刷新状态。', session_timeout: '登录状态加载超时，请重试。', wallet_not_verified: '无法验证钱包，请重新登录。', wallet_verification_unavailable: '钱包验证暂不可用。', wallet_verification_not_configured: '需要启用钱包验证。', account_not_configured: '需要配置账户验证。', not_configured: '需要配置交易服务。', wallet_loading: '正在准备钱包，请稍后。', wallet_changed: '钱包已改变，请审核新报价。', wallet_rejected: '已取消钱包确认，尚未下单。', quote_timeout: '报价请求超时，请重试。', no_verified_route: '此代币和金额暂无支持的路线。', chain_unavailable: 'BSC 路线暂不可用。', market_closed: '此市场关闭期间暂不可交易。', rate_limited: '请等待一分钟后重新获取报价。', order_fee_changed: '服务商的费用格式已改变。请获取新报价并重新确认。', stale_quote: '报价已过期，请获取新报价。', invalid_amount: '请检查金额及小数位数。', invalid_trade_request: '请输入有效金额。', unsupported_order_schema: '此路线尚不支持安全签名。', invalid_order_payload: '订单与交易不符，请获取新报价。', invalid_order_signature: '钱包签名与订单不符。', simulation_failed: '无法核实代币授权，尚未发送交易。', approval_required: '需要代币授权，请获取新报价。', approval_failed: '代币授权失败，请获取新报价。', settlement_not_verified: '无法核实结算，请重新查询订单。', provider_auth_error: '需要检查交易服务访问配置。', provider_error: '交易服务未能完成此请求，请重试。' },
   },
@@ -81,6 +85,8 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   const [notice, setNotice] = React.useState('')
   const [progressBusy, setProgressBusy] = React.useState(false)
   const [progressError, setProgressError] = React.useState('')
+  const [cancelId, setCancelId] = React.useState<string | null>(null)
+  const [cancelFailure, setCancelFailure] = React.useState<{ orderId: string; message: string } | null>(null)
   const [expired, setExpired] = React.useState(false)
   const [refresh, setRefresh] = React.useState(0)
   const paymentToken: PaymentToken = 'USDT'
@@ -92,6 +98,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   const abort = React.useRef<AbortController | null>(null)
   const operation = React.useRef(0)
   const busy = React.useRef(false)
+  const cancelBusy = React.useRef(false)
   const progressInFlight = React.useRef(false)
   const progressVersion = React.useRef(0)
   const openWhenPrepared = React.useRef(false)
@@ -100,8 +107,8 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   const progressCursor = React.useRef(0)
   const orderPollingStarted = React.useRef(0)
   const validAmount = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,18})?$/.test(amount) && /[1-9]/.test(amount)
-  const walletAction = phase === 'wallet'
-  const inputLocked = ['wallet', 'approval', 'submitting'].includes(phase)
+  const walletAction = phase === 'wallet' || cancelId !== null
+  const inputLocked = ['wallet', 'approval', 'submitting'].includes(phase) || cancelId !== null
   const approvalPending = Boolean(approvalAttempt.current)
   const pendingOrders = orders.filter(order => !terminalOrder(order.status))
   const hasPreviousPending = signedAttempts.length > 0 || pendingOrders.length > 0
@@ -110,6 +117,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     const reason = failure instanceof Error ? failure.message : ''
     if (reason === 'order_not_found' || reason === 'invalid_order_ticket') return t.unavailableOrder
     if (reason === 'minimum_order_not_met') return t.minimumOrder(failure instanceof TradeRequestError ? failure.minimumUsd : null)
+    if (reason in t.cancellationErrors) return t.cancellationErrors[reason as keyof typeof t.cancellationErrors]
     if (reason in t.sponsorshipErrors) return t.sponsorshipErrors[reason as keyof typeof t.sponsorshipErrors]
     if (/reject|cancel|4001/i.test(reason)) return t.errors.wallet_rejected
     return t.errors[reason as keyof typeof t.errors] ?? t.errors.provider_error
@@ -126,7 +134,8 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     } catch { /* The current view still holds the server receipt. */ }
   }
   const recordOrder = React.useCallback((next: AgentOrder) => {
-    setOrders(current => current.some(item => item.orderId === next.orderId) ? current.map(item => item.orderId === next.orderId ? next : item) : [...current, next])
+    setOrders(current => current.some(item => item.orderId === next.orderId) ? current.map(item => item.orderId === next.orderId ? mergeTradeOrder(item, next) : item) : [...current, next])
+    if (terminalOrder(next.status)) setCancelFailure(current => current?.orderId === next.orderId ? null : current)
   }, [])
   const saveApproval = (attempt: ApprovalAttempt | null, owner: string, hash = approvalAttempt.current?.hash) => {
     if (live.current.address?.toLowerCase() === owner.toLowerCase() && (attempt || approvalAttempt.current?.hash === hash)) approvalAttempt.current = attempt
@@ -161,11 +170,14 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     progressCursor.current = 0
     progressVersion.current++; progressInFlight.current = false
     setProgressBusy(false); setProgressError('')
+    cancelBusy.current = false; setCancelId(null); setCancelFailure(null)
     approvalAttempt.current = null
     signedAttemptsRef.current = []
     setSignedAttempts([]); setOrders([])
     if (address) try {
-      setOrders(readTradeReceipts(localStorage, address).map(saved => ({ ...saved, status: 'PENDING_VENDOR', txHash: null, inputAmount: null, outputAmount: null })))
+      const restored = new Map<string, AgentOrder>()
+      for (const saved of [...readTradeHistory(localStorage, address), ...readTradeReceipts(localStorage, address).map(saved => ({ ...saved, status: 'PENDING_VENDOR' as const, canCancel: false, txHash: null, inputAmount: null, outputAmount: null }))]) restored.set(saved.orderId, mergeTradeOrder(restored.get(saved.orderId), saved))
+      setOrders([...restored.values()])
     } catch { /* Local history is only a pointer; the server verifies the receipt. */ }
     if (address) try {
       const pending = JSON.parse(localStorage.getItem(`firstbell-pending-approval:${address.toLowerCase()}`) ?? 'null') as ApprovalAttempt | null
@@ -228,7 +240,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   }, [confirmationOpen, closeConfirmation])
 
   const prepare = React.useCallback(() => quoteScheduler.run(async () => {
-    if (!live.current.active || !address || !validAmount || busy.current) return
+    if (!live.current.active || !address || !validAmount || busy.current || cancelBusy.current) return
     busy.current = true
     const version = ++operation.current
     abort.current?.abort(); const controller = new AbortController(); abort.current = controller
@@ -257,7 +269,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   const checkProgress = React.useCallback(async () => {
     if (!address || progressInFlight.current || inputLocked) return
     const pendingApproval = approvalAttempt.current
-    const jobs = [...orders.filter(order => !terminalOrder(order.status)).map(order => ({ order, attempt: null })),
+    const jobs = [...orders.filter(needsOrderCheck).map(order => ({ order, attempt: null })),
       ...signedAttemptsRef.current.map(attempt => ({ order: null, attempt }))]
     const job = jobs.length ? jobs[progressCursor.current++ % jobs.length] : null
     if (!pendingApproval && !job) return
@@ -297,7 +309,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     } catch (failure) { if (version === progressVersion.current) setProgressError(errorText(failure)) }
     finally { if (version === progressVersion.current) { progressInFlight.current = false; setProgressBusy(false) } }
   }, [orders, address, session, t, inputLocked, recordOrder, available.refresh, quoteScheduler])
-  const progressKey = [...pendingOrders.map(order => order.orderId), ...signedAttempts.map(attempt => attempt.plan.requestId), approvalAttempt.current?.hash ?? ''].join(':')
+  const progressKey = [...orders.filter(needsOrderCheck).map(order => order.orderId), ...signedAttempts.map(attempt => attempt.plan.requestId), approvalAttempt.current?.hash ?? ''].join(':')
   React.useEffect(() => {
     orderPollingStarted.current = Date.now()
   }, [address, progressKey])
@@ -309,7 +321,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   }, [progressKey, address, progressBusy, inputLocked, checkProgress])
 
   const confirm = async () => {
-    if (!plan || !address || !wallet || busy.current || approvalAttempt.current || expired) return
+    if (!plan || !address || !wallet || busy.current || cancelBusy.current || approvalAttempt.current || expired) return
     setConfirmationOpen(false)
     setPlan(null)
     busy.current = true; onLockChange({ close: true, edit: true }); setPhase('wallet'); setError(''); setNotice('')
@@ -410,10 +422,34 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     } catch (failure) { if (version === progressVersion.current) setProgressError(failure instanceof Error && failure.message === 'expired_recovery' ? t.expiredRecovery : errorText(failure)) }
     finally { if (version === progressVersion.current) { progressInFlight.current = false; setProgressBusy(false) } }
   }
+  const cancelOrder = async (order: AgentOrder) => {
+    if (!address || !wallet || inputLocked || cancelBusy.current || progressInFlight.current || approvalAttempt.current || !order.canCancel) return
+    const owner = address, version = ++operation.current
+    abort.current?.abort(); quoteScheduler.clear(); busy.current = false
+    cancelBusy.current = true; setCancelId(order.orderId); setCancelFailure(null); setConfirmationOpen(false); setPhase('idle'); setProgressError('')
+    onLockChange({ close: true, edit: true })
+    let signed = false
+    try {
+      const typedData = cowCancellationTypedData(order.orderId, owner)
+      await wallet.switchChain(56); assertWallet(owner)
+      const { signature } = await signTypedData(typedData, { address: owner, uiOptions: { showWalletUIs: false, title: language === 'zh' ? '取消订单' : 'Cancel order' } })
+      signed = true; assertWallet(owner)
+      const checked = await session(value => { assertWallet(owner); return cancelTradeOrder(order, owner, signature, value) })
+      persist(checked, owner)
+      assertWallet(owner)
+      if (version === operation.current) { recordOrder(checked); if (checked.status === 'FILLED') available.refresh() }
+    } catch (failure) {
+      if (version === operation.current) {
+        const rejected = !signed && failure instanceof Error && /reject|cancel|4001/i.test(failure.message)
+        setCancelFailure({ orderId: order.orderId, message: rejected ? t.cancellationErrors.rejected : errorText(failure) })
+      }
+    } finally {
+      if (version === operation.current) { cancelBusy.current = false; setCancelId(null); setRefresh(value => value + 1) }
+    }
+  }
   const status = phase === 'preparing' ? t.loading : phase === 'wallet' ? t.walletConfirm : phase === 'approval' ? t.approvalPending
     : phase === 'submitting' ? t.submitting : expired ? t.expired
     : notice || (plan ? t.ready : !authenticated ? t.note : !address ? t.walletLoading : !validAmount ? t.empty : t.ready)
-  const orderStatus = (order: AgentOrder) => order.status === 'FILLED' ? t.tradeComplete : order.status === 'EXPIRED' ? t.expiredOrder : order.status === 'CANCELLED' ? t.cancelledOrder : terminalOrder(order.status) ? t.failed : t.pending
   const cancel = () => {
     if (inputLocked) return
     setConfirmationOpen(false); openWhenPrepared.current = false
@@ -443,26 +479,10 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
       <div id="trade-status" className="trade-sheet-status" role="status" aria-live="polite"><span>{loading && <LoaderCircle size={15} className="trade-spinner" />}{status}</span></div>
       {amount && !validAmount && !inputLocked && <p className="trade-sheet-error" role="alert">{t.errors.invalid_amount}</p>}
       {error && <p className="trade-sheet-error" role="alert">{error}</p>}
-      <div className="trade-confirm-actions"><button type="button" className="trade-cancel" disabled={inputLocked} onClick={cancel}>{t.cancel}</button><button ref={primaryRef} type="submit" className={`trade-submit trade-${side}`} disabled={loading || (authenticated && (!address || !validAmount))}>{loading && <LoaderCircle size={16} className="trade-spinner" />}{actionLabel}</button></div>
+      <div className="trade-confirm-actions"><button type="button" className="trade-cancel" disabled={inputLocked} onClick={cancel}>{t.cancel}</button><button ref={primaryRef} type="submit" className={`trade-submit trade-${side}`} disabled={loading || inputLocked || (authenticated && (!address || !validAmount))}>{loading && <LoaderCircle size={16} className="trade-spinner" />}{actionLabel}</button></div>
     </form>
-    {(orders.length > 0 || signedAttempts.length > 0 || approvalPending || progressError) && <section className="trade-progress" aria-label={t.previous}>
-      <div className="trade-progress-heading"><strong>{t.previous}</strong>{progressBusy && <LoaderCircle size={14} className="trade-spinner" aria-hidden="true" />}</div>
-      {orders.map(order => <div className="trade-progress-record" key={order.orderId}>
-        <p role="status" aria-live="polite" title={order.orderId}>{order.status === 'FILLED' && <Check size={14} />}{orderStatus(order)}</p>
-        {order.txHash && <a href={`https://bscscan.com/tx/${order.txHash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a>}
-      </div>)}
-      {signedAttempts.map(attempt => <div className="trade-progress-record" key={attempt.plan.requestId}>
-        <p>{attempt.plan.route.side === 'buy' ? t.buy : t.sell} · {attempt.plan.route.symbol} · {attempt.plan.route.inputAmount} {attempt.plan.route.inputSymbol}</p>
-        <p role="status" aria-live="polite">{t.uncertain}</p>
-        <button type="button" className="trade-progress-action" disabled={progressBusy || inputLocked || approvalPending} onClick={() => { void recover(attempt) }}>{t.recover}</button>
-      </div>)}
-      {approvalPending && <div className="trade-progress-record">
-        <p role="status" aria-live="polite">{t.sponsorshipErrors.approval_submission_unknown}</p>
-        <button type="button" className="trade-progress-action" disabled={progressBusy || inputLocked} onClick={() => { void recover() }}>{t.recover}</button>
-        <a href={`https://bscscan.com/tx/${approvalAttempt.current!.hash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a>
-      </div>}
-      {progressError && <p className="trade-sheet-error" role="alert">{progressError}</p>}
-    </section>}
+    {(authenticated || orders.length > 0 || signedAttempts.length > 0) && <TradeOrders orders={orders} attempts={signedAttempts} approvalHash={approvalAttempt.current?.hash} language={language}
+      busy={progressBusy || cancelId !== null} locked={inputLocked} cancelId={cancelId} cancelFailure={cancelFailure} error={progressError} onRecover={attempt => { void recover(attempt) }} onCancel={order => { void cancelOrder(order) }} />}
 
     {typeof document !== 'undefined' && createPortal(<AnimatePresence>{confirmationOpen && plan && <div className="trade-sheet-layer">
       <motion.button type="button" className="trade-sheet-scrim" aria-label={t.closeReview} tabIndex={-1} onClick={closeConfirmation} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
