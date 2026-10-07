@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowRight, Eye, EyeOff, Pencil, Search } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, LogOut, Pencil, Search } from 'lucide-react'
 import { displayQuantity, readWalletBalances, type WalletBalances } from './wallet-balances'
 import { PRIVY_APP_ID } from './privy-config'
 import { getTokenPrices } from './market-api'
@@ -20,7 +20,7 @@ type Props = { assets: Asset[]; language: Language; onInspect: (asset: Asset) =>
 type Account = {
   configured: boolean; ready: boolean; authenticated: boolean; email?: string; address?: string;
   walletReady: boolean; balances: WalletBalances | null; loading: boolean; error: boolean;
-  login: () => void; deposits?: DepositController; withdrawals?: WithdrawalController;
+  login: () => void; logout: () => Promise<void>; deposits?: DepositController; withdrawals?: WithdrawalController;
 }
 const copy = {
   en: {
@@ -30,6 +30,7 @@ const copy = {
     noPositions: 'No positions found', noActivity: 'No activity yet', hide: 'Hide balance', show: 'Show balance',
     loading: 'Loading…', error: 'Balance unavailable', preparing: 'Preparing your wallet…',
     edit: 'Edit name', name: 'Display name', unavailable: 'Value unavailable',
+    logout: 'Log out', loggingOut: 'Logging out…', logoutError: 'Could not log out. Please try again.',
   },
   zh: {
     title: '资产', start: '从这里开始建立你的资产组合', intro: '使用 Google 或邮箱登录。',
@@ -38,11 +39,12 @@ const copy = {
     noPositions: '没有找到持仓', noActivity: '暂无活动', hide: '隐藏余额', show: '显示余额',
     loading: '加载中…', error: '余额暂不可用', preparing: '正在准备钱包…',
     edit: '编辑名称', name: '显示名称', unavailable: '估值暂不可用',
+    logout: '退出登录', loggingOut: '正在退出…', logoutError: '退出失败，请重试。',
   },
 }
 
 function ConnectedPortfolio(props: Props) {
-  const { ready, authenticated, user, login, getAccessToken } = usePrivy()
+  const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy()
   const { wallets, ready: walletsReady } = useWallets()
   const [snapshot, setSnapshot] = React.useState<{ owner: string; balances: WalletBalances } | null>(null)
   const [loading, setLoading] = React.useState(false)
@@ -82,13 +84,13 @@ function ConnectedPortfolio(props: Props) {
   return <PortfolioView {...props} key={address ?? user?.id ?? 'guest'} account={{
     configured: true, ready, authenticated, walletReady: walletsReady,
     email: user?.email?.address ?? user?.google?.email ?? undefined,
-    address, balances, loading, error, deposits, withdrawals, login,
+    address, balances, loading, error, deposits, withdrawals, login, logout,
   }} />
 }
 
 export function PortfolioWorkspace(props: Props) {
   if (PRIVY_APP_ID) return <ConnectedPortfolio {...props} />
-  return <PortfolioView {...props} account={{ configured: false, ready: true, authenticated: false, walletReady: false, balances: null, loading: false, error: false, login: () => {} }} />
+  return <PortfolioView {...props} account={{ configured: false, ready: true, authenticated: false, walletReady: false, balances: null, loading: false, error: false, login: () => {}, logout: async () => {} }} />
 }
 const money = (value: number) => `US$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -104,6 +106,9 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
   const demoCard = isOnramperDemo(window.location.search)
   const demo = useOnramperDemo(demoCard && depositPage)
   const [editing, setEditing] = React.useState(false)
+  const [loggingOut, setLoggingOut] = React.useState(false)
+  const [logoutError, setLogoutError] = React.useState(false)
+  const logoutPending = React.useRef(false)
   const storageKey = `firstbell-display-name:${account.address ?? account.email ?? 'guest'}`
   const defaultName = account.email?.split('@')[0] || 'FirstBell'
   const [name, setName] = React.useState(() => { try { return localStorage.getItem(storageKey) || defaultName } catch { return defaultName } })
@@ -170,6 +175,19 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
     setName(next); setEditing(false)
     try { localStorage.setItem(storageKey, next) } catch { /* The name still works for this session. */ }
   }
+  const logOut = async () => {
+    if (logoutPending.current) return
+    logoutPending.current = true
+    setLoggingOut(true); setLogoutError(false)
+    try {
+      await account.logout()
+      setView(''); setSection('positions'); setSearch(''); setEditing(false)
+      const url = new URL(window.location.href)
+      for (const key of ['view', 'deposit', 'transactionId', 'transactionStatus']) url.searchParams.delete(key)
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash)
+    } catch { setLogoutError(true) }
+    finally { logoutPending.current = false; setLoggingOut(false) }
+  }
   return <section className="portfolio-workspace" aria-label={t.title}>
     <AnimatePresence mode="wait" initial={false}>
       {!account.ready || !account.authenticated ? <motion.div key="guest" className="portfolio-guest" initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -188,7 +206,9 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
           <img className="portfolio-avatar" src={portfolioAvatar} alt="" />
           {editing ? <input className="portfolio-name-input" aria-label={t.name} autoFocus value={name} maxLength={40} onChange={event => setName(event.target.value)} onBlur={saveName} onKeyDown={event => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') { setEditing(false); setName(defaultName) } }} /> : <span className="portfolio-name">{name}</span>}
           <button className="portfolio-name-edit" type="button" aria-label={t.edit} onClick={() => setEditing(true)}><Pencil size={17} strokeWidth={2} /></button>
+          <button className="portfolio-logout" type="button" disabled={loggingOut} aria-busy={loggingOut} onClick={() => void logOut()}><LogOut size={17} aria-hidden="true" /><span>{loggingOut ? t.loggingOut : t.logout}</span></button>
         </div>
+        {logoutError && <p className="portfolio-logout-error" role="alert">{t.logoutError}</p>}
         <div className="portfolio-balance-row"><h1 title="USDT balance, displayed at a nominal US$1 per USDT" aria-live="polite">{hidden ? '••••••' : balance}</h1><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(current => !current)}>{hidden ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
         <div className="portfolio-position-value"><span>{t.positions}</span><strong aria-live="polite">{hidden ? '••••••' : value}</strong></div>
         <div className="portfolio-action-row"><button type="button" disabled={!account.address || !account.walletReady} onClick={() => navigateView('deposit')}>{t.deposit}</button><button type="button" disabled={!account.address || !account.walletReady || !account.withdrawals} onClick={() => navigateView('withdraw')}>{t.withdraw}</button></div>

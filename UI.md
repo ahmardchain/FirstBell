@@ -1,5 +1,12 @@
 # FirstBell visual contract
 
+## Portfolio logout (2026-10-07 UTC)
+
+- User requested restoring a logout button; this supersedes the earlier removal of that action. Design Read: Portfolio account utility, preservation extension; variance 1/10, motion 1/10, density 3/10, reference fidelity 9/10. Preserve Arial/Helvetica, existing light/dark tokens, the account avatar/name, deposit and withdrawal actions, and four app tabs.
+- Place a compact outlined Log out pill beside the account name, with a Lucide icon and a 44px touch target. Use the existing button/focus patterns and reduced-motion handling. Long names truncate before the button; English and Chinese labels remain visible.
+- Connect the action to Privy's existing logout method. Disable duplicate requests and show Logging out while it resolves. On success, the existing signed-out Portfolio replaces account data and funding navigation hints are removed; failures show one inline retry message. No confirmation modal or new authentication provider is needed.
+- Validation: production TypeScript/Vite/API build and whitespace checks pass. The installed Privy SDK and current [logout documentation](https://docs.privy.io/authentication/user-authentication/logout) confirm the awaited method and auth-state update. Local browser review could not proceed: the preview connection was refused, and the browser security policy rejected inspection of the resulting tab. No signed-in logout, rendered button appearance, or completed trade was observed.
+
 ## USDT-only funding and withdrawals (2026-10-06 UTC)
 
 - Design Read: extend the existing Portfolio/Deposit utility for newcomers. Preserve the reference's Arial/Helvetica, dark blue-gray/light white tokens, compact Back/title header, 16px inputs, pill actions, 44px touch targets and four app tabs. Variance 1/10, motion 1/10, density 3/10, reference fidelity 9/10. Reuse existing funding components; no new provider setup screen or dependency.
