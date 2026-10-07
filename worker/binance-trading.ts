@@ -32,7 +32,7 @@ function cachedMetadata<T>(key: string, read: () => Promise<T>): Promise<T> {
   return entry.promise as Promise<T>
 }
 export function clearTradingMetadataCache() { metadata.clear() }
-function readTokenDecimals(symbol: Symbol) {
+export function readTokenDecimals(symbol: Symbol) {
   return cachedMetadata(`bsc-decimals:${assets[symbol].toLowerCase()}`, async () => {
     const value = await tradingClient.readContract({ address: assets[symbol], abi: erc20Abi, functionName: 'decimals' })
     if (!Number.isInteger(value) || value < 0 || value > 36) throw new RouteError('invalid_provider_response')

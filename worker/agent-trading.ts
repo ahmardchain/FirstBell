@@ -8,6 +8,7 @@ import { verifyWalletIdentity, WalletVerificationError } from './wallet-verifica
 import type { ApiEnv } from './env.ts'
 import { megaFuelConfigured, relaySponsoredApproval, sponsorApproval } from './megafuel.ts'
 import { tradeAttempt } from './trade-attempts.ts'
+import { checkCowOrder, getCowTrade, submitCowOrder } from './cow-trading.ts'
 
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -71,10 +72,24 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
   // Amount units and real wallet reads do not depend on an RFQ response.
   // Sell decimals share the verified metadata read with quote preparation.
   const inputAmountPromise = getTradingInputAmount(symbol, side, amount, options.paymentToken)
-  const contextPromise = getQuoteContext(symbol, side, amount, walletAddress, credentials, true, bounded, options.paymentToken).then(context => {
-    if (context.providerRoute.approveTarget && !same(context.providerRoute.approveTarget, COW_RELAYER)) throw new RouteError('invalid_order_payload')
-    return context
-  })
+  const contextPromise = (async () => {
+    try {
+      const context = await getQuoteContext(symbol, side, amount, walletAddress, credentials, true, bounded, options.paymentToken)
+      if (context.providerRoute.approveTarget && !same(context.providerRoute.approveTarget, COW_RELAYER)) throw new RouteError('invalid_order_payload')
+      return { ...context, direct: null }
+    } catch (error) {
+      if (!(error instanceof RouteError) || !['no_verified_route', 'minimum_order_not_met'].includes(error.reason)) throw error
+      bounded.throwIfAborted()
+      console.info('TRADE_ROUTE_FALLBACK', { symbol, side, reason: error.reason })
+      try {
+        const direct = await getCowTrade(symbol, side, amount, walletAddress, bounded)
+        return { ...direct, symbol, side, amount, walletAddress, providerRoute: null, direct }
+      } catch (fallbackError) {
+        if (fallbackError instanceof RouteError && fallbackError.reason === 'minimum_order_not_met' && error.minimumUsd) throw error
+        throw fallbackError
+      }
+    }
+  })()
   const balancePromise = Promise.all([inputAmountPromise,
     tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'balanceOf', args: [walletAddress as Address] }),
   ]).then(([inputAmount, balance]) => {
@@ -84,6 +99,9 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
   const allowancePromise = tradingClient.readContract({ address: inputToken, abi: erc20Abi, functionName: 'allowance', args: [walletAddress as Address, COW_RELAYER] })
   const builtPromise = contextPromise.then(async context => {
     bounded.throwIfAborted()
+    if (context.direct) return { inputDecimals: context.direct.inputDecimals, outputDecimals: context.direct.outputDecimals,
+      orderQuoteId: context.direct.orderQuoteId, typedData: context.direct.typedData }
+    if (!context.providerRoute) throw new RouteError('invalid_order_payload')
     const inputDecimals = side === 'buy' ? cash.decimals : context.tokenDecimals
     const outputDecimals = side === 'buy' ? context.tokenDecimals : cash.decimals
     const swap = await tradingRequest('GET', '/api/v1/dex/aggregator/swap', { binanceChainId: '56', amount: context.rawAmount,
@@ -137,6 +155,10 @@ export async function submitAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, 
     if (allowance < BigInt(plan.rawAmount)) throw new RouteError('approval_required', 409)
   }
   await recovery?.beforeDispatch()
+  if (plan.route.source === 'cow-protocol') {
+    return { orderId: await submitCowOrder(plan, signature, recovery?.started === true), status: 'PENDING_VENDOR' as const,
+      txHash: null, inputAmount: null, outputAmount: null }
+  }
   const result = await tradingRequest('POST', '/api/v1/dex/aggregator/order/submit', { requestId: plan.requestId,
     userSignature: signature, vendor: 'CowSwap', quoteId: plan.orderQuoteId, signingScheme: 'EIP712' }, credentials)
   const order = object(result.data)
@@ -145,9 +167,9 @@ export async function submitAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, 
 }
 
 export async function checkAgentOrder(orderId: string, plan: Pick<AgentTradePlan, 'route' | 'rawAmount' | 'minimumReceive' | 'inputDecimals' | 'outputDecimals'>, credentials: Credentials): Promise<Omit<AgentOrder, 'receiptToken'>> {
-  const result = await tradingRequest('GET', `/api/v1/dex/aggregator/order/${orderId}`, {}, credentials)
-  const order = object(result.data)
-  const statuses = ['PENDING_VENDOR', 'PENDING_ONCHAIN', 'FILLED', 'FAILED', 'EXPIRED', 'CANCELLED'] as const
+  const order = plan.route.source === 'cow-protocol' ? await checkCowOrder(orderId, plan)
+    : object((await tradingRequest('GET', `/api/v1/dex/aggregator/order/${orderId}`, {}, credentials)).data)
+  const statuses = ['PENDING_VENDOR', 'PENDING_ONCHAIN', 'CONFIRMING', 'FILLED', 'FAILED', 'EXPIRED', 'CANCELLED'] as const
   if (!order || order.orderId !== orderId || !statuses.includes(order.status as typeof statuses[number])) throw new RouteError('invalid_provider_response')
   const base = { orderId, status: order.status as AgentOrder['status'], txHash: null, inputAmount: null, outputAmount: null }
   if (order.status !== 'FILLED') return base
