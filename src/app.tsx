@@ -98,6 +98,9 @@ export default function FirstBellApp() {
   const [selected, setSelected] = React.useState<Asset | null>(null)
   const [workingAsset, setWorkingAsset] = React.useState<Asset>(assets.find(a => a.symbol === 'NVDAon')!)
   const [tradeEntry, setTradeEntry] = React.useState<'buy' | null>(() => tab === 'trade' && new URLSearchParams(window.location.search).get('side') === 'buy' ? 'buy' : null)
+  const [tradeBusy, setTradeBusy] = React.useState(false)
+  const tradeBusyRef = React.useRef(false)
+  const updateTradeBusy = React.useCallback((busy: boolean) => { tradeBusyRef.current = busy; setTradeBusy(busy) }, [])
   const [homeMarkets, setHomeMarkets] = React.useState<Record<string, TokenPrice | null>>({})
   const [mobileMenu, setMobileMenu] = React.useState(false)
   const dialogRef = React.useRef<HTMLElement>(null)
@@ -160,6 +163,7 @@ export default function FirstBellApp() {
   }, [selected])
 
   const switchTab = (id: Tab) => {
+    if (tradeBusyRef.current) return
     setTab(id); setMobileMenu(false)
     if (id === 'agent') setAgentOpened(true)
     if (id !== 'trade') setTradeEntry(null)
@@ -192,7 +196,7 @@ export default function FirstBellApp() {
   return <div className="app-shell" data-tab={tab}>
     <header className="app-header">
       <a href="/" className="app-brand" aria-label={t.back}><img src="/assets/firstbell-mark.svg" alt="" />FirstBell</a>
-      <nav className="app-desktop-nav" aria-label="App navigation">{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-desktop-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={16} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
+      <nav className="app-desktop-nav" aria-label="App navigation">{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-desktop-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={16} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
       <div className="app-header-actions">
         <button type="button" className="app-header-tool app-language" aria-label={t.language} onClick={() => setLanguage(value => value === 'en' ? 'zh' : 'en')}><Globe2 size={17} />{language === 'en' ? 'EN' : '中文'}<ChevronDown size={12} /></button>
         <button type="button" className="app-header-tool" aria-label={t.theme} onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}><span className="motion-icon-swap" data-state={theme === 'dark' ? 'a' : 'b'}><Sun size={18} /><Moon size={18} /></span></button>
@@ -210,13 +214,13 @@ export default function FirstBellApp() {
           {visible.length ? <><div className="app-stock-list">{shown.map(assetCard)}</div>{visible.length > pageSize && <nav className="app-token-pages" aria-label={t.pages}><button type="button" disabled={currentPage === 0} onClick={() => { setPage(currentPage - 1); window.scrollTo({ top: 0, behavior: 'instant' }) }}>{t.previous}</button><span aria-live="polite">{currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, visible.length)} / {visible.length}</span><button type="button" disabled={(currentPage + 1) * pageSize >= visible.length} onClick={() => { setPage(currentPage + 1); window.scrollTo({ top: 0, behavior: 'instant' }) }}>{t.next}<ArrowRight size={16} /></button></nav>}</> : <div className="app-empty"><Search size={26} strokeWidth={1.2} /><h3>{t.noResults}</h3><p>{filter === 'saved' && saved.length === 0 ? t.emptyBody : t.emptySearch}</p><button type="button" onClick={() => { setFilter('all'); setQuery(''); setPage(0) }}>{t.clear}<ArrowRight size={16} /></button></div>}
         </section>
       </>}
-      {tab === 'trade' && <TradeWorkspace assets={assets} asset={workingAsset} onAssetChange={setWorkingAsset} onInspect={setSelected} language={language} initialSide={tradeEntry} />}
+      {tab === 'trade' && <TradeWorkspace assets={assets} asset={workingAsset} onAssetChange={setWorkingAsset} onInspect={setSelected} language={language} initialSide={tradeEntry} onBusyChange={updateTradeBusy} onExit={() => switchTab('home')} />}
       {tab === 'portfolio' && <PortfolioWorkspace assets={assets} language={language} onInspect={setSelected} />}
       </motion.div></AnimatePresence>
       {agentOpened && <div hidden={tab !== 'agent'}><AgentWorkspace language={language} /></div>}
     </main>
     <footer className="app-footer"><div><a href="/" className="app-brand"><img src="/assets/firstbell-mark.svg" alt="" />FirstBell</a><p>{t.footer}</p></div><div><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={14} /></a><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github}<ArrowUpRight size={14} /></a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x}<ArrowUpRight size={14} /></a></div><small>© 2026 FIRSTBELL / BNB SMART CHAIN</small></footer>
-    <nav className="app-bottom-nav" aria-label="App navigation">{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-bottom-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={22} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
+    <nav className="app-bottom-nav" aria-label="App navigation">{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-bottom-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={22} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
     <AnimatePresence>{selected && <div className="asset-dialog-layer"><motion.button type="button" className="asset-dialog-backdrop" aria-label="Close asset file" onClick={() => setSelected(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} /><motion.aside ref={dialogRef} className="asset-dialog" role="dialog" aria-modal="true" aria-labelledby="asset-dialog-title" initial={reduceMotion ? false : { x: 100, opacity: 0, filter: 'blur(2px)' }} animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 0 } : { x: 100, opacity: 0, filter: 'blur(2px)' }} transition={{ duration: reduceMotion ? 0 : .4, ease: [.22, 1, .36, 1] }}><div className="dialog-top"><span className="app-label">{t.detailKicker} / {selected.symbol}</span><button type="button" aria-label="Close asset file" onClick={() => setSelected(null)}><X size={21} /></button></div><div className={`dialog-mark asset-art--${selected.mark}`}><AssetMark asset={selected} /></div><div className="dialog-body"><div className="dialog-title"><div><h2 id="asset-dialog-title">{selected.company}</h2><p>{selected.symbol} / BNB SMART CHAIN</p></div><button type="button" aria-label={saved.includes(selected.symbol) ? t.unsave : t.save} aria-pressed={saved.includes(selected.symbol)} onClick={() => toggleSaved(selected.symbol)}><Bookmark size={20} fill={saved.includes(selected.symbol) ? 'currentColor' : 'none'} /></button></div><p className="dialog-intro">{t.detailIntro}</p><dl><div><dt>{t.symbol}</dt><dd>{selected.symbol}</dd></div><div><dt>{t.issuer}</dt><dd>Ondo Global Markets</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain / 56</dd></div><div><dt>{t.contract}</dt><dd className="contract-value" title={selected.address}>{selected.address}</dd></div></dl><p className="dialog-caution">{t.caution}</p><a href={scan(selected)} target="_blank" rel="noreferrer" className="dialog-primary">{t.exploreContract}<ExternalLink size={17} /></a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer" className="dialog-secondary">{t.tokenList}<ArrowUpRight size={17} /></a></div></motion.aside></div>}</AnimatePresence>
   </div>
 }

@@ -9,6 +9,20 @@ const client = createPublicClient({
 
 export type TokenPosition = { symbol: string; address: Address; quantity: string; raw: bigint }
 export type WalletBalances = { bnb: string; usdt: string; tokens: TokenPosition[]; checkedAt: Date }
+export type TradeBalance = TokenPosition & { decimals: number; checkedAt: Date }
+
+// Trade only needs the spending asset, not the full Portfolio catalog or BNB.
+export async function readTradeBalance(walletAddress: string, token: { symbol: string; address: string }): Promise<TradeBalance> {
+  if (!isAddress(walletAddress) || !isAddress(token.address)) throw new Error('Invalid balance request')
+  const owner = walletAddress as Address, address = token.address as Address
+  const isUsdt = address.toLowerCase() === BSC_USDT.address.toLowerCase()
+  const balanceCall = { address, abi: erc20Abi, functionName: 'balanceOf' as const, args: [owner] as const }
+  const [raw, decimals] = isUsdt
+    ? [await client.readContract(balanceCall), BSC_USDT.decimals] as const
+    : await client.multicall({ contracts: [balanceCall, { address, abi: erc20Abi, functionName: 'decimals' as const }], allowFailure: false })
+  if (typeof raw !== 'bigint' || raw < 0n || !Number.isInteger(decimals) || decimals < 0 || decimals > 36) throw new Error('Invalid token balance')
+  return { symbol: isUsdt ? 'USDT' : token.symbol, address, raw, decimals, quantity: formatUnits(raw, decimals), checkedAt: new Date() }
+}
 
 export async function readWalletBalances(walletAddress: string, tokens: { symbol: string; address: string }[]): Promise<WalletBalances> {
   if (!isAddress(walletAddress)) throw new Error('Invalid wallet address')
