@@ -139,6 +139,7 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
     bounded.throwIfAborted()
     return { route: context.route, rawAmount: context.rawAmount, inputDecimals, outputDecimals, minimumReceive: typedData.message.buyAmount as string,
       feeAmount: typedData.message.feeAmount as string, slippagePercent: '0.5', expiresAt: new Date(Number(typedData.message.validTo) * 1000).toISOString(),
+      ...(context.direct ? { estimatedFeeAmount: context.direct.estimatedFeeAmount } : {}),
       requestId: crypto.randomUUID(), orderQuoteId, typedData, typedDataHash: hashTypedData(typedData), approval }
   } catch (error) { cancel.abort(error); throw error }
 }
