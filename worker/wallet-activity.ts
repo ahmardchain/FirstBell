@@ -2,7 +2,8 @@ import { formatUnits, isAddress } from 'viem'
 import { BSC_USDT } from '../lib/funding.ts'
 import { COW_RELAYER, COW_SETTLEMENT } from '../lib/agent-trading.ts'
 import type { CashTransfer, PurchaseBasis, WalletActivityPage } from '../lib/portfolio-performance.ts'
-import { assets, isSymbol } from './market.ts'
+import { assets, isSymbol, type Symbol } from './market.ts'
+import { recoverWalletPurchaseBasis } from './wallet-purchase-basis.ts'
 import { signedBinanceRequest, binanceFailure, type BinanceCredentials } from './binance-api.ts'
 import { verifyWalletIdentity } from './wallet-verification.ts'
 import type { ApiEnv } from './env.ts'
@@ -71,7 +72,7 @@ export function parsePurchaseBasis(symbol: string, value: unknown, timestamp: un
   return cost > 0 && Number.isFinite(cost) ? { symbol, quantity: row.tokenBalanceAmount as string, cost, asOf: new Date(at).toISOString() } : null
 }
 
-export async function walletPurchaseBasis(owner: string, symbols: string[], credentials: BinanceCredentials) {
+async function providerPurchaseBasis(owner: string, symbols: string[], credentials: BinanceCredentials) {
   const costs: PurchaseBasis[] = []
   for (let start = 0; start < symbols.length; start += 3) {
     const values = await Promise.all(symbols.slice(start, start + 3).map(async symbol => {
@@ -85,6 +86,14 @@ export async function walletPurchaseBasis(owner: string, symbols: string[], cred
     costs.push(...values.filter((value): value is PurchaseBasis => value !== null))
   }
   return costs
+}
+
+export async function walletPurchaseBasis(owner: string, symbols: string[], credentials?: BinanceCredentials) {
+  if (!isAddress(owner) || !symbols.length || symbols.length > 6 || symbols.some(symbol => !isSymbol(symbol))) throw new Error('invalid_purchase_request')
+  // Independent reads avoid making wallet recovery wait for an unsupported or
+  // failed analytics response. Receipt-verified wallet fills take precedence.
+  const [provider, recovered] = await Promise.all([credentials ? providerPurchaseBasis(owner, symbols, credentials) : [], recoverWalletPurchaseBasis(owner, symbols as Symbol[])])
+  return [...new Map([...provider, ...recovered].map(cost => [cost.symbol, cost])).values()]
 }
 
 export async function handleWalletActivity(request: Request, env: ApiEnv, userId: string) {
@@ -107,11 +116,12 @@ export async function handleWalletActivity(request: Request, env: ApiEnv, userId
     const costRequest = new URL(request.url).pathname === '/api/wallet/cost-basis'
     if (costRequest && (!Array.isArray(body.symbols) || !body.symbols.length || body.symbols.length > 6 || body.symbols.some(symbol => typeof symbol !== 'string' || !isSymbol(symbol)))) return json({ error: 'invalid_request' }, 400)
     if (!await verifyWalletIdentity(request.headers.get('privy-id-token'), env, userId, body.walletAddress)) return json({ error: 'wallet_not_verified' }, 403)
-    if (!env.BINANCE_WEB3_API_KEY || !env.BINANCE_WEB3_SECRET_KEY) return json({ error: 'not_configured' }, 503)
+    if (!costRequest && (!env.BINANCE_WEB3_API_KEY || !env.BINANCE_WEB3_SECRET_KEY)) return json({ error: 'not_configured' }, 503)
     const stub = env.ACCOUNTS.get(env.ACCOUNTS.idFromName(userId))
     const allowed = await stub.fetch(new Request('https://account.internal/trade-status-rate', { method: 'POST', headers: { 'X-Privy-DID': userId } }))
     if (!allowed.ok) return json({ error: 'activity_unavailable' }, allowed.status)
-    if (costRequest) return json({ status: 'ready', costs: await walletPurchaseBasis(body.walletAddress, [...new Set(body.symbols as string[])], { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY }) })
-    return json({ status: 'ready', ...await walletCashActivity(body.walletAddress, String(body.cursor ?? ''), { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY }) })
+    const credentials = env.BINANCE_WEB3_API_KEY && env.BINANCE_WEB3_SECRET_KEY ? { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY } : undefined
+    if (costRequest) return json({ status: 'ready', costs: await walletPurchaseBasis(body.walletAddress, [...new Set(body.symbols as string[])], credentials) })
+    return json({ status: 'ready', ...await walletCashActivity(body.walletAddress, String(body.cursor ?? ''), credentials!) })
   } catch (error) { return json({ status: 'unavailable', ...binanceFailure(error) }, 503) }
 }
