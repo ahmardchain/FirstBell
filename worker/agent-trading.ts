@@ -183,7 +183,8 @@ export async function checkAgentOrder(orderId: string, plan: Pick<AgentTradePlan
     : object((await tradingRequest('GET', `/api/v1/dex/aggregator/order/${orderId}`, {}, credentials)).data)
   const statuses = ['PENDING_VENDOR', 'PENDING_ONCHAIN', 'CONFIRMING', 'FILLED', 'FAILED', 'EXPIRED', 'CANCELLED'] as const
   if (!order || order.orderId !== orderId || !statuses.includes(order.status as typeof statuses[number])) throw new RouteError('invalid_provider_response')
-  const base = { orderId, status: order.status as AgentOrder['status'], txHash: null, inputAmount: null, outputAmount: null }
+  const base = { orderId, status: order.status as AgentOrder['status'], txHash: null, inputAmount: null, outputAmount: null,
+    ...(typeof order.createdAt === 'string' && Number.isFinite(Date.parse(order.createdAt)) ? { createdAt: order.createdAt } : {}) }
   if (order.status !== 'FILLED') return base
   if (typeof order.txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(order.txHash)) throw new RouteError('invalid_provider_response')
   const txHash = order.txHash as Hex
@@ -206,12 +207,13 @@ export async function checkAgentOrder(orderId: string, plan: Pick<AgentTradePlan
     } catch { /* Only actual ERC-20 Transfer logs count. */ }
   }
   if (spent !== BigInt(plan.rawAmount) || received < BigInt(plan.minimumReceive)) throw new RouteError('settlement_not_verified', 409)
-  return { orderId, status: 'FILLED', txHash, inputAmount: formatUnits(spent, plan.inputDecimals), outputAmount: formatUnits(received, plan.outputDecimals) }
+  return { ...base, status: 'FILLED', txHash, inputAmount: formatUnits(spent, plan.inputDecimals), outputAmount: formatUnits(received, plan.outputDecimals) }
 }
 
 function orderReceipt(order: Omit<AgentOrder, 'receiptToken'>, plan: Omit<AgentTradePlan, 'planToken'>, receiptToken: string): AgentOrder {
   return { ...order, receiptToken, trade: { symbol: plan.route.symbol, side: plan.route.side, amount: plan.route.inputAmount,
-    inputSymbol: plan.route.inputSymbol, outputSymbol: plan.route.outputSymbol, expiresAt: plan.expiresAt, source: plan.route.source },
+    inputSymbol: plan.route.inputSymbol, outputSymbol: plan.route.outputSymbol, expiresAt: plan.expiresAt, source: plan.route.source,
+    quotedOutputAmount: plan.route.outputAmount, requestId: plan.requestId },
     canCancel: plan.route.source === 'cow-protocol' && order.status === 'PENDING_VENDOR' && !order.cancellationRequested }
 }
 

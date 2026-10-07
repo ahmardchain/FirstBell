@@ -12,6 +12,18 @@ export type MarketData = {
 }
 
 export type TokenPrice = { symbol: string; priceUsd: number | null; change24hPct: number | null; asOf: string | null }
+export async function getPortfolioChanges(symbols: string[], signal: AbortSignal) {
+  const response = await fetch(`/api/portfolio/changes?symbols=${encodeURIComponent(symbols.join(','))}`, { signal })
+  const body = await response.json() as { status: string; changes: { symbol: string; change7dPct: number | null; asOf: string | null }[] }
+  if (!response.ok || body.status !== 'ready' || !Array.isArray(body.changes)) throw new Error('Performance unavailable')
+  return Object.fromEntries(symbols.map(symbol => {
+    const row = body.changes.find(item => item?.symbol === symbol)
+    const at = typeof row?.asOf === 'string' ? Date.parse(row.asOf) : NaN
+    const change = Number.isFinite(at) && at >= 1_500_000_000_000 && at <= Date.now() + 120_000
+      && typeof row?.change7dPct === 'number' && Number.isFinite(row.change7dPct) ? row.change7dPct : null
+    return [symbol, change]
+  })) as Record<string, number | null>
+}
 export async function getTokenPrices(symbols: string[], signal?: AbortSignal): Promise<TokenPrice[]> {
   if (!symbols.length) return []
   if (symbols.length > 100) throw new Error('Too many tokens')

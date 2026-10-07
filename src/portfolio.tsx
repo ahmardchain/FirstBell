@@ -2,17 +2,23 @@ import * as React from 'react'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, Eye, EyeOff, LogOut, Pencil, Search } from 'lucide-react'
-import { displayQuantity, readWalletBalances, type WalletBalances } from './wallet-balances'
+import { readWalletBalances, type WalletBalances } from './wallet-balances'
 import { PRIVY_APP_ID } from './privy-config'
-import { getTokenPrices } from './market-api'
+import { getPortfolioChanges, getTokenPrices, type TokenPrice } from './market-api'
 import { useDeposits, type DepositController } from './deposits-api'
-import { DepositHistory, DepositPage } from './deposit'
+import { DepositPage } from './deposit'
 import { useOnramperDemo } from './onramper-demo'
 import { isOnramperDemo } from '../lib/onramper-demo'
 import { portfolioAvatar } from '../lib/portfolio-avatar'
-import { assetLogo, tokenLogoError, type CatalogAsset as Asset } from '../lib/asset-catalog'
+import { type CatalogAsset as Asset } from '../lib/asset-catalog'
 import { useWithdrawals, type WithdrawalController } from './withdrawals-api'
 import { WithdrawalPage } from './withdrawal'
+import { PortfolioPosition } from './portfolio-position'
+import { PortfolioActivity } from './portfolio-activity'
+import { useCashActivity, usePortfolioRecords, usePurchaseBasis, type CashActivityController } from './portfolio-data'
+import type { PurchaseBasis } from '../lib/portfolio-performance'
+import type { AgentOrder } from '../lib/agent-trading'
+import type { WithdrawalRecord } from '../lib/withdrawal-history'
 import './portfolio.css'
 
 type Language = 'en' | 'zh'
@@ -20,6 +26,7 @@ type Props = { assets: Asset[]; language: Language; onInspect: (asset: Asset) =>
 type Account = {
   configured: boolean; ready: boolean; authenticated: boolean; email?: string; address?: string;
   walletReady: boolean; balances: WalletBalances | null; loading: boolean; error: boolean;
+  orders?: AgentOrder[]; withdrawalHistory?: WithdrawalRecord[]; cashActivity?: CashActivityController; orderError?: boolean; purchaseBasis?: Record<string, PurchaseBasis>;
   login: () => void; logout: () => Promise<void>; deposits?: DepositController; withdrawals?: WithdrawalController;
 }
 const copy = {
@@ -58,6 +65,10 @@ function ConnectedPortfolio(props: Props) {
   const deposits = useDeposits(isOnramperDemo(window.location.search) ? undefined : address, getAccessToken)
   const refreshBalance = React.useCallback(() => setRefreshKey(value => value + 1), [])
   const withdrawals = useWithdrawals(address, wallet, refreshBalance)
+  const records = usePortfolioRecords(address, getAccessToken)
+  const cashActivity = useCashActivity(address, getAccessToken)
+  const holdingsKey = (balances?.tokens ?? []).filter(token => token.raw > 0n).map(token => token.symbol).sort().join(',')
+  const purchaseBasis = usePurchaseBasis(address, holdingsKey, balances?.checkedAt.getTime(), getAccessToken)
   const completedDeposits = React.useRef('')
   React.useEffect(() => {
     const completed = deposits.sessions.filter(session => session.mode === 'live' && session.status === 'completed').map(session => session.id).join(',')
@@ -70,10 +81,10 @@ function ConnectedPortfolio(props: Props) {
   React.useEffect(() => {
     if (!address) { setSnapshot(null); setError(false); setLoading(false); return }
     let active = true
-    setSnapshot(null); setLoading(true); setError(false)
+    setSnapshot(current => current?.owner.toLowerCase() === address.toLowerCase() ? current : null); setLoading(true); setError(false)
     readWalletBalances(address, props.assets).then(result => {
       if (active) { setSnapshot({ owner: address, balances: result }); setLoading(false) }
-    }).catch(() => { if (active) { setError(true); setLoading(false) } })
+    }).catch(() => { if (active) { setSnapshot(null); setError(true); setLoading(false) } })
     return () => { active = false }
   }, [address, props.assets, refreshKey])
   React.useEffect(() => {
@@ -87,6 +98,7 @@ function ConnectedPortfolio(props: Props) {
     configured: true, ready, authenticated, walletReady: walletsReady,
     email: user?.email?.address ?? user?.google?.email ?? undefined,
     address, balances, loading, error, deposits, withdrawals, login, logout,
+    orders: records.orders, withdrawalHistory: records.withdrawals, orderError: records.orderError, cashActivity, purchaseBasis,
   }} />
 }
 
@@ -114,28 +126,46 @@ export function PortfolioView({ assets, language, onInspect, onSell, account }: 
   const storageKey = `firstbell-display-name:${account.address ?? account.email ?? 'guest'}`
   const defaultName = account.email?.split('@')[0] || 'FirstBell'
   const [name, setName] = React.useState(() => { try { return localStorage.getItem(storageKey) || defaultName } catch { return defaultName } })
-  const [prices, setPrices] = React.useState<Record<string, number | null>>({})
+  const [markets, setMarkets] = React.useState<Record<string, TokenPrice>>({})
+  const [changes, setChanges] = React.useState<Record<string, number | null>>({})
   const holdings = (account.balances?.tokens ?? []).filter(token => token.raw > 0n)
   const positions = holdings.map(token => ({ ...token, asset: assets.find(asset => asset.symbol === token.symbol) }))
     .filter(row => row.asset && `${row.asset.company} ${row.symbol}`.toLowerCase().includes(search.trim().toLowerCase()))
 
+  const symbolsKey = holdings.map(token => token.symbol).sort().join(',')
+  const balanceCheckedAt = account.balances?.checkedAt.getTime()
   React.useEffect(() => {
     let active = true
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 15_000)
-    setPrices({})
-    const symbols = (account.balances?.tokens ?? []).filter(token => token.raw > 0n).map(token => token.symbol)
+    const symbols = symbolsKey ? symbolsKey.split(',') : []
+    setMarkets(current => Object.fromEntries(symbols.filter(symbol => current[symbol]).map(symbol => [symbol, current[symbol]])))
+    const batches = Array.from({ length: Math.ceil(symbols.length / 100) }, (_, index) => symbols.slice(index * 100, (index + 1) * 100))
+    void Promise.allSettled(batches.map(async batch => {
+      let rows: TokenPrice[]
+      try { rows = await getTokenPrices(batch, controller.signal) }
+      catch { rows = batch.map(symbol => ({ symbol, priceUsd: null, change24hPct: null, asOf: null })) }
+      if (active) setMarkets(current => ({ ...current, ...Object.fromEntries(rows.map(row => [row.symbol, row])) }))
+    })).finally(() => window.clearTimeout(timeout))
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout) }
+  }, [symbolsKey, balanceCheckedAt])
+  React.useEffect(() => {
+    let active = true
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 20_000)
+    const symbols = symbolsKey ? symbolsKey.split(',') : []
+    setChanges(current => Object.fromEntries(symbols.filter(symbol => Object.hasOwn(current, symbol)).map(symbol => [symbol, current[symbol]])))
     void (async () => {
-      for (let start = 0; start < symbols.length && !controller.signal.aborted; start += 100) {
-        const batch = symbols.slice(start, start + 100)
-        let values: Record<string, number | null>
-        try { values = Object.fromEntries((await getTokenPrices(batch, controller.signal)).map(item => [item.symbol, item.priceUsd])) }
-        catch { values = Object.fromEntries(batch.map(symbol => [symbol, null])) }
-        if (active) setPrices(current => ({ ...current, ...values }))
+      for (let start = 0; start < symbols.length; start += 6) {
+        const batch = symbols.slice(start, start + 6)
+        let rows: Record<string, number | null>
+        try { controller.signal.throwIfAborted(); rows = await getPortfolioChanges(batch, controller.signal) }
+        catch { rows = Object.fromEntries(batch.map(symbol => [symbol, null])) }
+        if (active) setChanges(current => ({ ...current, ...rows }))
       }
     })().finally(() => window.clearTimeout(timeout))
     return () => { active = false; controller.abort(); window.clearTimeout(timeout) }
-  }, [account.balances])
+  }, [symbolsKey, balanceCheckedAt])
   React.useEffect(() => {
     const sync = () => setView(new URLSearchParams(window.location.search).get('view') ?? '')
     window.addEventListener('popstate', sync)
@@ -164,19 +194,18 @@ export function PortfolioView({ assets, language, onInspect, onSell, account }: 
     window.history.replaceState(null, '', url.pathname + url.search + url.hash)
   }, [account.authenticated, account.deposits?.loading])
 
-  const positionValue = holdings.every(token => prices[token.symbol] != null)
-    ? holdings.reduce((sum, token) => sum + Number(token.quantity) * prices[token.symbol]!, 0) : null
+  const positionValue = holdings.every(token => markets[token.symbol]?.priceUsd != null)
+    ? holdings.reduce((sum, token) => sum + Number(token.quantity) * markets[token.symbol]?.priceUsd!, 0) : null
   const placeholder = account.error ? t.error : !account.address ? t.preparing : t.loading
-  const withdrawalActivity = currentWithdrawal(account.withdrawals, language, search)
   const cash = account.balances ? Number(account.balances.usdt) : null
   const total = cash !== null && positionValue !== null ? cash + positionValue : null
-  const valuationUnavailable = account.balances && (holdings.some(token => prices[token.symbol] === null)
+  const valuationUnavailable = account.balances && (holdings.some(token => markets[token.symbol]?.priceUsd === null)
     || (total !== null && !Number.isFinite(total)))
   const balance = account.balances && total !== null && Number.isFinite(total) ? money(total)
     : valuationUnavailable ? t.unavailable : placeholder
   const cashBalance = cash !== null && Number.isFinite(cash) ? money(cash) : placeholder
   const value = account.balances && positionValue != null && Number.isFinite(positionValue) ? money(positionValue)
-    : account.balances && holdings.some(token => prices[token.symbol] === null) ? t.unavailable : placeholder
+    : account.balances && holdings.some(token => markets[token.symbol]?.priceUsd === null) ? t.unavailable : placeholder
   const saveName = () => {
     const next = name.trim().slice(0, 40) || defaultName
     setName(next); setEditing(false)
@@ -226,29 +255,17 @@ export function PortfolioView({ assets, language, onInspect, onSell, account }: 
         <div className="portfolio-tabs" role="tablist" aria-label={t.title}>{(['positions', 'activity'] as const).map(id => <button type="button" role="tab" id={`portfolio-tab-${id}`} aria-controls="portfolio-results" key={id} aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => { setSection(id); setSearch('') }}>{t[id]}</button>)}</div>
         <label className="portfolio-search"><Search size={20} strokeWidth={2} /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
         <div id="portfolio-results" role="tabpanel" aria-labelledby={`portfolio-tab-${section}`}>
-          {section === 'activity' && account.deposits ? <><WithdrawalActivity entry={withdrawalActivity} onOpen={() => navigateView('withdraw')} /><DepositHistory controller={account.deposits} language={language} search={search} onOpen={openDeposit} hideEmpty={Boolean(withdrawalActivity)} /></> : section === 'positions' && positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <div className="portfolio-position-row" key={asset.symbol}>
-            <button type="button" className="portfolio-position-detail" aria-label={`${asset.symbol} · ${asset.company}`} onClick={() => onInspect(asset)}>
-              <img className={`brand-mark brand-mark--${asset.mark}`} src={assetLogo(asset)} alt="" loading="lazy" onError={tokenLogoError} />
-              <span className="portfolio-position-label"><strong>{asset.symbol}</strong><small>{asset.company}</small></span>
-              <strong className="portfolio-position-quantity">{hidden ? '••••' : displayQuantity(quantity)}</strong>
-            </button>
-            <button type="button" className="portfolio-position-sell" aria-label={`${t.sell} ${asset.symbol}`} disabled={!account.address || !account.walletReady} onClick={() => onSell(asset)}>{t.sell}</button>
-          </div>)}</div>
-            : <div className="portfolio-content-empty" role="status">{section === 'positions' ? account.error ? t.error : account.loading || !account.address ? t.loading : t.noPositions : t.noActivity}</div>}
+          {section === 'activity' ? <PortfolioActivity orders={account.orders ?? []} withdrawals={account.withdrawalHistory ?? []}
+            cash={account.cashActivity} deposits={account.deposits} orderError={account.orderError} language={language} search={search} hidden={hidden}
+            onDeposit={openDeposit} onWithdraw={() => navigateView('withdraw')} />
+            : positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <PortfolioPosition key={asset.symbol}
+              asset={asset} quantity={quantity} market={markets[asset.symbol]} change7d={changes[asset.symbol]}
+              orders={account.orders ?? []} basis={account.purchaseBasis?.[asset.symbol]} hidden={hidden} language={language} canSell={Boolean(account.address && account.walletReady)}
+              onInspect={() => onInspect(asset)} onSell={() => onSell(asset)} />)}</div>
+            : <div className="portfolio-content-empty" role="status">{account.error ? t.error : account.loading || !account.address ? t.loading : t.noPositions}</div>}
+
         </div>
       </motion.div>}
     </AnimatePresence>
   </section>
-}
-
-function currentWithdrawal(controller: WithdrawalController | undefined, language: Language, search: string) {
-  if (!controller?.plan || !controller.result) return null
-  const title = language === 'zh' ? 'USDT 提现' : 'USDT withdrawal'
-  const status = controller.phase === 'completed' ? language === 'zh' ? '已确认' : 'Confirmed' : controller.phase === 'failed' ? language === 'zh' ? '失败' : 'Failed' : language === 'zh' ? '等待确认' : 'Pending confirmation'
-  if (!`${title} ${controller.plan.amount} ${status}`.toLowerCase().includes(search.trim().toLowerCase())) return null
-  return { title, status, amount: controller.plan.amount }
-}
-function WithdrawalActivity({ entry, onOpen }: { entry: ReturnType<typeof currentWithdrawal>; onOpen: () => void }) {
-  if (!entry) return null
-  return <div className="withdrawal-activity"><button type="button" onClick={onOpen}><ArrowRight size={20} /><span><strong>{entry.amount} USDT</strong><small>{entry.title} · BNB Smart Chain</small></span><small>{entry.status}</small></button></div>
 }
