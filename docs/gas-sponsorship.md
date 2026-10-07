@@ -38,6 +38,7 @@ No policy creation, funding transfer or deployment-secret update is performed by
 `worker/megafuel.ts` sends private-policy requests only to `https://open-platform-ap.nodereal.io/{server-key}/megafuel/56`, with `X-MegaFuel-Policy-Uuid` and `User-Agent: FirstBell/0.1.0`.
 
 - During quote preparation, allowance/balance checks and zero-price approval simulation overlap the provider quote. `pm_isSponsorable` and MegaFuel's pending nonce read run concurrently. No transaction is signed or relayed before Confirm.
+- The eligibility check accepts MegaFuel's observed lowercase `sponsorable` response and the documented legacy `Sponsorable` response. Only an explicit boolean `true` permits sponsorship. A boolean `false` is a policy decline; missing, malformed or conflicting values remain unavailable. The same check covers trade approvals and USDT withdrawals.
 - Privy's `useSignTransaction` signs an explicit legacy transaction with `gasPrice: 0`, the prepared gas limit, chain 56 and MegaFuel nonce, without broadcasting it.
 - Authenticated `/api/trade/approval/submit` accepts a sealed account/wallet-bound plan and signed serialized bytes. The server parses the transaction, recovers its signer, checks all approval fields, checks the pending nonce/policy again, and relays via MegaFuel `eth_sendRawTransaction`.
 - The exact signed transaction/hash is retained if dispatch is ambiguous. Recovery retries the same bytes; it does not pick a new nonce, charge BNB, create a second stock order or report a fill from an acknowledgement.

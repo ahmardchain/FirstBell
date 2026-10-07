@@ -53,7 +53,7 @@ function fixture() {
         assert.equal(params[0].to.toLowerCase(), BSC_USDT.address.toLowerCase()); assert.equal(params[0].value, '0x0')
         const action = decodeFunctionData({ abi: erc20Abi, data: params[0].data })
         assert.equal(action.functionName, 'transfer'); assert.equal(action.args[0].toLowerCase(), recipient.toLowerCase()); assert.equal(action.args[1], parseUnits('5', 18))
-        result = { Sponsorable: s.sponsorable }
+        result = { sponsorable: s.sponsorable }
       } else if (method === 'eth_getTransactionCount') result = `0x${s.nonce.toString(16)}`
       else if (method === 'eth_sendRawTransaction') { const raw = params[0], hash = keccak256(raw); s.sends.push(raw); s.transactions.set(hash, parseTransaction(raw)); result = hash; if (s.lostAck) throw new Error('fixture lost acknowledgement') }
       else throw new Error(`unexpected sponsor method ${method}`)
