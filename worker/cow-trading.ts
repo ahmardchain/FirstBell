@@ -19,14 +19,17 @@ const rejectionReasons: Record<string, string> = {
   ValidToTooSoon: 'stale_quote', InsufficientValidTo: 'stale_quote',
   InvalidSignature: 'invalid_order_signature', WrongOwner: 'invalid_order_signature',
   InvalidAppData: 'invalid_order_payload', AppDataHashMismatch: 'invalid_order_payload',
+  OrderNotFound: 'order_not_found', AlreadyCancelled: 'order_not_open', OrderFullyExecuted: 'order_not_open', OrderExpired: 'order_not_open', OnChainOrder: 'cancellation_unavailable',
 }
 
 // Fixed BNB-chain API only. No client-selected origin, redirects, hooks or keys.
-async function cowRequest(method: 'GET' | 'POST', path: string, input?: unknown, signal?: AbortSignal): Promise<unknown> {
+async function cowRequest(method: 'GET' | 'POST' | 'DELETE', path: string, input?: unknown, signal?: AbortSignal): Promise<unknown> {
   const timeout = AbortSignal.timeout(12_000)
   const bounded = signal ? AbortSignal.any([signal, timeout]) : timeout
   const writing = method === 'POST' && path === '/api/v1/orders'
-  const stage = path.endsWith('/quote') ? 'quote' : writing ? 'submit' : 'status'
+  const cancelling = method === 'DELETE' && path === '/api/v1/orders'
+  const unknownWrite = cancelling ? 'cancellation_unknown' : 'submission_unknown'
+  const stage = path.endsWith('/quote') ? 'quote' : writing ? 'submit' : cancelling ? 'cancel' : 'status'
   const started = performance.now()
   let httpStatus: number | undefined
   try {
@@ -36,7 +39,10 @@ async function cowRequest(method: 'GET' | 'POST', path: string, input?: unknown,
       ...(input === undefined ? {} : { body: JSON.stringify(input) }), signal: bounded })
     httpStatus = response.status
     if (method === 'GET' && response.status === 404) return null
-    if (!response.body || Number(response.headers.get('content-length')) > 300_000) throw new RouteError(writing ? 'submission_unknown' : 'invalid_provider_response')
+    // The spec does not require a cancellation acknowledgement body. The
+    // deployed handler may return JSON "Cancelled"; re-read the actual order.
+    if (cancelling && response.status === 200) { await response.body?.cancel().catch(() => {}); return null }
+    if (!response.body || Number(response.headers.get('content-length')) > 300_000) throw new RouteError(writing || cancelling ? unknownWrite : 'invalid_provider_response')
     const reader = response.body.getReader(), decoder = new TextDecoder()
     let size = 0, text = ''
     try {
@@ -44,31 +50,36 @@ async function cowRequest(method: 'GET' | 'POST', path: string, input?: unknown,
         const chunk = await reader.read()
         if (chunk.done) break
         size += chunk.value.byteLength
-        if (size > 300_000) { await reader.cancel(); throw new RouteError(writing ? 'submission_unknown' : 'invalid_provider_response') }
+        if (size > 300_000) { await reader.cancel(); throw new RouteError(writing || cancelling ? unknownWrite : 'invalid_provider_response') }
         text += decoder.decode(chunk.value, { stream: true })
       }
     } finally { reader.releaseLock() }
     bounded.throwIfAborted()
     let result: unknown
-    try { result = JSON.parse(text + decoder.decode()) } catch { throw new RouteError(writing ? 'submission_unknown' : 'invalid_provider_response') }
+    try { result = JSON.parse(text + decoder.decode()) } catch { throw new RouteError(writing || cancelling ? unknownWrite : 'invalid_provider_response') }
     if (!response.ok) {
       const type = object(result)?.errorType
       const knownType = typeof type === 'string' && (Object.hasOwn(rejectionReasons, type) || type === 'DuplicatedOrder') ? type : 'Other'
       // Never log upstream descriptions, signatures, wallet addresses or URLs.
       console.warn('TRADE_COW_REJECTION', { stage, httpStatus, errorType: knownType })
       if (writing && response.status < 500 && type === 'DuplicatedOrder') return { duplicate: true }
-      const reason = writing && response.status >= 500 ? 'submission_unknown' : rejectionReasons[knownType] ?? 'provider_error'
+      const reason = (writing || cancelling) && response.status >= 500 ? unknownWrite : rejectionReasons[knownType] ?? 'provider_error'
       throw new RouteError(reason, response.status >= 500 ? 503 : 400)
     }
     return result
   } catch (error) {
     if (error instanceof RouteError) throw error
-    if (writing) throw new RouteError('submission_unknown')
+    if (writing || cancelling) throw new RouteError(unknownWrite)
     if (bounded.aborted) throw new RouteError('quote_timeout', 504)
     throw new RouteError('provider_error')
   } finally {
     console.info('TRADE_COW_TIMING', { stage, httpStatus, durationMs: Math.round(performance.now() - started) })
   }
+}
+
+export async function cancelCowOrder(orderId: string, signature: Hex) {
+  if (!uid(orderId)) throw new RouteError('invalid_order_payload', 400)
+  await cowRequest('DELETE', '/api/v1/orders', { orderUids: [orderId], signature, signingScheme: 'eip712' })
 }
 
 export async function getCowTrade(symbol: Symbol, side: 'buy' | 'sell', amount: string, walletAddress: string, signal?: AbortSignal) {

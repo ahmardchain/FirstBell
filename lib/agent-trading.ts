@@ -22,7 +22,9 @@ export type AgentTradePlan = {
     sponsorship?: { provider: 'megafuel'; gas: string; nonce: number } };
   planToken: string;
 }
-export type AgentOrder = { orderId: string; status: 'PENDING_VENDOR' | 'PENDING_ONCHAIN' | 'CONFIRMING' | 'FILLED' | 'FAILED' | 'EXPIRED' | 'CANCELLED'; txHash: Hex | null; inputAmount: string | null; outputAmount: string | null; receiptToken: string }
+export type AgentOrder = { orderId: string; status: 'PENDING_VENDOR' | 'PENDING_ONCHAIN' | 'CONFIRMING' | 'FILLED' | 'FAILED' | 'EXPIRED' | 'CANCELLED'; txHash: Hex | null; inputAmount: string | null; outputAmount: string | null; receiptToken: string;
+  trade?: { symbol: string; side: 'buy' | 'sell'; amount: string; inputSymbol: string; outputSymbol: string; expiresAt: string; source: 'binance-web3' | 'cow-protocol' };
+  canCancel?: boolean; cancellationRequested?: boolean }
 export const terminalOrder = (status: AgentOrder['status']) => ['FILLED', 'FAILED', 'EXPIRED', 'CANCELLED'].includes(status)
 const obj = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const sameAddress = (a: unknown, b: string) => typeof a === 'string' && /^0x[a-fA-F0-9]{40}$/.test(a) && a.toLowerCase() === b.toLowerCase()
