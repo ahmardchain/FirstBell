@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify } from 'jose'
+import { SignJWT, errors, jwtVerify } from 'jose'
 import { decodeEventLog, encodeFunctionData, erc20Abi, formatUnits, hashTypedData, isAddress, parseUnits, verifyTypedData, type Address, type Hex } from 'viem'
 import { isPaymentToken, tradeCash, type PaymentToken } from '../lib/trade-assets.ts'
 import { COW_RELAYER, COW_SETTLEMENT, validateOrderTypedData, type AgentOrder, type AgentTradePlan } from '../lib/agent-trading.ts'
@@ -8,7 +8,7 @@ import { verifyWalletIdentity, WalletVerificationError } from './wallet-verifica
 import type { ApiEnv } from './env.ts'
 import { megaFuelConfigured, relaySponsoredApproval, sponsorApproval } from './megafuel.ts'
 import { tradeAttempt } from './trade-attempts.ts'
-import { checkCowOrder, getCowTrade, submitCowOrder } from './cow-trading.ts'
+import { checkCowOrder, cowOrderUid, getCowTrade, submitCowOrder } from './cow-trading.ts'
 
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -22,10 +22,20 @@ export async function sealTradeTicket(value: Record<string, unknown>, userId: st
   return new SignJWT({ ...value, kind }).setProtectedHeader({ alg: 'HS256', typ: 'JWT' }).setIssuer('firstbell-agent')
     .setAudience(`firstbell-${kind}`).setSubject(userId).setIssuedAt().setExpirationTime(kind === 'plan' ? '30m' : '24h').sign(await tokenKey(secret))
 }
-export async function openTradeTicket(token: unknown, userId: string, secret: string, kind: 'plan' | 'receipt') {
+export async function openTradeTicket(token: unknown, userId: string, secret: string, kind: 'plan' | 'receipt', readOnly = false) {
   if (typeof token !== 'string' || token.length > 20_000) throw new RouteError('invalid_order_ticket', 400)
   try {
-    const { payload } = await jwtVerify(token, await tokenKey(secret), { algorithms: ['HS256'], issuer: 'firstbell-agent', audience: `firstbell-${kind}` })
+    const key = await tokenKey(secret)
+    const options = { algorithms: ['HS256'], issuer: 'firstbell-agent', audience: `firstbell-${kind}` }
+    let verified
+    try { verified = await jwtVerify(token, key, options) }
+    catch (error) {
+      // An authentic historical ticket can identify an order for a read. It
+      // never authorizes dispatch, approval, or a new signature after expiry.
+      if (!readOnly || !(error instanceof errors.JWTExpired) || error.claim !== 'exp' || typeof error.payload.exp !== 'number') throw error
+      verified = await jwtVerify(token, key, { ...options, currentDate: new Date(error.payload.exp * 1000 - 1) })
+    }
+    const { payload } = verified
     if (payload.sub !== userId || payload.kind !== kind) throw new Error('wrong account')
     return payload
   } catch { throw new RouteError('invalid_order_ticket', 403) }
@@ -197,6 +207,20 @@ export async function checkAgentOrder(orderId: string, plan: Pick<AgentTradePlan
   return { orderId, status: 'FILLED', txHash, inputAmount: formatUnits(spent, plan.inputDecimals), outputAmount: formatUnits(received, plan.outputDecimals) }
 }
 
+export async function recoverAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, signature: string, credentials: Credentials, previous: { started: boolean; orderId: string | null }): Promise<Omit<AgentOrder, 'receiptToken'> | null> {
+  if (!/^0x[a-fA-F0-9]{130}$/.test(signature)) throw new RouteError('invalid_order_signature', 400)
+  const typedData = validateOrderTypedData(plan.typedData, plan, Date.parse(plan.expiresAt) - 10_000)
+  if (hashTypedData(typedData) !== plan.typedDataHash || !await verifyTypedData({ ...typedData, address: plan.route.walletAddress as Address, signature: signature as Hex })) throw new RouteError('invalid_order_signature', 403)
+  const orderId = previous.orderId ?? (plan.route.source === 'cow-protocol' ? cowOrderUid(plan) : null)
+  if (!orderId) return null
+  try { return await checkAgentOrder(orderId, plan, credentials) }
+  catch (error) {
+    // A 404 is an unknown outcome, never evidence of cancellation or a fill.
+    if (error instanceof RouteError && error.reason === 'order_not_found') return null
+    throw error
+  }
+}
+
 async function readBody(request: Request): Promise<Record<string, unknown>> {
   const reader = request.body?.getReader()
   if (!reader) throw new RouteError('invalid_trade_request', 400)
@@ -222,13 +246,14 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
     const body = await readBody(request)
     if (typeof body.walletAddress !== 'string' || !isAddress(body.walletAddress)) throw new RouteError('invalid_trade_request', 400)
     const path = new URL(request.url).pathname
+    const reading = path === '/api/trade/status' || path === '/api/trade/recover'
     let ticket
-    if (path !== '/api/trade/prepare') ticket = await openTradeTicket(path === '/api/trade/status' ? body.receiptToken : body.planToken, userId, credentials.secretKey, path === '/api/trade/status' ? 'receipt' : 'plan')
+    if (path !== '/api/trade/prepare') ticket = await openTradeTicket(path === '/api/trade/status' ? body.receiptToken : body.planToken, userId, credentials.secretKey, path === '/api/trade/status' ? 'receipt' : 'plan', reading)
     const plan = ticket?.plan as Omit<AgentTradePlan, 'planToken'> | undefined
     if (ticket && (!plan || !same(plan.route?.walletAddress, body.walletAddress))) throw new RouteError('wallet_not_verified', 403)
     if (!await verifyWalletIdentity(request.headers.get('privy-id-token'), env, userId, body.walletAddress)) throw new RouteError('wallet_not_verified', 403)
     const stub = env.ACCOUNTS.get(env.ACCOUNTS.idFromName(userId))
-    const limitPath = path === '/api/trade/prepare' ? 'quote-rate' : path === '/api/trade/status' ? 'trade-status-rate' : 'trade-write-rate'
+    const limitPath = path === '/api/trade/prepare' ? 'quote-rate' : reading ? 'trade-status-rate' : 'trade-write-rate'
     const allowed = await stub.fetch(new Request(`https://account.internal/${limitPath}`, { method: 'POST', headers: { 'X-Privy-DID': userId } }))
     if (!allowed.ok) {
       const failure = object(await allowed.json())
@@ -266,6 +291,14 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
       await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'complete', submitted.orderId)
       const receiptToken = await sealTradeTicket({ plan, orderId: submitted.orderId }, userId, credentials.secretKey, 'receipt')
       return json({ order: { ...submitted, receiptToken } })
+    }
+    if (path === '/api/trade/recover' && plan) {
+      if (typeof body.signature !== 'string') throw new RouteError('invalid_order_signature', 400)
+      const previous = await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'get')
+      const recovered = await recoverAgentTrade(plan, body.signature, credentials, previous)
+      if (!recovered) return json({ order: null })
+      const receiptToken = await sealTradeTicket({ plan, orderId: recovered.orderId }, userId, credentials.secretKey, 'receipt')
+      return json({ order: { ...recovered, receiptToken } })
     }
     if (path === '/api/trade/status' && plan && id(ticket?.orderId)) return json({ order: { ...await checkAgentOrder(ticket.orderId, plan, credentials), receiptToken: body.receiptToken } })
     return json({ error: 'not_found' }, 404)

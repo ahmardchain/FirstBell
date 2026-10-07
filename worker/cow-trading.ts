@@ -129,7 +129,9 @@ export async function submitCowOrder(plan: Plan, signature: string, recovering: 
 
 export async function checkCowOrder(orderId: string, plan: Pick<Plan, 'route'>): Promise<{ orderId: string; status: AgentOrder['status']; txHash: Hex | null }> {
   if (!uid(orderId)) throw new RouteError('invalid_provider_response')
-  const order = verifyCowOrder(await cowRequest('GET', `/api/v1/orders/${orderId}`), orderId, plan)
+  const response = await cowRequest('GET', `/api/v1/orders/${orderId}`)
+  if (response === null) throw new RouteError('order_not_found', 404)
+  const order = verifyCowOrder(response, orderId, plan)
   const statuses: Record<string, AgentOrder['status']> = { open: 'PENDING_VENDOR', fulfilled: 'FILLED', cancelled: 'CANCELLED', expired: 'EXPIRED' }
   const status = statuses[String(order.status)]
   if (!status) throw new RouteError('invalid_provider_response')

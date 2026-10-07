@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
+import { SignJWT } from 'jose'
 import { after, beforeEach, test } from 'node:test'
 import { privateKeyToAccount } from 'viem/accounts'
 import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, erc20Abi, hashTypedData } from 'viem'
 import { fractionOfQuantity, parseAgentIntent } from '../lib/agent-intent.ts'
 import { COW_ORDER_FIELDS, COW_RELAYER, COW_SETTLEMENT, validateAgentTradePlan, validateOrderTypedData } from '../lib/agent-trading.ts'
-import { prepareAgentTrade, submitAgentTrade, checkAgentOrder, sealTradeTicket, openTradeTicket, handleAgentTrade } from '../worker/agent-trading.ts'
+import { prepareAgentTrade, submitAgentTrade, checkAgentOrder, recoverAgentTrade, sealTradeTicket, openTradeTicket, handleAgentTrade } from '../worker/agent-trading.ts'
 import { handleApiRequest } from '../worker/router.ts'
 import { clearTradingMetadataCache } from '../worker/binance-trading.ts'
 import { BSC_USDT } from '../lib/funding.ts'
@@ -206,6 +207,34 @@ test('signed tickets reject account changes, tampering and cross-use', async () 
   await assert.rejects(() => openTradeTicket(ticket.slice(0, -5) + 'abcde', 'did:privy:fixture123', credentials.secretKey, 'plan'), /invalid_order_ticket/)
   await assert.rejects(() => openTradeTicket(ticket, 'did:privy:fixture123', credentials.secretKey, 'receipt'), /invalid_order_ticket/)
 })
+test('authentic expired tickets allow only historical reads, preserving owner, kind and signature checks', async () => {
+  const user = 'did:privy:fixture123'
+  const key = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`firstbell-agent-orders-v1:${credentials.secretKey}`)))
+  for (const kind of ['plan', 'receipt']) {
+    const ticket = await new SignJWT({ kind, orderId: 'oc-o-fixture' }).setProtectedHeader({ alg: 'HS256', typ: 'JWT' }).setIssuer('firstbell-agent').setAudience(`firstbell-${kind}`).setSubject(user).setIssuedAt(now() - 172_800).setExpirationTime(now() - 86_400).sign(key)
+    await assert.rejects(() => openTradeTicket(ticket, user, credentials.secretKey, kind), /invalid_order_ticket/)
+    assert.equal((await openTradeTicket(ticket, user, credentials.secretKey, kind, true)).orderId, 'oc-o-fixture')
+    await assert.rejects(() => openTradeTicket(ticket, 'did:privy:another123', credentials.secretKey, kind, true), /invalid_order_ticket/)
+    await assert.rejects(() => openTradeTicket(ticket, user, credentials.secretKey, kind === 'plan' ? 'receipt' : 'plan', true), /invalid_order_ticket/)
+    await assert.rejects(() => openTradeTicket(ticket.slice(0, -5) + 'abcde', user, credentials.secretKey, kind, true), /invalid_order_ticket/)
+  }
+})
+
+test('reconciliation reads a recorded order after expiry without resubmitting or requiring unspent balance', async t => {
+  mock()
+  const prepared = await prepareAgentTrade('NVDAon', 'buy', '5', wallet, credentials)
+  const signature = await signer.signTypedData(prepared.typedData)
+  const elapsed = Date.now() + 1_800_000
+  t.mock.method(Date, 'now', () => elapsed)
+  balance = 0n; allowance = 0n
+  const recovered = await recoverAgentTrade(prepared, signature, credentials, { started: true, orderId: 'oc-o-fixture' })
+  assert.equal(recovered.status, 'PENDING_VENDOR')
+  assert.equal(calls.some(call => call.path.endsWith('/order/submit')), false)
+  assert.equal(await recoverAgentTrade(prepared, signature, credentials, { started: true, orderId: null }), null)
+  const wrong = privateKeyToAccount(`0x${'22'.repeat(32)}`)
+  const wrongSignature = await wrong.signTypedData(prepared.typedData)
+  await assert.rejects(() => recoverAgentTrade(prepared, wrongSignature, credentials, { started: true, orderId: 'oc-o-fixture' }), /invalid_order_signature/)
+})
 test('only the owned wallet can submit; retry keeps the same requestId and RFQ order ID', async () => {
   mock(); const prepared = await prepareAgentTrade('NVDAon', 'buy', '5', wallet, credentials)
   const wrongSigner = privateKeyToAccount(`0x${'22'.repeat(32)}`), wrongSignature = await wrongSigner.signTypedData(prepared.typedData)
@@ -227,7 +256,7 @@ test('filled requires provider settlement, two confirmations and correct wallet 
 })
 test('unauthenticated, oversized and cross-origin requests fail before reaching a provider', async () => {
   mock(); const env = { PRIVY_APP_ID: 'fixture-app', BINANCE_WEB3_API_KEY: credentials.apiKey, BINANCE_WEB3_SECRET_KEY: credentials.secretKey, ACCOUNTS: {} }
-  for (const path of ['prepare', 'submit', 'status', 'approval/submit', 'approval/refresh']) assert.equal((await handleApiRequest(new Request(`https://firstbell.test/api/trade/${path}`, { method: 'POST', body: '{}' }), env)).status, 401)
+  for (const path of ['prepare', 'submit', 'status', 'recover', 'approval/submit', 'approval/refresh']) assert.equal((await handleApiRequest(new Request(`https://firstbell.test/api/trade/${path}`, { method: 'POST', body: '{}' }), env)).status, 401)
   const cross = await handleAgentTrade(new Request('https://firstbell.test/api/trade/prepare', { method: 'POST', headers: { Origin: 'https://attacker.test', 'Content-Type': 'application/json' }, body: '{}' }), env, 'did:privy:fixture123')
   assert.equal(cross.status, 403)
   const big = await handleAgentTrade(new Request('https://firstbell.test/api/trade/prepare', { method: 'POST', headers: { Origin: 'https://firstbell.test', 'Content-Type': 'application/json' }, body: 'a'.repeat(24_001) }), env, 'did:privy:fixture123')

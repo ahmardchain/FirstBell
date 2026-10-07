@@ -12,12 +12,12 @@ import { withWalletSession, type WalletSession } from '../lib/wallet-session'
 import { PREPARE_TIMEOUT_MS } from '../lib/quote-timeout'
 import { createQuoteScheduler } from '../lib/quote-scheduler'
 import { TradeRequestError } from '../lib/trade-error'
-import { checkTrade, prepareTrade, refreshApproval, relayApproval, submitTrade } from './agent-api'
+import { checkTrade, prepareTrade, recoverTrade, refreshApproval, relayApproval, submitTrade } from './agent-api'
 import type { PaymentToken } from '../lib/trade-assets'
 import { displayQuantity } from './wallet-balances'
 import { BSC_USDT } from '../lib/funding'
 import { useTradeBalance } from './use-trade-balance'
-import { clearSignedTrade, clearTradeApproval, storeTradeReceipt } from '../lib/trade-storage'
+import { clearSignedTrade, clearTradeApproval, readSignedTrades, readTradeReceipts, storeSignedTrade, storeTradeReceipt } from '../lib/trade-storage'
 
 const client = createPublicClient({ chain: bsc, transport: http('https://bsc-dataseed.bnbchain.org', { timeout: 10_000, retryCount: 0 }) })
 const words = {
@@ -28,7 +28,7 @@ const words = {
     approvalNote: 'Confirm permits only this amount and places the reviewed order.', resetNote: 'Confirm resets the existing permission, permits only this amount, and places the reviewed order.',
     note: 'Enter an amount, then choose Buy or Sell.', walletConfirm: 'Processing…', approvalPending: 'Processing…', approvalDone: 'Token permission confirmed. Review a fresh quote.',
     submitting: 'Processing…', checking: 'Checking settlement…', pending: 'Processing — waiting for settlement.', filled: 'Purchased', failed: 'Order did not fill.',
-    uncertain: 'Your previous trade is not confirmed yet.', recover: 'Resume previous trade', previous: 'Previous trade', waiting: 'Your previous trade is still processing. You can edit this draft while it completes.', tx: 'View transaction', disconnected: 'Not connected',
+    uncertain: 'Order outcome is still unconfirmed.', recover: 'Resume previous trade', previous: 'Previous trades', waiting: 'Token permission is still unconfirmed. Checking the same transaction before another trade.', separate: 'An earlier order is still pending. Confirm places a separate trade; it does not replace or cancel that order.', expiredOrder: 'Order expired.', cancelledOrder: 'Order cancelled.', expiredRecovery: 'This order has expired. Its outcome is still unverified; it will not be submitted again.', unavailableOrder: 'This saved order could not be verified. Its outcome is still unknown.', tx: 'View transaction', disconnected: 'Not connected',
     available: 'Available', balanceLoading: 'Loading balance…', balanceUnavailable: 'Balance unavailable', balanceLogin: 'Log in to see your balance', balanceRefresh: 'Refresh available balance',
     buy: 'Buy', sell: 'Sell', confirmBuy: 'Confirm buy', confirmSell: 'Confirm sell', closeReview: 'Close confirmation', total: 'You spend', tradeComplete: 'Trade complete',
     minimumOrder: (value: string | null) => value ? `The provider requires a trade worth at least $${value}. Choose an amount that meets it.` : 'This amount is below the provider’s minimum trade value. Choose a larger amount.',
@@ -42,7 +42,7 @@ const words = {
     approvalNote: '确认后只授权此金额并提交已审核的订单。', resetNote: '确认后重置现有授权，只授权此金额并提交已审核的订单。',
     note: '输入金额后选择买入或卖出。', walletConfirm: '处理中…', approvalPending: '处理中…', approvalDone: '代币授权已确认，请审核新报价。',
     submitting: '正在提交订单…', checking: '正在检查结算…', pending: '订单已提交，等待结算。', filled: '交易已在 BNB 智能链上确认。', failed: '订单未成交。',
-    uncertain: '上一笔交易尚未确认。', recover: '恢复上一笔交易', previous: '上一笔交易', waiting: '上一笔交易仍在处理中。你可以继续编辑此交易草稿。', tx: '查看交易', disconnected: '未连接',
+    uncertain: '订单结果尚未确认。', recover: '恢复上一笔交易', previous: '之前的交易', waiting: '代币授权尚未确认。正在查询同一笔交易，确认后可进行下一笔交易。', separate: '之前的订单仍未完成。确认会下一个独立订单，不会替换或取消之前的订单。', expiredOrder: '订单已过期。', cancelledOrder: '订单已取消。', expiredRecovery: '此订单已过期，结果尚未核实。不会再次提交此订单。', unavailableOrder: '无法核实保存的订单，结果仍未知。', tx: '查看交易', disconnected: '未连接',
     available: '可用余额', balanceLoading: '正在加载余额…', balanceUnavailable: '余额暂不可用', balanceLogin: '登录以查看余额', balanceRefresh: '刷新可用余额',
     buy: '买入', sell: '卖出', confirmBuy: '确认买入', confirmSell: '确认卖出', closeReview: '关闭确认', total: '支付数量', tradeComplete: '交易完成',
     minimumOrder: (value: string | null) => value ? `服务商要求交易价值至少为 ${value} 美元。请选择符合要求的金额。` : '此金额低于服务商的最低交易价值，请增加金额。',
@@ -73,9 +73,9 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   const dialogRef = React.useRef<HTMLElement>(null)
   const primaryRef = React.useRef<HTMLButtonElement>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
-  const restoredOrder = React.useRef(false)
   const [plan, setPlan] = React.useState<AgentTradePlan | null>(null)
-  const [order, setOrder] = React.useState<AgentOrder | null>(null)
+  const [orders, setOrders] = React.useState<AgentOrder[]>([])
+  const [signedAttempts, setSignedAttempts] = React.useState<SignedTradeAttempt[]>([])
   const [phase, setPhase] = React.useState<Phase>('idle')
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
@@ -95,18 +95,20 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   const progressInFlight = React.useRef(false)
   const progressVersion = React.useRef(0)
   const openWhenPrepared = React.useRef(false)
-  const signedAttempt = React.useRef<SignedTradeAttempt | null>(null)
+  const signedAttemptsRef = React.useRef<SignedTradeAttempt[]>([])
   const approvalAttempt = React.useRef<ApprovalAttempt | null>(null)
-  const lastCheckedOrder = React.useRef<string | null>(null)
+  const progressCursor = React.useRef(0)
   const orderPollingStarted = React.useRef(0)
   const validAmount = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,18})?$/.test(amount) && /[1-9]/.test(amount)
   const walletAction = phase === 'wallet'
   const inputLocked = ['wallet', 'approval', 'submitting'].includes(phase)
-  const recoveryPending = Boolean(signedAttempt.current || approvalAttempt.current)
-  const unresolvedTrade = recoveryPending || Boolean(order && !terminalOrder(order.status))
+  const approvalPending = Boolean(approvalAttempt.current)
+  const pendingOrders = orders.filter(order => !terminalOrder(order.status))
+  const hasPreviousPending = signedAttempts.length > 0 || pendingOrders.length > 0
   const loading = phase !== 'idle' && phase !== 'uncertain'
   const errorText = (failure: unknown) => {
     const reason = failure instanceof Error ? failure.message : ''
+    if (reason === 'order_not_found' || reason === 'invalid_order_ticket') return t.unavailableOrder
     if (reason === 'minimum_order_not_met') return t.minimumOrder(failure instanceof TradeRequestError ? failure.minimumUsd : null)
     if (reason in t.sponsorshipErrors) return t.sponsorshipErrors[reason as keyof typeof t.sponsorshipErrors]
     if (/reject|cancel|4001/i.test(reason)) return t.errors.wallet_rejected
@@ -123,20 +125,27 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
       storeTradeReceipt(localStorage, owner, next)
     } catch { /* The current view still holds the server receipt. */ }
   }
+  const recordOrder = React.useCallback((next: AgentOrder) => {
+    setOrders(current => current.some(item => item.orderId === next.orderId) ? current.map(item => item.orderId === next.orderId ? next : item) : [...current, next])
+  }, [])
   const saveApproval = (attempt: ApprovalAttempt | null, owner: string, hash = approvalAttempt.current?.hash) => {
-    if (live.current.address?.toLowerCase() === owner.toLowerCase()) approvalAttempt.current = attempt
+    if (live.current.address?.toLowerCase() === owner.toLowerCase() && (attempt || approvalAttempt.current?.hash === hash)) approvalAttempt.current = attempt
     try {
       const key = `firstbell-pending-approval:${owner.toLowerCase()}`
       if (attempt) localStorage.setItem(key, JSON.stringify(attempt))
       else clearTradeApproval(localStorage, owner, hash)
     } catch { /* Keep the exact signed bytes in memory if persistence is unavailable. */ }
   }
-  const saveSignedOrder = (attempt: SignedTradeAttempt | null, owner: string, expected = signedAttempt.current) => {
-    if (live.current.address?.toLowerCase() === owner.toLowerCase()) signedAttempt.current = attempt
+  const saveSignedOrder = (attempt: SignedTradeAttempt | null, owner: string, expected?: SignedTradeAttempt) => {
+    if (!attempt && !expected) return
+    if (live.current.address?.toLowerCase() === owner.toLowerCase()) {
+      const remaining = signedAttemptsRef.current.filter(item => item.plan.requestId !== (attempt ?? expected)!.plan.requestId || item.signature !== (attempt ?? expected)!.signature)
+      signedAttemptsRef.current = attempt ? [...remaining, attempt] : remaining
+      setSignedAttempts(signedAttemptsRef.current)
+    }
     try {
-      const key = `firstbell-pending-order:${owner.toLowerCase()}`
-      if (attempt) localStorage.setItem(key, JSON.stringify(attempt))
-      else clearSignedTrade(localStorage, owner, expected)
+      if (attempt) storeSignedTrade(localStorage, owner, attempt)
+      else clearSignedTrade(localStorage, owner, expected!)
     } catch { /* The exact signed order remains in memory. */ }
   }
   React.useEffect(() => {
@@ -149,19 +158,14 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   React.useEffect(() => {
     warmup.current!.clear()
     if (address) warmup.current!.warm()
-    lastCheckedOrder.current = null
+    progressCursor.current = 0
     progressVersion.current++; progressInFlight.current = false
     setProgressBusy(false); setProgressError('')
     approvalAttempt.current = null
-    signedAttempt.current = null
-    restoredOrder.current = false
-    setOrder(null)
+    signedAttemptsRef.current = []
+    setSignedAttempts([]); setOrders([])
     if (address) try {
-      const saved = JSON.parse(localStorage.getItem(`firstbell-agent-order:${address.toLowerCase()}`) ?? 'null') as AgentOrder | null
-      if (saved && typeof saved.receiptToken === 'string' && /^[A-Za-z0-9_-]{1,256}$/.test(saved.orderId)) {
-        restoredOrder.current = true
-        setOrder({ ...saved, status: 'PENDING_VENDOR', txHash: null, inputAmount: null, outputAmount: null })
-      }
+      setOrders(readTradeReceipts(localStorage, address).map(saved => ({ ...saved, status: 'PENDING_VENDOR', txHash: null, inputAmount: null, outputAmount: null })))
     } catch { /* Local history is only a pointer; the server verifies the receipt. */ }
     if (address) try {
       const pending = JSON.parse(localStorage.getItem(`firstbell-pending-approval:${address.toLowerCase()}`) ?? 'null') as ApprovalAttempt | null
@@ -169,15 +173,15 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
         && (pending.raw === undefined || /^0x[0-9a-fA-F]+$/.test(pending.raw) && pending.raw.length <= 1_024 && keccak256(pending.raw) === pending.hash)) approvalAttempt.current = pending
     } catch { /* Server validates any recovered bytes against its sealed plan. */ }
     if (address) try {
-      const pending = JSON.parse(localStorage.getItem(`firstbell-pending-order:${address.toLowerCase()}`) ?? 'null') as SignedTradeAttempt | null
-      if (pending?.plan?.route?.walletAddress.toLowerCase() === address.toLowerCase() && /^0x[0-9a-fA-F]{130}$/.test(pending.signature)) signedAttempt.current = pending
+      signedAttemptsRef.current = readSignedTrades(localStorage, address)
+      setSignedAttempts(signedAttemptsRef.current)
     } catch { /* Recovery uses the same sealed plan and verifies its signature server-side. */ }
   }, [address])
   React.useEffect(() => {
     operation.current++; abort.current?.abort(); busy.current = false
     openWhenPrepared.current = false
     setConfirmationOpen(false)
-    setPlan(null); setPhase(approvalAttempt.current || signedAttempt.current ? 'uncertain' : 'idle'); setError(''); setNotice('')
+    setPlan(null); setPhase(approvalAttempt.current || signedAttemptsRef.current.length ? 'uncertain' : 'idle'); setError(''); setNotice('')
     return () => { operation.current++; abort.current?.abort() }
   }, [symbol, side, amount, address, paymentToken])
   React.useEffect(() => {
@@ -194,9 +198,6 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     window.addEventListener('beforeunload', preventUnload)
     return () => window.removeEventListener('beforeunload', preventUnload)
   }, [walletAction])
-  React.useEffect(() => {
-    if (order?.status === 'FILLED') available.refresh()
-  }, [order?.orderId, order?.status, available.refresh])
   const closeConfirmation = React.useCallback(() => setConfirmationOpen(false), [])
   React.useEffect(() => { if (!plan) setConfirmationOpen(false) }, [plan])
   React.useEffect(() => {
@@ -253,35 +254,68 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     return quoteScheduler.clear
   }, [prepare, refresh, address, validAmount, quoteScheduler])
 
-  const checkOrder = React.useCallback(async () => {
-    if (!order || !address || progressInFlight.current || terminalOrder(order.status)) return
-    lastCheckedOrder.current = order.orderId
+  const checkProgress = React.useCallback(async () => {
+    if (!address || progressInFlight.current || inputLocked) return
+    const pendingApproval = approvalAttempt.current
+    const jobs = [...orders.filter(order => !terminalOrder(order.status)).map(order => ({ order, attempt: null })),
+      ...signedAttemptsRef.current.map(attempt => ({ order: null, attempt }))]
+    const job = jobs.length ? jobs[progressCursor.current++ % jobs.length] : null
+    if (!pendingApproval && !job) return
     progressInFlight.current = true; setProgressBusy(true); setProgressError('')
     const version = progressVersion.current
     try {
-      const checked = await session(value => { assertWallet(address); return checkTrade(order, address, value) })
+      if (pendingApproval) {
+        // Poll the already signed permission by hash. Automatic checks never
+        // relay approval bytes or place another order.
+        let receipt
+        try { receipt = await client.getTransactionReceipt({ hash: pendingApproval.hash }) }
+        catch (failure) { if (failure instanceof Error && failure.name === 'TransactionReceiptNotFoundError') return; throw failure }
+        const tip = await client.getBlockNumber({ cacheTime: 0 })
+        if (tip < receipt.blockNumber + 1n) return
+        assertWallet(address)
+        saveApproval(null, address, pendingApproval.hash)
+        if (version === progressVersion.current) {
+          operation.current++; abort.current?.abort(); quoteScheduler.clear(); busy.current = false
+          setPlan(null); setPhase('idle'); setNotice(receipt.status === 'success' ? t.approvalDone : ''); setRefresh(value => value + 1)
+          available.refresh()
+        }
+        if (receipt.status !== 'success') throw new Error('approval_failed')
+        return
+      }
+      const checked = await session(value => {
+        assertWallet(address)
+        return job!.order ? checkTrade(job!.order, address, value) : recoverTrade(job!.attempt!.plan, job!.attempt!.signature, value)
+      })
+      if (!checked) return
+      persist(checked, address)
+      if (job?.attempt) saveSignedOrder(null, address, job.attempt)
       assertWallet(address)
-      if (version === progressVersion.current) { setOrder(checked); persist(checked, address) }
+      if (version === progressVersion.current) {
+        recordOrder(checked)
+        if (checked.status === 'FILLED') available.refresh()
+      }
     } catch (failure) { if (version === progressVersion.current) setProgressError(errorText(failure)) }
     finally { if (version === progressVersion.current) { progressInFlight.current = false; setProgressBusy(false) } }
-  }, [order, address, session, t])
+  }, [orders, address, session, t, inputLocked, recordOrder, available.refresh, quoteScheduler])
+  const progressKey = [...pendingOrders.map(order => order.orderId), ...signedAttempts.map(attempt => attempt.plan.requestId), approvalAttempt.current?.hash ?? ''].join(':')
   React.useEffect(() => {
     orderPollingStarted.current = Date.now()
-  }, [order?.orderId])
+  }, [address, progressKey])
   React.useEffect(() => {
-    if (!order || terminalOrder(order.status) || !address || progressBusy) return
-    const delay = lastCheckedOrder.current !== order.orderId ? 1000 : Date.now() - orderPollingStarted.current < 30_000 ? 2500 : 10_000
-    const timer = window.setTimeout(() => { void checkOrder() }, delay)
+    if (!progressKey.replaceAll(':', '') || !address || progressBusy || inputLocked) return
+    const delay = progressCursor.current === 0 ? 1000 : Date.now() - orderPollingStarted.current < 30_000 ? 2500 : 10_000
+    const timer = window.setTimeout(() => { void checkProgress() }, delay)
     return () => window.clearTimeout(timer)
-  }, [order, address, progressBusy, checkOrder])
+  }, [progressKey, address, progressBusy, inputLocked, checkProgress])
 
   const confirm = async () => {
-    if (!plan || !address || !wallet || busy.current || unresolvedTrade || expired) return
+    if (!plan || !address || !wallet || busy.current || approvalAttempt.current || expired) return
     setConfirmationOpen(false)
     setPlan(null)
     busy.current = true; onLockChange({ close: true, edit: true }); setPhase('wallet'); setError(''); setNotice('')
     const version = operation.current
     const owner = address
+    let createdAttempt: SignedTradeAttempt | undefined
     try {
       const result = await executeReviewedTrade(plan, { symbol, side, amount, walletAddress: owner, paymentToken }, {
         assertWallet, switchChain: () => wallet.switchChain(56),
@@ -323,7 +357,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
           return (await signTypedData(typedData, { address: owner, uiOptions: { showWalletUIs: false, title: `${side === 'buy' ? 'Buy' : 'Sell'} ${symbol}` } })).signature
         },
         onApproval: () => { if (version === operation.current) setPhase('approval') },
-        onSigned: attempt => { saveSignedOrder(attempt, owner); setPhase('submitting') },
+        onSigned: attempt => { createdAttempt = attempt; saveSignedOrder(attempt, owner); setPhase('submitting') },
         submit: async attempt => {
           const submitted = await session(value => { assertWallet(owner); return submitTrade(attempt.plan, attempt.signature, value) })
           // Keep an acknowledged server receipt even if the view or wallet
@@ -336,16 +370,16 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
       if (version !== operation.current) return
       setPlan(null)
       if (result.kind === 'approval') { setNotice(t.approvalDone); setRefresh(value => value + 1) }
-      else { restoredOrder.current = false; setOrder(result.order); persist(result.order, owner); saveSignedOrder(null, owner) }
+      else { recordOrder(result.order); persist(result.order, owner); if (result.order.status === 'FILLED') available.refresh() }
     } catch (failure) {
       if (version !== operation.current) return
-      if (signedAttempt.current || approvalAttempt.current) { setProgressError(errorText(failure)); setPhase('uncertain') }
+      if (createdAttempt || approvalAttempt.current) { setProgressError(errorText(failure)); setPhase('uncertain') }
       else { setError(errorText(failure)); setPlan(null) }
     } finally { if (version === operation.current) { busy.current = false; setPhase(value => value === 'uncertain' ? value : 'idle') } }
   }
-  const recover = async () => {
+  const recover = async (attempt?: SignedTradeAttempt) => {
     if (!address || inputLocked || progressInFlight.current) return
-    const pendingApproval = approvalAttempt.current, attempt = signedAttempt.current
+    const pendingApproval = attempt ? null : approvalAttempt.current
     if (!pendingApproval && !attempt) return
     progressInFlight.current = true; setProgressBusy(true); setProgressError('')
     const version = progressVersion.current, owner = address
@@ -362,19 +396,24 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
           setPlan(null); setPhase('idle'); setNotice(t.approvalDone); setRefresh(value => value + 1)
         }
       } else if (attempt) {
-        const submitted = await session(value => { assertWallet(owner); return submitTrade(attempt.plan, attempt.signature, value) })
-        assertWallet(owner)
+        let submitted = await session(value => { assertWallet(owner); return recoverTrade(attempt.plan, attempt.signature, value) })
+        // An explicit resume may dispatch only the same still-valid order.
+        // Expired and unacknowledged orders remain recorded as unknown.
+        if (!submitted) {
+          if (Date.parse(attempt.plan.expiresAt) <= Date.now() + 5_000) throw new Error('expired_recovery')
+          submitted = await session(value => { assertWallet(owner); return submitTrade(attempt.plan, attempt.signature, value) })
+        }
         persist(submitted, owner); saveSignedOrder(null, owner, attempt)
-        if (version === progressVersion.current) { restoredOrder.current = true; setOrder(submitted); setProgressError('') }
+        assertWallet(owner)
+        if (version === progressVersion.current) { recordOrder(submitted); setProgressError(''); if (submitted.status === 'FILLED') available.refresh() }
       }
-    } catch (failure) { if (version === progressVersion.current) setProgressError(errorText(failure)) }
+    } catch (failure) { if (version === progressVersion.current) setProgressError(failure instanceof Error && failure.message === 'expired_recovery' ? t.expiredRecovery : errorText(failure)) }
     finally { if (version === progressVersion.current) { progressInFlight.current = false; setProgressBusy(false) } }
   }
   const status = phase === 'preparing' ? t.loading : phase === 'wallet' ? t.walletConfirm : phase === 'approval' ? t.approvalPending
     : phase === 'submitting' ? t.submitting : expired ? t.expired
     : notice || (plan ? t.ready : !authenticated ? t.note : !address ? t.walletLoading : !validAmount ? t.empty : t.ready)
-  const progressStatus = inputLocked ? t.submitting : recoveryPending ? approvalAttempt.current ? t.sponsorshipErrors.approval_submission_unknown : t.uncertain
-    : order?.status === 'FILLED' ? t.tradeComplete : order && terminalOrder(order.status) ? t.failed : t.pending
+  const orderStatus = (order: AgentOrder) => order.status === 'FILLED' ? t.tradeComplete : order.status === 'EXPIRED' ? t.expiredOrder : order.status === 'CANCELLED' ? t.cancelledOrder : terminalOrder(order.status) ? t.failed : t.pending
   const cancel = () => {
     if (inputLocked) return
     setConfirmationOpen(false); openWhenPrepared.current = false
@@ -406,13 +445,23 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
       {error && <p className="trade-sheet-error" role="alert">{error}</p>}
       <div className="trade-confirm-actions"><button type="button" className="trade-cancel" disabled={inputLocked} onClick={cancel}>{t.cancel}</button><button ref={primaryRef} type="submit" className={`trade-submit trade-${side}`} disabled={loading || (authenticated && (!address || !validAmount))}>{loading && <LoaderCircle size={16} className="trade-spinner" />}{actionLabel}</button></div>
     </form>
-    {(order || recoveryPending) && <section className="trade-progress" aria-label={t.previous}>
+    {(orders.length > 0 || signedAttempts.length > 0 || approvalPending || progressError) && <section className="trade-progress" aria-label={t.previous}>
       <div className="trade-progress-heading"><strong>{t.previous}</strong>{progressBusy && <LoaderCircle size={14} className="trade-spinner" aria-hidden="true" />}</div>
-      <p role="status" aria-live="polite">{!recoveryPending && order?.status === 'FILLED' && <Check size={14} />}{progressStatus}</p>
+      {orders.map(order => <div className="trade-progress-record" key={order.orderId}>
+        <p role="status" aria-live="polite" title={order.orderId}>{order.status === 'FILLED' && <Check size={14} />}{orderStatus(order)}</p>
+        {order.txHash && <a href={`https://bscscan.com/tx/${order.txHash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a>}
+      </div>)}
+      {signedAttempts.map(attempt => <div className="trade-progress-record" key={attempt.plan.requestId}>
+        <p>{attempt.plan.route.side === 'buy' ? t.buy : t.sell} · {attempt.plan.route.symbol} · {attempt.plan.route.inputAmount} {attempt.plan.route.inputSymbol}</p>
+        <p role="status" aria-live="polite">{t.uncertain}</p>
+        <button type="button" className="trade-progress-action" disabled={progressBusy || inputLocked || approvalPending} onClick={() => { void recover(attempt) }}>{t.recover}</button>
+      </div>)}
+      {approvalPending && <div className="trade-progress-record">
+        <p role="status" aria-live="polite">{t.sponsorshipErrors.approval_submission_unknown}</p>
+        <button type="button" className="trade-progress-action" disabled={progressBusy || inputLocked} onClick={() => { void recover() }}>{t.recover}</button>
+        <a href={`https://bscscan.com/tx/${approvalAttempt.current!.hash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a>
+      </div>}
       {progressError && <p className="trade-sheet-error" role="alert">{progressError}</p>}
-      {recoveryPending && <button type="button" className="trade-progress-action" disabled={progressBusy || inputLocked} onClick={() => { void recover() }}>{t.recover}</button>}
-      {approvalAttempt.current && <a href={`https://bscscan.com/tx/${approvalAttempt.current.hash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a>}
-      {order?.txHash && <a href={`https://bscscan.com/tx/${order.txHash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a>}
     </section>}
 
     {typeof document !== 'undefined' && createPortal(<AnimatePresence>{confirmationOpen && plan && <div className="trade-sheet-layer">
@@ -427,8 +476,8 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
         <div className="trade-sheet-row"><span>{t.expiry}</span><strong>{new Date(plan.expiresAt).toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en-US')}</strong></div>
         <div className="trade-sheet-row"><span>{t.wallet}</span><strong title={address}>{address ? `${address.slice(0, 7)}…${address.slice(-5)}` : t.disconnected}</strong></div>
         {plan.approval && <p className="trade-approval-note">{plan.approval.reset ? t.resetNote : t.approvalNote}</p>}
-        <p id="trade-confirm-note" className="trade-confirm-note" role="status">{expired ? t.expired : unresolvedTrade ? t.waiting : t.ready}</p>
-        <div className="trade-confirm-actions"><button type="button" className="trade-cancel" onClick={closeConfirmation}>{t.cancel}</button><button type="button" className={`trade-submit trade-${side}`} disabled={expired || loading || !address || unresolvedTrade} onClick={() => { void confirm() }}>{t.confirm}</button></div>
+        <p id="trade-confirm-note" className="trade-confirm-note" role="status">{expired ? t.expired : approvalPending ? t.waiting : hasPreviousPending ? t.separate : t.ready}</p>
+        <div className="trade-confirm-actions"><button type="button" className="trade-cancel" onClick={closeConfirmation}>{t.cancel}</button><button type="button" className={`trade-submit trade-${side}`} disabled={expired || loading || !address || approvalPending} onClick={() => { void confirm() }}>{t.confirm}</button></div>
       </motion.section>
     </div>}</AnimatePresence>, document.body)}
   </>
