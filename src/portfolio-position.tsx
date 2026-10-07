@@ -13,24 +13,28 @@ export function PortfolioPosition({ asset, quantity, market, change7d, orders, b
   const price = market?.priceUsd ?? null
   const performance = positionPerformance(asset.symbol, quantity, price, orders) ?? performanceFromBasis(basis, quantity, price)
   const value = price !== null ? Number(quantity) * price : null
-  const usd = (amount: number) => new Intl.NumberFormat(zh ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
+  const usd = (amount: number, maximumFractionDigits = 2) => new Intl.NumberFormat(zh ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits }).format(amount)
   const unavailable = zh ? '暂无数据' : 'Unavailable'
-  const money = (amount: number | null) => hidden ? '••••••' : amount !== null && Number.isFinite(amount) ? usd(amount) : market === undefined ? zh ? '加载中…' : 'Loading…' : unavailable
+  const purchaseUnavailable = zh ? '买入价格暂不可用' : 'Purchase price unavailable'
+  const marketPrice = price !== null ? usd(price) : market === undefined ? zh ? '加载中…' : 'Loading…' : unavailable
   return <StockCard className="app-stock-card portfolio-position-card max-w-none" logoSrc={assetLogo(asset)} logoClassName={`brand-mark brand-mark--${asset.mark}`}
-    ticker={asset.symbol} name={asset.company} price={price} change={market?.change24hPct ?? null} changeLabel="24h"
-    loading={market === undefined} locale={zh ? 'zh-CN' : 'en-US'} buyLabel={zh ? '卖出' : 'Sell'} buyDisabled={!canSell}
-    inspectLabel={zh ? '查看资产' : 'Open asset file'} unavailableLabel={zh ? '价格暂不可用' : 'Price unavailable'} changeUnavailableLabel={unavailable}
+    ticker={asset.symbol} name={asset.company} price={hidden ? null : value} change={hidden ? null : performance?.gainPct ?? null}
+    priceLabel={zh ? '持仓价值' : 'Position value'} changeLabel={zh ? '买入以来' : 'Since purchase'}
+    loading={!hidden && market === undefined} locale={zh ? 'zh-CN' : 'en-US'} buyLabel={zh ? '卖出' : 'Sell'} buyDisabled={!canSell}
+    inspectLabel={zh ? '查看资产' : 'Open asset file'} unavailableLabel={hidden ? '••••••' : zh ? '估值暂不可用' : 'Value unavailable'}
+    changeUnavailableLabel={hidden ? '••••' : purchaseUnavailable}
     onInspect={onInspect} onBuy={onSell}>
     <div className="portfolio-position-summary">
-      <div><span>{zh ? '持仓' : 'Holding'}</span><strong title={hidden ? undefined : quantity}>{hidden ? '••••' : `${displayQuantity(quantity, 8)} ${asset.symbol}`}</strong></div>
-      <div><span>{zh ? '持仓价值' : 'Position value'}</span><strong>{money(value)}</strong></div>
+      <div><span>{zh ? '持仓' : 'Holding'}</span><strong title={hidden ? undefined : quantity}>{hidden ? '••••' : `${displayQuantity(quantity, 8)} ${asset.symbol}`}</strong>
+        <small>{zh ? '代币价格' : 'Token price'} · {marketPrice}</small></div>
+      <div><span>{zh ? '持仓盈亏' : 'Your gain / loss'}</span>{hidden ? <strong>••••••</strong> : performance ? <strong data-direction={performance.gain >= 0 ? 'up' : 'down'}>
+        {performance.gain >= 0 ? '+' : '−'}{usd(Math.abs(performance.gain), performance.gain !== 0 && Math.abs(performance.gain) < .01 ? 4 : 2)}
+      </strong> : <strong className="portfolio-metric-unavailable">{purchaseUnavailable}</strong>}</div>
     </div>
     <div className="portfolio-position-performance">
-      <div><span>{zh ? '买入以来' : 'Since purchase'}</span>{hidden ? <strong>••••••</strong> : performance ? <strong data-direction={performance.gain >= 0 ? 'up' : 'down'}>
-        {performance.gain >= 0 ? '+' : '−'}{usd(Math.abs(performance.gain))}<small>{performance.gainPct >= 0 ? '+' : '−'}{Math.abs(performance.gainPct).toFixed(2)}%</small>
-      </strong> : <strong className="portfolio-metric-unavailable">{zh ? '买入价格暂不可用' : 'Purchase price unavailable'}</strong>}</div>
       <div><span>{zh ? '平均买入价' : 'Avg. purchase price'}</span><strong>{hidden ? '••••••' : performance ? usd(performance.averagePrice) : unavailable}</strong></div>
-      <div><span>7d</span><Percent value={change7d} unavailable={unavailable} /></div>
+      <div><span>{zh ? '市场 24h' : 'Market 24h'}</span><Percent value={market?.change24hPct} unavailable={unavailable} /></div>
+      <div><span>{zh ? '市场 7d' : 'Market 7d'}</span><Percent value={change7d} unavailable={unavailable} /></div>
     </div>
   </StockCard>
 }

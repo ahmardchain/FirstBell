@@ -112,10 +112,14 @@ export function usePurchaseBasis(address: string | undefined, symbolsKey: string
   const identity = React.useRef(identityToken); identity.current = identityToken
   const [snapshot, setSnapshot] = React.useState<{ owner: string; costs: Record<string, PurchaseBasis> } | null>(null)
   React.useEffect(() => {
-    setSnapshot(null)
+    const symbols = symbolsKey ? symbolsKey.split(',') : []
+    // Preserve fresh purchase evidence during a same-wallet background read.
+    // The position still checks it against the current on-chain quantity.
+    setSnapshot(current => current && address && current.owner.toLowerCase() === address.toLowerCase() ? { owner: address,
+      costs: Object.fromEntries(Object.entries(current.costs).filter(([symbol, basis]) => symbols.includes(symbol)
+        && Date.parse(basis.asOf) >= Date.now() - 15 * 60_000)) } : null)
     if (!address || !symbolsKey) return
     const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 20_000)
-    const symbols = symbolsKey.split(',')
     void withWalletSession({ getAccessToken, getIdentityToken: () => identity.current, refreshIdentityToken: getIdentityToken }, async session => {
       for (let start = 0; start < symbols.length && !controller.signal.aborted; start += 6) {
         try {
@@ -126,7 +130,10 @@ export function usePurchaseBasis(address: string | undefined, symbolsKey: string
           const rows = result.costs.filter(item => item && symbols.slice(start, start + 6).includes(item.symbol) && typeof item.quantity === 'string' && /^\d+(?:\.\d+)?$/.test(item.quantity)
             && typeof item.cost === 'number' && Number.isFinite(item.cost) && item.cost > 0 && Number.isFinite(Date.parse(item.asOf))
             && Date.parse(item.asOf) >= Date.now() - 15 * 60_000 && Date.parse(item.asOf) <= Date.now() + 120_000)
-          if (!controller.signal.aborted) setSnapshot(current => ({ owner: address, costs: { ...current?.costs, ...Object.fromEntries(rows.map(item => [item.symbol, item])) } }))
+          if (!controller.signal.aborted) setSnapshot(current => ({ owner: address, costs: {
+            ...Object.fromEntries(Object.entries(current?.owner === address ? current.costs : {}).filter(([symbol]) => !symbols.slice(start, start + 6).includes(symbol))),
+            ...Object.fromEntries(rows.map(item => [item.symbol, item])),
+          } }))
         } catch { /* Incomplete/unavailable purchase evidence stays unavailable. */ }
       }
     }, controller.signal).catch(() => {}).finally(() => window.clearTimeout(timeout))
