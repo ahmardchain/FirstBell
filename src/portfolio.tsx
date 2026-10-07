@@ -16,7 +16,7 @@ import { WithdrawalPage } from './withdrawal'
 import './portfolio.css'
 
 type Language = 'en' | 'zh'
-type Props = { assets: Asset[]; language: Language; onInspect: (asset: Asset) => void }
+type Props = { assets: Asset[]; language: Language; onInspect: (asset: Asset) => void; onSell: (asset: Asset) => void }
 type Account = {
   configured: boolean; ready: boolean; authenticated: boolean; email?: string; address?: string;
   walletReady: boolean; balances: WalletBalances | null; loading: boolean; error: boolean;
@@ -26,7 +26,8 @@ const copy = {
   en: {
     title: 'Portfolio', start: 'Your portfolio starts here', intro: 'Sign in with Google or email.',
     login: 'Create account', setup: 'Sign-in is being connected.', checking: 'Checking your account…',
-    deposit: 'Deposit', withdraw: 'Withdraw', positions: 'Positions', activity: 'Activity', search: 'Search',
+    deposit: 'Deposit', withdraw: 'Withdraw', positions: 'Positions', activity: 'Activity', search: 'Search', sell: 'Sell',
+    total: 'Total balance', cash: 'Available USDT', totalInfo: 'USDT plus the current estimated value of token positions, in USD',
     noPositions: 'No positions found', noActivity: 'No activity yet', hide: 'Hide balance', show: 'Show balance',
     loading: 'Loading…', error: 'Balance unavailable', preparing: 'Preparing your wallet…',
     edit: 'Edit name', name: 'Display name', unavailable: 'Value unavailable',
@@ -35,7 +36,8 @@ const copy = {
   zh: {
     title: '资产', start: '从这里开始建立你的资产组合', intro: '使用 Google 或邮箱登录。',
     login: '创建账户', setup: '登录功能正在接入。', checking: '正在检查账户…',
-    deposit: '充值', withdraw: '提现', positions: '持仓', activity: '活动', search: '搜索',
+    deposit: '充值', withdraw: '提现', positions: '持仓', activity: '活动', search: '搜索', sell: '卖出',
+    total: '总余额', cash: '可用 USDT', totalInfo: 'USDT 加上代币持仓的当前预计美元价值',
     noPositions: '没有找到持仓', noActivity: '暂无活动', hide: '隐藏余额', show: '显示余额',
     loading: '加载中…', error: '余额暂不可用', preparing: '正在准备钱包…',
     edit: '编辑名称', name: '显示名称', unavailable: '估值暂不可用',
@@ -95,7 +97,7 @@ export function PortfolioWorkspace(props: Props) {
 const money = (value: number) => `US$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 // A presentational view allows explicit local QA fixtures without bypassing Privy.
-export function PortfolioView({ assets, language, onInspect, account }: Props & { account: Account }) {
+export function PortfolioView({ assets, language, onInspect, onSell, account }: Props & { account: Account }) {
   const reduceMotion = useReducedMotion()
   const t = copy[language]
   const [section, setSection] = React.useState<'positions' | 'activity'>(() => new URLSearchParams(window.location.search).has('deposit') ? 'activity' : 'positions')
@@ -167,7 +169,12 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
   const placeholder = account.error ? t.error : !account.address ? t.preparing : t.loading
   const withdrawalActivity = currentWithdrawal(account.withdrawals, language, search)
   const cash = account.balances ? Number(account.balances.usdt) : null
-  const balance = cash !== null && Number.isFinite(cash) ? money(cash) : placeholder
+  const total = cash !== null && positionValue !== null ? cash + positionValue : null
+  const valuationUnavailable = account.balances && (holdings.some(token => prices[token.symbol] === null)
+    || (total !== null && !Number.isFinite(total)))
+  const balance = account.balances && total !== null && Number.isFinite(total) ? money(total)
+    : valuationUnavailable ? t.unavailable : placeholder
+  const cashBalance = cash !== null && Number.isFinite(cash) ? money(cash) : placeholder
   const value = account.balances && positionValue != null && Number.isFinite(positionValue) ? money(positionValue)
     : account.balances && holdings.some(token => prices[token.symbol] === null) ? t.unavailable : placeholder
   const saveName = () => {
@@ -209,13 +216,24 @@ export function PortfolioView({ assets, language, onInspect, account }: Props & 
           <button className="portfolio-logout" type="button" disabled={loggingOut} aria-busy={loggingOut} onClick={() => void logOut()}><LogOut size={17} aria-hidden="true" /><span>{loggingOut ? t.loggingOut : t.logout}</span></button>
         </div>
         {logoutError && <p className="portfolio-logout-error" role="alert">{t.logoutError}</p>}
-        <div className="portfolio-balance-row"><h1 title="USDT balance, displayed at a nominal US$1 per USDT" aria-live="polite">{hidden ? '••••••' : balance}</h1><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(current => !current)}>{hidden ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
-        <div className="portfolio-position-value"><span>{t.positions}</span><strong aria-live="polite">{hidden ? '••••••' : value}</strong></div>
+        <span className="app-label portfolio-total-label">{t.total}</span>
+        <div className="portfolio-balance-row"><h1 title={t.totalInfo} aria-live="polite">{hidden ? '••••••' : balance}</h1><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(current => !current)}>{hidden ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
+        <div className="portfolio-breakdown">
+          <div className="portfolio-position-value"><span>{t.cash}</span><strong aria-live="polite">{hidden ? '••••••' : cashBalance}</strong></div>
+          <div className="portfolio-position-value"><span>{t.positions}</span><strong aria-live="polite">{hidden ? '••••••' : value}</strong></div>
+        </div>
         <div className="portfolio-action-row"><button type="button" disabled={!account.address || !account.walletReady} onClick={() => navigateView('deposit')}>{t.deposit}</button><button type="button" disabled={!account.address || !account.walletReady || !account.withdrawals} onClick={() => navigateView('withdraw')}>{t.withdraw}</button></div>
         <div className="portfolio-tabs" role="tablist" aria-label={t.title}>{(['positions', 'activity'] as const).map(id => <button type="button" role="tab" id={`portfolio-tab-${id}`} aria-controls="portfolio-results" key={id} aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => { setSection(id); setSearch('') }}>{t[id]}</button>)}</div>
         <label className="portfolio-search"><Search size={20} strokeWidth={2} /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
         <div id="portfolio-results" role="tabpanel" aria-labelledby={`portfolio-tab-${section}`}>
-          {section === 'activity' && account.deposits ? <><WithdrawalActivity entry={withdrawalActivity} onOpen={() => navigateView('withdraw')} /><DepositHistory controller={account.deposits} language={language} search={search} onOpen={openDeposit} hideEmpty={Boolean(withdrawalActivity)} /></> : section === 'positions' && positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <button type="button" className="portfolio-position-row" key={asset.symbol} onClick={() => onInspect(asset)}><img className={`brand-mark brand-mark--${asset.mark}`} src={assetLogo(asset)} alt="" loading="lazy" onError={tokenLogoError} /><span><strong>{asset.symbol}</strong><small>{asset.company}</small></span><strong>{hidden ? '••••' : displayQuantity(quantity)}</strong></button>)}</div>
+          {section === 'activity' && account.deposits ? <><WithdrawalActivity entry={withdrawalActivity} onOpen={() => navigateView('withdraw')} /><DepositHistory controller={account.deposits} language={language} search={search} onOpen={openDeposit} hideEmpty={Boolean(withdrawalActivity)} /></> : section === 'positions' && positions.length ? <div className="portfolio-rows">{positions.map(({ asset, quantity }) => asset && <div className="portfolio-position-row" key={asset.symbol}>
+            <button type="button" className="portfolio-position-detail" aria-label={`${asset.symbol} · ${asset.company}`} onClick={() => onInspect(asset)}>
+              <img className={`brand-mark brand-mark--${asset.mark}`} src={assetLogo(asset)} alt="" loading="lazy" onError={tokenLogoError} />
+              <span className="portfolio-position-label"><strong>{asset.symbol}</strong><small>{asset.company}</small></span>
+              <strong className="portfolio-position-quantity">{hidden ? '••••' : displayQuantity(quantity)}</strong>
+            </button>
+            <button type="button" className="portfolio-position-sell" aria-label={`${t.sell} ${asset.symbol}`} disabled={!account.address || !account.walletReady} onClick={() => onSell(asset)}>{t.sell}</button>
+          </div>)}</div>
             : <div className="portfolio-content-empty" role="status">{section === 'positions' ? account.error ? t.error : account.loading || !account.address ? t.loading : t.noPositions : t.noActivity}</div>}
         </div>
       </motion.div>}
