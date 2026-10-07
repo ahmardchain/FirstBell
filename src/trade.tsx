@@ -1,7 +1,6 @@
 import * as React from 'react'
-import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, Search, X } from 'lucide-react'
+import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, Search } from 'lucide-react'
 import { assetLogo, tokenLogoError, type CatalogAsset } from '../lib/asset-catalog'
 import { MarketChart } from '@/components/spectrumui/charts/market-chart'
 import { getMarket, getRwa, MarketRequestError, type MarketData, type MarketFailure, type RwaContext, type Timeframe } from './market-api'
@@ -56,25 +55,23 @@ function TokenMark({ asset }: { asset: TradeAsset }) {
   return <img src={assetLogo(asset)} className={`brand-mark brand-mark--${asset.mark}`} alt="" loading="lazy" onError={tokenLogoError} />
 }
 
-export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, language, initialSide = null }: {
+export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, language, initialSide = null, onBusyChange, onExit }: {
   assets: TradeAsset[]
   asset: TradeAsset
   onAssetChange: (asset: TradeAsset) => void
   onInspect: (asset: TradeAsset) => void
   language: Language
   initialSide?: Side | null
+  onBusyChange?: (busy: boolean) => void
+  onExit?: () => void
 }) {
   const t = words[language]
   const [selectorOpen, setSelectorOpen] = React.useState(false)
   const [selectorQuery, setSelectorQuery] = React.useState('')
   const matchingAssets = assets.filter(candidate => `${candidate.company} ${candidate.symbol}`.toLowerCase().includes(selectorQuery.trim().toLowerCase()))
   const reduceMotion = useReducedMotion()
-  const [side, setSide] = React.useState<Side | null>(initialSide)
-  const [sheetInstance, setSheetInstance] = React.useState(0)
+  const [side, setSide] = React.useState<Side>(initialSide ?? 'buy')
   const [amount, setAmount] = React.useState('')
-  const [ticketSide, setTicketSide] = React.useState<Side>(initialSide ?? 'buy')
-  const [ticketAmount, setTicketAmount] = React.useState('')
-  const validTicketAmount = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,18})?$/.test(ticketAmount) && /[1-9]/.test(ticketAmount)
   const [timeframe, setTimeframe] = React.useState<Timeframe>('15m')
   const [market, setMarket] = React.useState<MarketData | null>(null)
   const [marketState, setMarketState] = React.useState<'loading' | 'empty' | 'error' | 'ready'>('loading')
@@ -82,35 +79,37 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const [rwa, setRwa] = React.useState<RwaContext | null>(null)
   const [rwaState, setRwaState] = React.useState<'loading' | 'not_configured' | 'no_verified_asset' | MarketFailure>('loading')
   const [refresh, setRefresh] = React.useState(0)
-  const [sheetLock, setSheetLock] = React.useState<TradeSheetLock>({ close: false, edit: false })
-  const lockRef = React.useRef(sheetLock)
-  const cancelWork = React.useRef<(() => void) | null>(null)
-  const updateLock = React.useCallback((next: TradeSheetLock) => { lockRef.current = next; setSheetLock(next) }, [])
-  const sheetRef = React.useRef<HTMLElement>(null)
-  const reviewRef = React.useRef<HTMLButtonElement>(null)
-  const triggerRef = React.useRef<HTMLButtonElement | null>(null)
+  const [tradeLock, setTradeLock] = React.useState<TradeSheetLock>({ close: false, edit: false })
+  const marketQuery = React.useRef('')
+  const marketResultQuery = React.useRef('')
+  const rwaQuery = React.useRef('')
+  const updateLock = React.useCallback((next: TradeSheetLock) => { setTradeLock(next); onBusyChange?.(next.close) }, [onBusyChange])
+  React.useEffect(() => () => onBusyChange?.(false), [onBusyChange])
 
   React.useEffect(() => {
     const controller = new AbortController()
-    setMarket(null)
-    setMarketState('loading')
+    const query = `${asset.symbol}:${timeframe}`
+    const fresh = marketQuery.current !== query
+    marketQuery.current = query
+    if (fresh) { marketResultQuery.current = ''; setMarket(null); setMarketState('loading') }
     getMarket(asset.symbol, timeframe, controller.signal).then(result => {
       if (controller.signal.aborted) return
+      marketResultQuery.current = query
       setMarket(result)
       if (result?.historyError) setMarketFailure(result.historyError.reason)
       setMarketState(result?.candles.length ? 'ready' : result?.historyError ? 'error' : 'empty')
     }).catch(error => {
       if (controller.signal.aborted) return
       setMarketFailure(error instanceof MarketRequestError ? error.reason : 'provider_error')
-      setMarketState('error')
+      // A background update must not remove the previous chart or reset input.
+      if (marketResultQuery.current !== query) setMarketState('error')
     })
     return () => controller.abort()
   }, [asset.symbol, timeframe, refresh])
 
   React.useEffect(() => {
     const controller = new AbortController()
-    setRwa(null)
-    setRwaState('loading')
+    if (rwaQuery.current !== asset.symbol) { setRwa(null); setRwaState('loading'); rwaQuery.current = asset.symbol }
     getRwa(asset.symbol, controller.signal).then(result => {
       if (controller.signal.aborted) return
       if (result.status === 'ready') setRwa(result)
@@ -120,9 +119,10 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   }, [asset.symbol, refresh])
 
   React.useEffect(() => {
+    if (amount || tradeLock.edit) return
     const timer = window.setInterval(() => setRefresh(value => value + 1), 30_000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [amount, tradeLock.edit])
 
   const tokenPrice = market?.symbol === asset.symbol && market.priceUsd !== null ? market.priceUsd
     : rwa?.symbol === asset.symbol ? rwa.tokenPriceUsd : null
@@ -138,59 +138,13 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const marketErrorTitle = marketFailure === 'provider_auth_error' ? t.marketAuth : marketFailure === 'rate_limited' ? t.marketRate : t.marketError
   const marketErrorBody = marketFailure === 'provider_auth_error' ? t.marketAuthBody : marketFailure === 'rate_limited' ? t.marketRateBody : t.marketErrorBody
 
-  const openSheet = () => {
-    if (!validTicketAmount) return
-    triggerRef.current = reviewRef.current
-    setSelectorOpen(false)
-    setAmount(ticketAmount)
-    setSheetInstance(value => value + 1)
-    setSide(ticketSide)
-  }
-  const closeSheet = React.useCallback(() => { if (!lockRef.current.close) { cancelWork.current?.(); setSide(null) } }, [])
-
-  React.useEffect(() => {
-    if (!side) return
-    triggerRef.current ??= reviewRef.current?.disabled
-      ? document.querySelector<HTMLButtonElement>(`.trade-entry-tabs .trade-${side}`)
-      : reviewRef.current
-    const priorOverflow = document.body.style.overflow
-    const background = document.querySelector<HTMLElement>('.app-shell')
-    const wasInert = background?.inert ?? false
-    document.body.style.overflow = 'hidden'
-    if (background) background.inert = true
-    const focusTimer = window.setTimeout(() => sheetRef.current?.querySelector<HTMLInputElement>('input')?.focus(), 80)
-    const onKey = (event: KeyboardEvent) => {
-      // Privy opens its own login/approval/signing dialog above this sheet.
-      // Let that dialog own Escape and Tab while it has keyboard focus.
-      const focusedDialog = document.activeElement?.closest('dialog, [role="dialog"], [role="alertdialog"]')
-      if (focusedDialog && focusedDialog !== sheetRef.current) return
-      if (event.key === 'Escape') { event.preventDefault(); closeSheet(); return }
-      if (event.key !== 'Tab' || !sheetRef.current) return
-      const focusable = Array.from(sheetRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), a[href]'))
-      if (!focusable.length) return
-      if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable.at(-1)?.focus() }
-      else if (!event.shiftKey && document.activeElement === focusable.at(-1)) { event.preventDefault(); focusable[0].focus() }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => {
-      window.clearTimeout(focusTimer)
-      document.body.style.overflow = priorOverflow
-      if (background) background.inert = wasInert
-      document.removeEventListener('keydown', onKey)
-      const focusTarget = triggerRef.current?.disabled
-        ? document.querySelector<HTMLButtonElement>('.trade-entry-tabs button[aria-pressed=true]')
-        : triggerRef.current
-      focusTarget?.focus()
-    }
-  }, [side, closeSheet])
-
-  React.useEffect(() => { setAmount(''); setTicketAmount('') }, [asset.symbol])
+  React.useEffect(() => { setAmount('') }, [asset.symbol])
 
   return <section className="trade-terminal" aria-labelledby="trade-heading">
     <div className="trade-topline"><span>{t.label}</span><span>FB / 002</span></div>
     <div className="trade-heading-row">
       <div className="trade-asset-picker">
-        <button type="button" className="trade-asset-trigger" onClick={() => setSelectorOpen(value => !value)} aria-expanded={selectorOpen} aria-controls="trade-asset-menu" aria-label={t.select}>
+        <button type="button" className="trade-asset-trigger" disabled={tradeLock.edit} onClick={() => setSelectorOpen(value => !value)} aria-expanded={selectorOpen} aria-controls="trade-asset-menu" aria-label={t.select}>
           <TokenMark asset={asset} /><span><strong id="trade-heading">{asset.symbol}</strong><small>{asset.company} · Ondo</small></span><ChevronDown size={20} aria-hidden="true" />
         </button>
         <AnimatePresence>{selectorOpen && <motion.div id="trade-asset-menu" className="trade-asset-menu" initial={reduceMotion ? false : { opacity: 0, scale: .97, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .99, y: -4 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
@@ -203,17 +157,11 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
 
     <div className="trade-body">
       <aside className="trade-entry" aria-labelledby="trade-entry-heading">
-        <form onSubmit={event => { event.preventDefault(); openSheet() }}>
-          <div className="trade-entry-heading"><h2 id="trade-entry-heading">{t.sheetTitle}</h2><span>{asset.symbol}</span></div>
-          <div className="trade-entry-tabs" role="group" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" key={value} aria-pressed={ticketSide === value} className={`trade-${value}`} onClick={() => { if (value !== ticketSide) { setTicketSide(value); setTicketAmount('') } }}>{t[value]}</button>)}</div>
-          <div className="trade-entry-market"><span>{t.orderType}</span><strong>{t.orderMarket}</strong></div>
-          <div className="trade-entry-amount"><label className="trade-amount-label" htmlFor="trade-entry-amount">{ticketSide === 'buy' ? t.spend : t.quantity}</label>
-            <div className="trade-amount-field"><input id="trade-entry-amount" type="text" inputMode="decimal" autoComplete="off" value={ticketAmount} onChange={event => setTicketAmount(event.target.value)} placeholder="0.00" aria-invalid={Boolean(ticketAmount) && !validTicketAmount} aria-describedby="trade-entry-note" /><span>{ticketSide === 'buy' ? 'USDT' : asset.symbol}</span></div>
-          </div>
-          <p id="trade-entry-note" className={`trade-entry-note ${ticketAmount && !validTicketAmount ? 'trade-entry-error' : ''}`}>{ticketAmount && !validTicketAmount ? t.invalidAmount : t.reviewNote}</p>
-          <button ref={reviewRef} type="submit" className={`trade-submit trade-${ticketSide}`} disabled={!validTicketAmount}>{ticketSide === 'buy' ? t.reviewBuy : t.reviewSell}<ArrowUpRight size={17} aria-hidden="true" /></button>
-        </form>
-        <div className="trade-entry-links"><button type="button" onClick={() => onInspect(asset)}>{t.inspect}<ArrowUpRight size={14} aria-hidden="true" /></button><a href={sourceHref(asset)} target="_blank" rel="noreferrer">{t.scan}<ExternalLink size={14} aria-hidden="true" /></a></div>
+        <div className="trade-entry-heading"><h2 id="trade-entry-heading">{t.sheetTitle}</h2><span>{asset.symbol}</span></div>
+        <div className="trade-entry-tabs" role="group" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" key={value} disabled={tradeLock.edit} aria-pressed={side === value} className={`trade-${value}`} onClick={() => { if (value !== side) { setSide(value); setAmount('') } }}>{t[value]}</button>)}</div>
+        <div className="trade-entry-market"><span>{t.orderType}</span><strong>{t.orderMarket}</strong></div>
+        <TradeConfirmation symbol={asset.symbol} tokenAddress={asset.address} side={side} amount={amount} onAmountChange={setAmount} language={language} onCancel={() => setAmount('')} onClosePending={onExit} onLockChange={updateLock} />
+        <div className="trade-entry-links"><button type="button" disabled={tradeLock.close} onClick={() => onInspect(asset)}>{t.inspect}<ArrowUpRight size={14} aria-hidden="true" /></button><a href={sourceHref(asset)} target="_blank" rel="noreferrer">{t.scan}<ExternalLink size={14} aria-hidden="true" /></a></div>
       </aside>
 
       <div className="trade-market-panel">
@@ -238,14 +186,5 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
       </>}
     </section>
 
-    {typeof document !== 'undefined' && createPortal(<AnimatePresence>{side && <div className="trade-sheet-layer">
-      <motion.button className="trade-sheet-scrim" type="button" tabIndex={-1} disabled={sheetLock.close} aria-label={t.close} onClick={closeSheet} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
-      <motion.section ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="trade-sheet-heading" aria-describedby="trade-sheet-note" className="trade-sheet" initial={reduceMotion ? false : { y: 100, opacity: 0, filter: 'blur(2px)' }} animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 0 } : { y: 100, opacity: 0, filter: 'blur(2px)' }} transition={{ duration: reduceMotion ? 0 : .4, ease: [.22, 1, .36, 1] }}>
-        <div className="trade-sheet-handle" aria-hidden="true" />
-        <div className="trade-sheet-header"><div><span>{t.sheetTitle} / {asset.symbol}</span><h2 id="trade-sheet-heading">{side === 'buy' ? t.buy : t.sell} {asset.symbol}</h2></div><button type="button" disabled={sheetLock.close} onClick={closeSheet} aria-label={t.close}><X size={22} /></button></div>
-        <div className="trade-sheet-tabs" role="group" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" key={value} disabled={sheetLock.edit} aria-pressed={side === value} className={`motion-tab trade-${value} ${side === value ? 'active' : ''}`} onClick={() => { if (value !== side) { setAmount(''); setTicketAmount(''); setTicketSide(value); setSide(value) } }}>{side === value && <motion.span className="motion-tab-indicator" layoutId="trade-side-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{t[value]}</span></button>)}</div>
-        <TradeConfirmation key={sheetInstance} symbol={asset.symbol} side={side} amount={amount} onAmountChange={setAmount} language={language} onCancel={closeSheet} onLockChange={updateLock} cancelWork={cancelWork} />
-      </motion.section>
-    </div>}</AnimatePresence>, document.body)}
   </section>
 }
