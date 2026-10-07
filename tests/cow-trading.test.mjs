@@ -24,7 +24,7 @@ beforeEach(() => clearTradingMetadataCache())
 const envelope = data => ({ code: 0, success: true, timestamp: Date.now(), data })
 function fixture(side = 'buy', amount = '5') {
   const s = { raw: BigInt(amount) * 10n ** 18n, fee: 10n ** 15n, output: 25n * 10n ** 15n, calls: [], binance: 'other-vendor',
-    balance: 10n ** 20n, allowance: 10n ** 20n, quoteMutation: null, status: 'open', acknowledged: true,
+    balance: 10n ** 20n, allowance: 10n ** 20n, quoteMutation: null, quoteRejection: null, binanceMode: 'RFQ', status: 'open', acknowledged: true,
     stored: null, plan: null, badUid: false, duplicate: false, rejection: null, trades: 'valid', confirmations: 2, mismatch: false, mined: true, cancelledQuote: false,
     cancelOutcome: 'cancelled', cancelError: null, cancelUnknown: false, cancelStatusUnknown: false }
   const sellToken = side === 'buy' ? BSC_USDT.address : stock, buyToken = side === 'buy' ? stock : BSC_USDT.address
@@ -46,7 +46,7 @@ function fixture(side = 'buy', amount = '5') {
       assert.ok(u.pathname.endsWith('/quote'), 'direct fallback must not build or submit a different Binance order')
       if (typeof s.binance === 'number') return Response.json({ code: s.binance, success: false, msg: 'Minimum order amount is 20 USD.' })
       if (s.binance === 'auth') return new Response('', { status: 403 })
-      return Response.json(envelope(s.binance === 'empty' ? [] : [{ quoteId: 'fixture-pcs', vendorName: 'PcsXRfq', executionMode: 'RFQ', binanceChainId: '56',
+      return Response.json(envelope(s.binance === 'empty' ? [] : [{ quoteId: 'fixture-pcs', vendorName: 'PcsXRfq', executionMode: s.binanceMode, binanceChainId: '56',
         fromTokenAmount: s.raw.toString(), toTokenAmount: s.output.toString(), fromToken: { tokenContractAddress: sellToken, decimal: '18' }, toToken: { tokenContractAddress: buyToken, decimal: '18' } }]))
     }
     assert.equal(u.hostname, 'api.cow.fi')
@@ -56,6 +56,7 @@ function fixture(side = 'buy', amount = '5') {
       assert.equal(body.sellToken.toLowerCase(), sellToken.toLowerCase()); assert.equal(body.buyToken.toLowerCase(), buyToken.toLowerCase())
       assert.equal(body.sellAmountBeforeFee, s.raw.toString()); assert.equal(body.from, owner); assert.equal(body.receiver, owner)
       assert.equal(body.appData, '{}'); assert.equal(body.validFor, 120); assert.equal(body.signingScheme, 'eip712')
+      if (s.quoteRejection) return Response.json({ errorType: s.quoteRejection, description: 'private fixture' }, { status: 400 })
       if (s.cancelledQuote) return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }))
       const value = { id: 123, from: owner, expiration: new Date(Date.now() + 120_000).toISOString(), quote: { sellToken, buyToken, receiver: owner,
         sellAmount: (s.raw - s.fee).toString(), buyAmount: s.output.toString(), feeAmount: s.fee.toString(), validTo: Math.floor(Date.now() / 1000) + 120,
@@ -121,6 +122,39 @@ test('fixture: Binance minimums do not become a universal minimum or increase a 
   const plan = await s.prepare()
   assert.equal(plan.route.inputAmount, '1'); assert.equal(plan.rawAmount, '1000000000000000000')
   assert.equal(s.calls.filter(call => call.host === 'api.cow.fi').length, 1)
+})
+
+test('a Binance SWAP quote can still use the existing safe CoW fallback without broadcasting a raw swap', async () => {
+  const s = fixture('buy', '1'); s.binanceMode = 'SWAP'
+  const plan = await s.prepare()
+  assert.equal(plan.route.source, 'cow-protocol'); assert.equal(plan.route.executionMode, 'RFQ')
+  assert.equal(plan.rawAmount, '1000000000000000000')
+  assert.equal(s.calls.some(call => call.path.endsWith('/swap') || call.path.endsWith('/orders')), false)
+})
+
+test('failed fallback preserves unsupported execution, and empty quotes expose liquidity or token failures', async () => {
+  for (const [mode, binance, rejection, reason] of [
+    ['SWAP', 'other-vendor', 'NoLiquidity', 'unsupported_execution_mode'],
+    ['SWAP', 'other-vendor', 'UnsupportedToken', 'unsupported_execution_mode'],
+    ['RFQ', 'other-vendor', 'NoLiquidity', 'unsupported_route_vendor'],
+    ['RFQ', 'empty', 'NoLiquidity', 'liquidity_unavailable'],
+    ['RFQ', 'empty', 'UnsupportedToken', 'token_unavailable'],
+    ['SWAP', 'other-vendor', 'InvalidQuote', 'stale_quote'],
+  ]) {
+    const s = fixture(); s.binanceMode = mode; s.binance = binance; s.quoteRejection = rejection
+    await assert.rejects(s.prepare, error => error.reason === reason)
+    assert.equal(s.calls.filter(call => call.host === 'api.cow.fi').length, 1)
+    assert.equal(s.calls.some(call => call.path.endsWith('/orders')), false)
+  }
+})
+
+test('provider liquidity codes retain the direct fallback without changing the requested amount', async () => {
+  for (const code of [40374, 40421, 40441]) {
+    const s = fixture('buy', '1'); s.binance = code
+    const plan = await s.prepare()
+    assert.equal(plan.rawAmount, '1000000000000000000')
+    assert.equal(plan.route.source, 'cow-protocol')
+  }
 })
 
 test('fallback never bypasses provider access, market-closed, configuration or malformed response errors', async () => {
@@ -192,7 +226,7 @@ test('CoW rejections expose only known error types, while write failures remain 
     ['NonZeroFee', 400, 'order_fee_changed'], ['QuoteNotFound', 400, 'stale_quote'], ['InvalidQuote', 400, 'stale_quote'],
     ['InsufficientValidTo', 400, 'stale_quote'], ['WrongOwner', 400, 'invalid_order_signature'], ['InvalidSignature', 400, 'invalid_order_signature'],
     ['InvalidAppData', 400, 'invalid_order_payload'], ['AppDataHashMismatch', 400, 'invalid_order_payload'],
-    ['UnsupportedToken', 400, 'no_verified_route'], ['InsufficientBalance', 400, 'insufficient_balance'], ['InsufficientAllowance', 400, 'approval_required'],
+    ['UnsupportedToken', 400, 'token_unavailable'], ['InsufficientBalance', 400, 'insufficient_balance'], ['InsufficientAllowance', 400, 'approval_required'],
     [`private-${credentials.secretKey}`, 400, 'provider_error'], ['NonZeroFee', 503, 'submission_unknown'], ['DuplicatedOrder', 503, 'submission_unknown'],
   ]) {
     const s = fixture(); await s.prepare(); s.rejection = { type, status }

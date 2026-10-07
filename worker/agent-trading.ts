@@ -89,7 +89,7 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
       if (context.providerRoute.approveTarget && !same(context.providerRoute.approveTarget, COW_RELAYER)) throw new RouteError('invalid_order_payload')
       return { ...context, direct: null }
     } catch (error) {
-      if (!(error instanceof RouteError) || !['no_verified_route', 'minimum_order_not_met'].includes(error.reason)) throw error
+      if (!(error instanceof RouteError) || !['no_verified_route', 'minimum_order_not_met', 'liquidity_unavailable', 'unsupported_execution_mode', 'unsupported_route_vendor'].includes(error.reason)) throw error
       bounded.throwIfAborted()
       console.info('TRADE_ROUTE_FALLBACK', { symbol, side, reason: error.reason })
       try {
@@ -97,6 +97,10 @@ export async function prepareAgentTrade(symbol: string, side: 'buy' | 'sell', am
         return { ...direct, symbol, side, amount, walletAddress, providerRoute: null, direct }
       } catch (fallbackError) {
         if (fallbackError instanceof RouteError && fallbackError.reason === 'minimum_order_not_met' && error.minimumUsd) throw error
+        // Preserve an available-but-unimplemented Binance route when the safe
+        // CoW fallback has no quote. Never mask auth, timeout or validation errors.
+        if (fallbackError instanceof RouteError && ['liquidity_unavailable', 'token_unavailable'].includes(fallbackError.reason)
+          && ['unsupported_execution_mode', 'unsupported_route_vendor'].includes(error.reason)) throw error
         throw fallbackError
       }
     }
