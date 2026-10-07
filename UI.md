@@ -1,5 +1,12 @@
 # FirstBell visual contract
 
+## Main Buy/Sell panel (2026-10-07 UTC)
+
+- User requested replacing Asset record with the main Buy/Sell trade. Design Read: responsive trading utility for newcomers; preservation extension; printed technical paper / dark ink, a chart beside a compact order form; variance 1/10, motion 2/10, density 6/10, asset dependence 3/10, brand fidelity 9/10. Preserve the existing Inter / IBM Plex Mono typography, light/dark palette, green Buy (`#087f58`), red Sell (`#bd263b`), 16px surfaces, pill actions, 44px touch targets and reduced motion.
+- Replace the record with a primary Trade panel beside the chart. Buy/Sell selects the order side, Market remains the supported order type, buys enter USDT to spend and sells enter the selected token quantity. Review carries that exact amount into the existing Confirm/Cancel popup. Changing sides clears the amount rather than reinterpreting one unit as another. On phones, place the form before the chart and keep it in normal document flow.
+- Remove the duplicated bottom ticket and its inactive balance slider. Retain asset details and BscScan as quiet secondary links. Live chart/RWA states and the existing confirmation, quote, wallet, sponsorship, signing and recovery behavior remain connected; no sample balance, fee or receive estimate is introduced. Keep modal focus trapping, background inertness and focus return to Review.
+- Validation: the final TypeScript/Vite/API production build, all 199 existing tests and whitespace checks pass. Source review covers side-specific units, exact review prefill, amount clearing, submit validation, light/dark contrast, responsive grid placement and focus return. Rendered browser review is blocked: the workspace has no Chromium executable and Playwright's browser download produced an unusable archive. No rendered mobile/desktop acceptance or live trade is claimed; verify those on the deployed review build.
+
 ## Portfolio logout (2026-10-07 UTC)
 
 - User requested restoring a logout button; this supersedes the earlier removal of that action. Design Read: Portfolio account utility, preservation extension; variance 1/10, motion 1/10, density 3/10, reference fidelity 9/10. Preserve Arial/Helvetica, existing light/dark tokens, the account avatar/name, deposit and withdrawal actions, and four app tabs.
