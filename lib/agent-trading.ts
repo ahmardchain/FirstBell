@@ -16,7 +16,7 @@ export const COW_ORDER_FIELDS = [
 export type OrderTypedData = { domain: { name: 'Gnosis Protocol'; version: 'v2'; chainId: 56; verifyingContract: Address }; types: Record<string, { name: string; type: string }[]>; primaryType: 'Order'; message: Record<string, unknown> }
 export type AgentTradePlan = {
   route: TradingRoute; inputDecimals: number; outputDecimals: number; rawAmount: string; minimumReceive: string;
-  feeAmount: string; slippagePercent: '0.5'; expiresAt: string; requestId: string; orderQuoteId: string;
+  feeAmount: string; estimatedFeeAmount?: string; slippagePercent: '0.5'; expiresAt: string; requestId: string; orderQuoteId: string;
   typedData: OrderTypedData; typedDataHash: Hex;
   approval: null | { chainId: 56; to: Address; data: Hex; value: '0'; amount: string; spender: Address; reset: boolean; gasFeeBnb: string; simulated: true;
     sponsorship?: { provider: 'megafuel'; gas: string; nonce: number } };
@@ -73,7 +73,9 @@ export function validateAgentTradePlan(value: unknown, request: { symbol: string
     || typeof plan.planToken !== 'string' || plan.planToken.length > 20_000 || !plan.planToken
     || !/^[a-f0-9-]{36}$/.test(plan.requestId) || !/^[a-zA-Z0-9_-]{1,256}$/.test(plan.orderQuoteId)
     || (route.source === 'cow-protocol' && (!/^[1-9]\d{0,15}$/.test(plan.orderQuoteId) || !Number.isSafeInteger(Number(plan.orderQuoteId))))
-    || !/^\d+(?:\.\d+)?$/.test(route.outputAmount)) throw new Error('invalid_order_payload')
+    || !/^\d+(?:\.\d+)?$/.test(route.outputAmount)
+    || (plan.estimatedFeeAmount !== undefined && (route.source !== 'cow-protocol' || plan.feeAmount !== '0'
+      || !integer(plan.estimatedFeeAmount) || BigInt(plan.estimatedFeeAmount) >= BigInt(plan.rawAmount)))) throw new Error('invalid_order_payload')
   const typedData = validateOrderTypedData(plan.typedData, plan)
   if (hashTypedData(typedData) !== plan.typedDataHash || Date.parse(plan.expiresAt) !== Number(typedData.message.validTo) * 1000
     || plan.minimumReceive !== BigInt(typedData.message.buyAmount as string).toString() || plan.feeAmount !== typedData.message.feeAmount) throw new Error('invalid_order_payload')

@@ -149,15 +149,21 @@ test('fixture: first USDT purchase with exactly 0 BNB approves, fills and appear
 test('fixture: a direct CoW fallback retains the sponsored 0 BNB purchase and verified portfolio flow', async () => {
   const s = fixture(), original = globalThis.fetch
   let plan, submissions = 0
+  const feeEstimate = 15n * 10n ** 15n
   globalThis.fetch = async (url, init) => {
     const u = new URL(url)
     if (u.hostname === 'web3.binance.com' && u.pathname.endsWith('/quote')) return Response.json(envelope([]))
     if (u.hostname !== 'api.cow.fi') return original(url, init)
     if (u.pathname.endsWith('/quote')) return Response.json({ id: 123, from: owner, expiration: new Date(Date.now() + 120_000).toISOString(), quote: {
-      sellToken: BSC_USDT.address, buyToken: stock, receiver: owner, sellAmount: rawAmount.toString(), buyAmount: output.toString(),
-      validTo: Math.floor(Date.now() / 1000) + 120, appData: keccak256(toHex('{}')), feeAmount: '0', kind: 'sell', partiallyFillable: false,
+      sellToken: BSC_USDT.address, buyToken: stock, receiver: owner, sellAmount: (rawAmount - feeEstimate).toString(), buyAmount: output.toString(),
+      validTo: Math.floor(Date.now() / 1000) + 120, appData: keccak256(toHex('{}')), feeAmount: feeEstimate.toString(), kind: 'sell', partiallyFillable: false,
       sellTokenBalance: 'erc20', buyTokenBalance: 'erc20', signingScheme: 'eip712' } })
-    if (u.pathname.endsWith('/orders')) { submissions++; assert.ok(s.allowance >= rawAmount); return Response.json(cowOrderUid(plan)) }
+    if (u.pathname.endsWith('/orders')) {
+      const body = JSON.parse(init.body)
+      if (body.feeAmount !== '0') return Response.json({ errorType: 'NonZeroFee', description: 'Fee must be zero' }, { status: 400 })
+      assert.equal(body.sellAmount, rawAmount.toString()); assert.equal(body.buyAmount, plan.minimumReceive)
+      submissions++; assert.ok(s.allowance >= rawAmount); return Response.json(cowOrderUid(plan))
+    }
     if (u.pathname.includes('/orders/')) {
       s.usdt = 0n; s.stock = output; s.allowance = 0n
       return Response.json({ ...plan.typedData.message, uid: cowOrderUid(plan), owner, status: 'fulfilled' })

@@ -8,21 +8,33 @@ import { assets, type Symbol } from './market.ts'
 type Plan = Omit<AgentTradePlan, 'planToken'>
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const same = (value: unknown, expected: string) => typeof value === 'string' && value.toLowerCase() === expected.toLowerCase()
+const integer = (value: unknown): value is string => typeof value === 'string' && /^(?:0|[1-9]\d{0,77})$/.test(value)
 const appData = '{}'
 const appDataHash = keccak256(toHex(appData))
 const uid = (value: unknown): value is Hex => typeof value === 'string' && /^0x[a-fA-F0-9]{112}$/.test(value)
+const rejectionReasons: Record<string, string> = {
+  NoLiquidity: 'no_verified_route', UnsupportedToken: 'no_verified_route',
+  SellAmountDoesNotCoverFee: 'minimum_order_not_met', InsufficientBalance: 'insufficient_balance', InsufficientAllowance: 'approval_required',
+  NonZeroFee: 'order_fee_changed', QuoteNotFound: 'stale_quote', QuoteExpired: 'stale_quote', InvalidQuote: 'stale_quote',
+  ValidToTooSoon: 'stale_quote', InsufficientValidTo: 'stale_quote',
+  InvalidSignature: 'invalid_order_signature', WrongOwner: 'invalid_order_signature',
+  InvalidAppData: 'invalid_order_payload', AppDataHashMismatch: 'invalid_order_payload',
+}
 
 // Fixed BNB-chain API only. No client-selected origin, redirects, hooks or keys.
 async function cowRequest(method: 'GET' | 'POST', path: string, input?: unknown, signal?: AbortSignal): Promise<unknown> {
   const timeout = AbortSignal.timeout(12_000)
   const bounded = signal ? AbortSignal.any([signal, timeout]) : timeout
   const writing = method === 'POST' && path === '/api/v1/orders'
+  const stage = path.endsWith('/quote') ? 'quote' : writing ? 'submit' : 'status'
   const started = performance.now()
+  let httpStatus: number | undefined
   try {
     bounded.throwIfAborted()
     const response = await fetch(`https://api.cow.fi/bnb${path}`, { method, redirect: 'error', cache: 'no-store',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       ...(input === undefined ? {} : { body: JSON.stringify(input) }), signal: bounded })
+    httpStatus = response.status
     if (method === 'GET' && response.status === 404) return null
     if (!response.body || Number(response.headers.get('content-length')) > 300_000) throw new RouteError(writing ? 'submission_unknown' : 'invalid_provider_response')
     const reader = response.body.getReader(), decoder = new TextDecoder()
@@ -41,13 +53,11 @@ async function cowRequest(method: 'GET' | 'POST', path: string, input?: unknown,
     try { result = JSON.parse(text + decoder.decode()) } catch { throw new RouteError(writing ? 'submission_unknown' : 'invalid_provider_response') }
     if (!response.ok) {
       const type = object(result)?.errorType
-      if (writing && type === 'DuplicatedOrder') return { duplicate: true }
-      const reason = type === 'NoLiquidity' ? 'no_verified_route'
-        : type === 'SellAmountDoesNotCoverFee' ? 'minimum_order_not_met'
-        : type === 'InsufficientBalance' ? 'insufficient_balance'
-        : type === 'InsufficientAllowance' ? 'approval_required'
-        : ['QuoteNotFound', 'QuoteExpired', 'ValidToTooSoon'].includes(String(type)) ? 'stale_quote'
-        : writing && response.status >= 500 ? 'submission_unknown' : 'provider_error'
+      const knownType = typeof type === 'string' && (Object.hasOwn(rejectionReasons, type) || type === 'DuplicatedOrder') ? type : 'Other'
+      // Never log upstream descriptions, signatures, wallet addresses or URLs.
+      console.warn('TRADE_COW_REJECTION', { stage, httpStatus, errorType: knownType })
+      if (writing && response.status < 500 && type === 'DuplicatedOrder') return { duplicate: true }
+      const reason = writing && response.status >= 500 ? 'submission_unknown' : rejectionReasons[knownType] ?? 'provider_error'
       throw new RouteError(reason, response.status >= 500 ? 503 : 400)
     }
     return result
@@ -57,7 +67,7 @@ async function cowRequest(method: 'GET' | 'POST', path: string, input?: unknown,
     if (bounded.aborted) throw new RouteError('quote_timeout', 504)
     throw new RouteError('provider_error')
   } finally {
-    console.info('TRADE_COW_TIMING', { stage: path.endsWith('/quote') ? 'quote' : writing ? 'submit' : 'status', durationMs: Math.round(performance.now() - started) })
+    console.info('TRADE_COW_TIMING', { stage, httpStatus, durationMs: Math.round(performance.now() - started) })
   }
 }
 
@@ -80,7 +90,9 @@ export async function getCowTrade(symbol: Symbol, side: 'buy' | 'sell', amount: 
   if (!quote || !same(response?.from, walletAddress) || !Number.isSafeInteger(response?.id) || Number(response?.id) <= 0
     || !Number.isFinite(expiration) || expiration <= Date.now() + 5_000
     || !(quote.appData === appData || same(quote.appData, appDataHash)) || (quote.signingScheme !== undefined && quote.signingScheme !== 'eip712')
-    || typeof quote.buyAmount !== 'string' || !/^[1-9]\d{0,77}$/.test(quote.buyAmount)) throw new RouteError('invalid_provider_response')
+    || typeof quote.buyAmount !== 'string' || !/^[1-9]\d{0,77}$/.test(quote.buyAmount)
+    || !integer(quote.sellAmount) || !integer(quote.feeAmount) || BigInt(quote.sellAmount) <= 0n
+    || BigInt(quote.sellAmount) + BigInt(quote.feeAmount) !== BigInt(rawAmount)) throw new RouteError('invalid_provider_response')
   const inputDecimals = buying ? BSC_USDT.decimals : tokenDecimals, outputDecimals = buying ? tokenDecimals : BSC_USDT.decimals
   const route: TradingRoute = { source: 'cow-protocol', chainId: 56, symbol, side, walletAddress, inputAmount: amount,
     inputSymbol: buying ? 'USDT' : symbol, outputAmount: formatUnits(BigInt(quote.buyAmount), outputDecimals), outputSymbol: buying ? symbol : 'USDT',
@@ -89,12 +101,17 @@ export async function getCowTrade(symbol: Symbol, side: 'buy' | 'sell', amount: 
   // The REST schema accepts/returns full JSON; EIP-712 requires its bytes32 hash.
   // Only our exact empty JSON or its hash is accepted, so no hooks enter signing.
   message.appData = appDataHash
-  // Bind both order validity and its fee to the offered quote's expiration.
+  // Validate the original net quote + fee above before normalizing the order.
+  // Current CoW orders sign gross spend and zero fee; the quote fee is only an
+  // estimate. Preserve the quoted net receive and the user's exact gross spend.
+  message.sellAmount = rawAmount
+  message.feeAmount = '0'
+  // Bind order validity to the offered quote's expiration.
   if (!Number.isSafeInteger(message.validTo) || Number(message.validTo) * 1000 > expiration) throw new RouteError('invalid_provider_response')
   message.buyAmount = (BigInt(quote.buyAmount) * 995n / 1000n).toString()
   const typedData = validateOrderTypedData({ domain: { name: 'Gnosis Protocol', version: 'v2', chainId: 56, verifyingContract: COW_SETTLEMENT },
     types: { Order: COW_ORDER_FIELDS.map(field => ({ ...field })) }, primaryType: 'Order', message }, { route, rawAmount, inputDecimals, outputDecimals })
-  return { route, rawAmount, tokenDecimals, inputDecimals, outputDecimals, orderQuoteId: String(response!.id), typedData }
+  return { route, rawAmount, tokenDecimals, inputDecimals, outputDecimals, estimatedFeeAmount: quote.feeAmount, orderQuoteId: String(response!.id), typedData }
 }
 
 export function cowOrderUid(plan: Pick<Plan, 'route' | 'typedData'>): Hex {
@@ -117,6 +134,9 @@ export async function submitCowOrder(plan: Plan, signature: string, recovering: 
     const existing = await cowRequest('GET', `/api/v1/orders/${orderId}`)
     if (existing !== null) { verifyCowOrder(existing, orderId, plan); return orderId }
   }
+  // Historical signatures may contain the obsolete fee. Look up their exact
+  // UID first, but never rewrite signed fields or rebroadcast an invalid order.
+  if (plan.typedData.message.feeAmount !== '0') throw new RouteError('order_fee_changed', 409)
   const result = await cowRequest('POST', '/api/v1/orders', { ...plan.typedData.message, appData, appDataHash,
     from: plan.route.walletAddress, signingScheme: 'eip712', signature, quoteId: Number(plan.orderQuoteId) })
   if (object(result)?.duplicate === true) {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
 import { privateKeyToAccount } from 'viem/accounts'
-import { encodeAbiParameters, encodeEventTopics, erc20Abi, keccak256, toHex } from 'viem'
+import { encodeAbiParameters, encodeEventTopics, erc20Abi, hashTypedData } from 'viem'
 import { BSC_USDT } from '../lib/funding.ts'
 import { tokenAddresses } from '../lib/asset-catalog.ts'
 import { COW_SETTLEMENT, COW_RELAYER, validateAgentTradePlan } from '../lib/agent-trading.ts'
@@ -22,7 +22,7 @@ const envelope = data => ({ code: 0, success: true, timestamp: Date.now(), data 
 function fixture(side = 'buy', amount = '5') {
   const s = { raw: BigInt(amount) * 10n ** 18n, fee: 10n ** 15n, output: 25n * 10n ** 15n, calls: [], binance: 'other-vendor',
     balance: 10n ** 20n, allowance: 10n ** 20n, quoteMutation: null, status: 'open', acknowledged: true,
-    stored: null, plan: null, badUid: false, duplicate: false, trades: 'valid', confirmations: 2, mismatch: false, mined: true, cancelledQuote: false }
+    stored: null, plan: null, badUid: false, duplicate: false, rejection: null, trades: 'valid', confirmations: 2, mismatch: false, mined: true, cancelledQuote: false }
   const sellToken = side === 'buy' ? BSC_USDT.address : stock, buyToken = side === 'buy' ? stock : BSC_USDT.address
   const order = () => ({ ...s.plan.typedData.message, uid: cowOrderUid(s.plan), owner, status: s.status })
   tradingClient.readContract = async args => args.functionName === 'decimals' ? 18 : args.functionName === 'balanceOf' ? s.balance : s.allowance
@@ -60,9 +60,12 @@ function fixture(side = 'buy', amount = '5') {
       return Response.json(value)
     }
     if (u.pathname.endsWith('/orders')) {
+      // Current CoW orderbook rejects the quote's legacy fee in signed orders.
+      if (body.feeAmount !== '0') return Response.json({ errorType: 'NonZeroFee', description: 'Fee must be zero' }, { status: 400 })
       assert.equal(body.from, owner); assert.equal(body.quoteId, 123); assert.equal(body.appData, '{}')
       assert.equal(body.appDataHash, s.plan.typedData.message.appData); assert.equal(body.signature, s.signature)
-      assert.equal(body.sellAmount, s.plan.typedData.message.sellAmount); assert.equal(body.buyAmount, s.plan.minimumReceive)
+      assert.equal(body.sellAmount, s.raw.toString()); assert.equal(body.buyAmount, s.plan.minimumReceive)
+      if (s.rejection) return Response.json({ errorType: s.rejection.type, description: `private ${credentials.secretKey} ${owner} ${body.signature}` }, { status: s.rejection.status })
       s.stored = order()
       if (!s.acknowledged) throw new Error('fixture lost acknowledgement after acceptance')
       if (s.duplicate) return Response.json({ errorType: 'DuplicatedOrder' }, { status: 400 })
@@ -88,8 +91,13 @@ for (const side of ['buy', 'sell']) test(`fixture: a ${side} quote uses the dire
   const s = fixture(side), plan = await s.prepare()
   assert.equal(plan.route.source, 'cow-protocol'); assert.equal(plan.route.vendor, 'CowSwap')
   assert.equal(plan.rawAmount, s.raw.toString()); assert.equal(plan.minimumReceive, '24875000000000000')
+  assert.equal(plan.typedData.message.sellAmount, s.raw.toString()); assert.equal(plan.typedData.message.feeAmount, '0')
+  assert.equal(plan.feeAmount, '0'); assert.equal(plan.estimatedFeeAmount, s.fee.toString())
   assert.equal(plan.route[side === 'buy' ? 'inputSymbol' : 'outputSymbol'], 'USDT')
   validateAgentTradePlan({ ...plan, planToken: 'fixture-sealed-ticket' }, { symbol: 'NVDAon', side, amount: '5', walletAddress: owner })
+  for (const estimatedFeeAmount of ['-1', '00', '1.5', s.raw.toString(), (s.raw + 1n).toString()]) {
+    assert.throws(() => validateAgentTradePlan({ ...plan, estimatedFeeAmount, planToken: 'fixture-sealed-ticket' }, { symbol: 'NVDAon', side, amount: '5', walletAddress: owner }), /invalid_order_payload/)
+  }
   assert.equal(s.calls.some(call => call.path.endsWith('/orders')), false, 'quoting neither signs nor submits')
 })
 
@@ -112,6 +120,8 @@ test('direct quotes reject changed tokens, receiver, signer, spend, fee, hidden 
   for (const mutate of [value => value.from = COW_RELAYER, value => value.quote.receiver = COW_RELAYER,
     value => value.quote.buyToken = BSC_USDT.address, value => value.quote.sellToken = COW_SETTLEMENT,
     value => value.quote.sellAmount = '999999999999999999999', value => value.quote.feeAmount = '999999999999999999999',
+    value => value.quote.sellAmount = '0', value => value.quote.sellAmount = '00', value => value.quote.feeAmount = '-1',
+    value => value.quote.feeAmount = '00', value => value.quote.feeAmount = '1.5',
     value => value.quote.partiallyFillable = true, value => value.quote.kind = 'buy', value => value.quote.sellTokenBalance = 'internal',
     value => value.quote.appData = `0x${'ab'.repeat(32)}`, value => value.quote.signingScheme = 'ethsign',
     value => value.id = 1.5, value => value.expiration = new Date(Date.now() - 1000).toISOString(),
@@ -139,6 +149,48 @@ test('reviewed direct orders submit the verified signature and deterministic UID
   const submitted = await s.submit()
   assert.equal(submitted.orderId, cowOrderUid(s.plan)); assert.equal(submitted.status, 'PENDING_VENDOR'); assert.equal(submitted.txHash, null)
   assert.equal(s.calls.filter(call => call.path.endsWith('/orders')).length, 1)
+})
+
+test('an old nonzero-fee signature is checked by exact UID but never rewritten or resubmitted', async () => {
+  const s = fixture(); await s.prepare()
+  s.plan.typedData.message.sellAmount = (s.raw - s.fee).toString()
+  s.plan.typedData.message.feeAmount = s.fee.toString()
+  s.plan.feeAmount = s.fee.toString(); delete s.plan.estimatedFeeAmount
+  s.plan.typedDataHash = hashTypedData(s.plan.typedData)
+  const original = structuredClone(s.plan)
+  await assert.rejects(() => s.submit({ started: true, orderId: null, beforeDispatch: async () => {} }), /order_fee_changed/)
+  assert.deepEqual(s.plan, original)
+  assert.equal(s.calls.filter(call => call.path.includes('/orders/')).length, 1)
+  assert.equal(s.calls.some(call => call.path.endsWith('/orders')), false)
+  s.stored = {}; s.balance = 0n; s.allowance = 0n
+  assert.equal((await s.submit({ started: true, orderId: null, beforeDispatch: async () => {} })).orderId, cowOrderUid(original))
+  assert.deepEqual(s.plan, original)
+  assert.equal(s.calls.some(call => call.path.endsWith('/orders')), false)
+  const recovered = await recoverAgentTrade(s.plan, s.signature, credentials, { started: true, orderId: null })
+  assert.equal(recovered.status, 'PENDING_VENDOR')
+})
+
+test('CoW rejections expose only known error types, while write failures remain unknown', async t => {
+  const warnings = []
+  t.mock.method(console, 'warn', (...args) => warnings.push(args))
+  for (const [type, status, reason] of [
+    ['NonZeroFee', 400, 'order_fee_changed'], ['QuoteNotFound', 400, 'stale_quote'], ['InvalidQuote', 400, 'stale_quote'],
+    ['InsufficientValidTo', 400, 'stale_quote'], ['WrongOwner', 400, 'invalid_order_signature'], ['InvalidSignature', 400, 'invalid_order_signature'],
+    ['InvalidAppData', 400, 'invalid_order_payload'], ['AppDataHashMismatch', 400, 'invalid_order_payload'],
+    ['UnsupportedToken', 400, 'no_verified_route'], ['InsufficientBalance', 400, 'insufficient_balance'], ['InsufficientAllowance', 400, 'approval_required'],
+    [`private-${credentials.secretKey}`, 400, 'provider_error'], ['NonZeroFee', 503, 'submission_unknown'], ['DuplicatedOrder', 503, 'submission_unknown'],
+  ]) {
+    const s = fixture(); await s.prepare(); s.rejection = { type, status }
+    await assert.rejects(s.submit, new RegExp(reason))
+    const last = warnings.at(-1)
+    assert.equal(last[0], 'TRADE_COW_REJECTION'); assert.equal(last[1].stage, 'submit'); assert.equal(last[1].httpStatus, status)
+    assert.equal(last[1].errorType, type.startsWith('private-') ? 'Other' : type)
+    assert.equal(Object.hasOwn(last[1], 'description'), false)
+    assert.equal(JSON.stringify(last).includes(credentials.secretKey), false)
+    assert.equal(JSON.stringify(last).includes(owner), false)
+    assert.equal(JSON.stringify(last).includes(s.signature), false)
+    assert.equal(s.stored, null)
+  }
 })
 
 test('lost acknowledgement recovers the same direct order after expiry without spending or submitting again', async t => {
