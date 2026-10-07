@@ -1,4 +1,4 @@
-import { concatHex, formatUnits, hashTypedData, keccak256, numberToHex, toHex, type Hex } from 'viem'
+import { concatHex, formatUnits, hashTypedData, isAddress, keccak256, numberToHex, toHex, type Hex } from 'viem'
 import { COW_ORDER_FIELDS, COW_SETTLEMENT, validateOrderTypedData, type AgentOrder, type AgentTradePlan } from '../lib/agent-trading.ts'
 import { BSC_USDT } from '../lib/funding.ts'
 import type { TradingRoute } from '../lib/trading.ts'
@@ -80,6 +80,21 @@ async function cowRequest(method: 'GET' | 'POST' | 'DELETE', path: string, input
 export async function cancelCowOrder(orderId: string, signature: Hex) {
   if (!uid(orderId)) throw new RouteError('invalid_order_payload', 400)
   await cowRequest('DELETE', '/api/v1/orders', { orderUids: [orderId], signature, signingScheme: 'eip712' })
+}
+
+// Enumerate settled fills independently of device-local receipts. A full last
+// page is not proof of complete history; never return a truncated cost ledger.
+export async function getCowWalletTrades(owner: string, signal: AbortSignal): Promise<unknown[]> {
+  if (!isAddress(owner)) throw new RouteError('invalid_wallet', 400)
+  const trades: unknown[] = [], limit = 50
+  for (let offset = 0; offset < 200; offset += limit) {
+    signal.throwIfAborted()
+    const page = await cowRequest('GET', `/api/v2/trades?owner=${owner.toLowerCase()}&offset=${offset}&limit=${limit}`, undefined, signal)
+    if (!Array.isArray(page) || page.length > limit) throw new RouteError('invalid_provider_response')
+    trades.push(...page)
+    if (page.length < limit) return trades
+  }
+  throw new RouteError('purchase_history_incomplete')
 }
 
 export async function getCowTrade(symbol: Symbol, side: 'buy' | 'sell', amount: string, walletAddress: string, signal?: AbortSignal) {

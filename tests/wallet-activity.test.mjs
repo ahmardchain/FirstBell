@@ -62,7 +62,9 @@ test('legacy purchase cost uses remaining basis, rather than cumulative realized
 test('purchase-cost fallback uses exact BSC contract/wallet and unavailable tokens supply no invented basis', async () => {
   let calls = 0
   globalThis.fetch = async url => {
-    const parsed = new URL(url); calls++
+    const parsed = new URL(url)
+    if (parsed.hostname === 'api.cow.fi') return Response.json([])
+    calls++
     assert.equal(parsed.pathname, '/build/api/v1/dex/market/portfolio/token/latest-pnl')
     assert.equal(parsed.searchParams.get('walletAddress'), owner)
     assert.equal(parsed.searchParams.get('binanceChainId'), '56')
