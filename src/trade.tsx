@@ -55,7 +55,7 @@ function TokenMark({ asset }: { asset: TradeAsset }) {
   return <img src={assetLogo(asset)} className={`brand-mark brand-mark--${asset.mark}`} alt="" loading="lazy" onError={tokenLogoError} />
 }
 
-export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, language, initialSide = null, onBusyChange, onExit }: {
+export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, language, initialSide = null, onBusyChange }: {
   assets: TradeAsset[]
   asset: TradeAsset
   onAssetChange: (asset: TradeAsset) => void
@@ -63,7 +63,6 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   language: Language
   initialSide?: Side | null
   onBusyChange?: (busy: boolean) => void
-  onExit?: () => void
 }) {
   const t = words[language]
   const [selectorOpen, setSelectorOpen] = React.useState(false)
@@ -160,7 +159,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <div className="trade-entry-heading"><h2 id="trade-entry-heading">{t.sheetTitle}</h2><span>{asset.symbol}</span></div>
         <div className="trade-entry-tabs" role="group" aria-label={t.sheetTitle}>{(['buy', 'sell'] as const).map(value => <button type="button" key={value} disabled={tradeLock.edit} aria-pressed={side === value} className={`trade-${value}`} onClick={() => { if (value !== side) { setSide(value); setAmount('') } }}>{t[value]}</button>)}</div>
         <div className="trade-entry-market"><span>{t.orderType}</span><strong>{t.orderMarket}</strong></div>
-        <TradeConfirmation symbol={asset.symbol} tokenAddress={asset.address} side={side} amount={amount} onAmountChange={setAmount} language={language} onCancel={() => setAmount('')} onClosePending={onExit} onLockChange={updateLock} />
+        <TradeConfirmation symbol={asset.symbol} tokenAddress={asset.address} side={side} amount={amount} onAmountChange={setAmount} language={language} onCancel={() => setAmount('')} onLockChange={updateLock} />
         <div className="trade-entry-links"><button type="button" disabled={tradeLock.close} onClick={() => onInspect(asset)}>{t.inspect}<ArrowUpRight size={14} aria-hidden="true" /></button><a href={sourceHref(asset)} target="_blank" rel="noreferrer">{t.scan}<ExternalLink size={14} aria-hidden="true" /></a></div>
       </aside>
 
