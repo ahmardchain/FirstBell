@@ -3,6 +3,7 @@ import { getIdentityToken, useIdentityToken, usePrivy, useSignTransaction, type 
 import { keccak256 } from 'viem'
 import { withWalletSession, type WalletSession } from '../lib/wallet-session.ts'
 import { sameAddress, validateWithdrawalPlan, validateWithdrawalResult, withdrawalInput, type WithdrawalAttempt, type WithdrawalInput, type WithdrawalPlan, type WithdrawalResult } from '../lib/withdrawal.ts'
+import { storeWithdrawalHistory } from '../lib/withdrawal-history.ts'
 
 type Phase = 'edit' | 'preparing' | 'review' | 'signing' | 'processing' | 'uncertain' | 'completed' | 'failed'
 export type WithdrawalController = {
@@ -64,6 +65,7 @@ export function useWithdrawals(address: string | undefined, wallet: ConnectedWal
   }
   const applyResult = (value: WithdrawalResult, current: WithdrawalAttempt) => {
     assertOwner(current.plan.walletAddress)
+    try { storeWithdrawalHistory(localStorage, current.plan, value) } catch { /* Keep the current withdrawal visible if storage is unavailable. */ }
     setResult(value); setError('')
     if (value.status === 'completed' || value.status === 'failed') {
       persist(null, current.plan.walletAddress)
@@ -84,6 +86,7 @@ export function useWithdrawals(address: string | undefined, wallet: ConnectedWal
           if (!sameAddress(stored.plan?.walletAddress, address) || typeof stored.rawTransaction !== 'string' || !/^0x(?:[0-9a-fA-F]{2})+$/.test(stored.rawTransaction) || stored.rawTransaction.length > 1024) throw new Error('invalid_recovery')
           validateWithdrawalPlan(stored.plan, stored.plan)
           attempt.current = stored; setPlan(stored.plan); setResult({ hash: keccak256(stored.rawTransaction), status: 'unknown' }); setPhase('uncertain')
+          try { storeWithdrawalHistory(localStorage, stored.plan, { hash: keccak256(stored.rawTransaction), status: 'unknown' }) } catch { /* Recovery remains in memory. */ }
         }
       } catch { setError('withdrawal_recovery_unavailable'); setPhase('uncertain') }
     }
@@ -151,6 +154,7 @@ export function useWithdrawals(address: string | undefined, wallet: ConnectedWal
       { address: owner, uiOptions: { showWalletUIs: false } })
       assertOwner(owner)
       signed = { plan: reviewed, rawTransaction }; persist(signed, owner)
+      try { storeWithdrawalHistory(localStorage, reviewed, { hash: keccak256(rawTransaction), status: 'unknown' }) } catch { /* Signed recovery remains available. */ }
       const checked = await session(owner, value => sendWithdrawal(signed!, value))
       if (version === revision.current) applyResult(checked, signed)
     } catch (failure) {
@@ -159,6 +163,7 @@ export function useWithdrawals(address: string | undefined, wallet: ConnectedWal
       // Only a definitive server rejection before broadcast permits a new review.
       // A lost response keeps this signature/hash and never creates a new nonce.
       if (signed && !preDispatchErrors.has(reason)) { setResult({ hash: keccak256(signed.rawTransaction), status: 'unknown' }); setPhase('uncertain'); setError('withdrawal_submission_unknown') }
+      else if (signed) { try { storeWithdrawalHistory(localStorage, signed.plan, { hash: keccak256(signed.rawTransaction), status: 'not_submitted' }) } catch { /* Optional activity persistence. */ }; persist(null, owner); setPlan(null); setPhase('edit'); setError(reason) }
       else { persist(null, owner); setPlan(null); setPhase('edit'); setError(/reject|cancel|4001/i.test(reason) ? 'wallet_rejected' : reason) }
     } finally { if (version === revision.current) busy.current = false }
   }

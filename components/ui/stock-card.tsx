@@ -14,6 +14,9 @@ export interface StockCardProps extends Omit<HTMLMotionProps<'div'>, 'children'>
   /** A verified token price in USD; null means the feed is unavailable. */
   price: number | null
   change: number | null
+  changeLabel?: string
+  buyDisabled?: boolean
+  children?: React.ReactNode
   onBuy: (ticker: string) => void
   onInspect?: (ticker: string) => void
   actions?: React.ReactNode
@@ -28,7 +31,7 @@ export interface StockCardProps extends Omit<HTMLMotionProps<'div'>, 'children'>
 
 const StockCard = React.forwardRef<HTMLDivElement, StockCardProps>(
   ({ className, logoSrc, logoClassName, ticker, name, price, change, onBuy, onInspect,
-    actions, loading = false, locale = 'en-US', buyLabel = 'Buy', inspectLabel = 'Open asset file',
+    actions, children, changeLabel, buyDisabled, loading = false, locale = 'en-US', buyLabel = 'Buy', inspectLabel = 'Open asset file',
     loadingLabel = 'Loading…', unavailableLabel = 'Price unavailable', changeUnavailableLabel = 'No data', ...props }, ref) => {
     const reduceMotion = useReducedMotion()
     const hasPrice = typeof price === 'number' && Number.isFinite(price) && price > 0
@@ -61,6 +64,7 @@ const StockCard = React.forwardRef<HTMLDivElement, StockCardProps>(
             </p>
             <div className="stock-card-change flex items-center justify-end gap-1 text-sm text-muted-foreground"
               data-direction={loading || !hasChange ? undefined : isPositiveChange ? 'up' : 'down'}>
+              {changeLabel && <span className="stock-card-change-label">{changeLabel}</span>}
               {!loading && hasChange ? <>
                 {isPositiveChange ? <ArrowUpRight className="h-4 w-4" aria-hidden="true" /> : <ArrowDownRight className="h-4 w-4" aria-hidden="true" />}
                 <span>{isPositiveChange ? '+' : '−'}{Math.abs(change!).toFixed(2)}%</span>
@@ -68,10 +72,12 @@ const StockCard = React.forwardRef<HTMLDivElement, StockCardProps>(
             </div>
           </div>
           <Button type="button" variant="secondary" size="sm" className="stock-card-buy min-h-11 min-w-14 rounded-full"
+            disabled={buyDisabled}
             onClick={() => onBuy(ticker)} aria-label={`${buyLabel} ${ticker}`}>{buyLabel}</Button>
           {actions && <div className="stock-card-actions">{actions}</div>}
         </div>
       </div>
+      {children}
     </motion.div>
   },
 )

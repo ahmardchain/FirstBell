@@ -11,6 +11,8 @@ import { quoteResponse } from './quote-response.ts'
 import { getOnramperMode, getOnramperSetup, handleOnramperWebhook } from './onramper.ts'
 import { createOnramperDemoUrl } from '../lib/onramper-demo.ts'
 import { handleWithdrawalRequest } from './withdrawals.ts'
+import { handleWalletActivity } from './wallet-activity.ts'
+import { portfolioChanges } from './portfolio-market.ts'
 
 const maxBodyBytes = 512
 
@@ -90,6 +92,20 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
     const id = await getUserId(request, env)
     if (!id) return json({ error: 'unauthorized' }, 401)
     return handleDepositRequest(request, env, id)
+  }
+  if (pathname === '/api/portfolio/changes') {
+    if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405)
+    const symbols = (new URL(request.url).searchParams.get('symbols') ?? '').split(',')
+    if (!symbols.length || symbols.length > 6 || symbols.some(symbol => !isSymbol(symbol))) return json({ error: 'Invalid token batch' }, 400)
+    if (!env.BINANCE_WEB3_API_KEY || !env.BINANCE_WEB3_SECRET_KEY) return json({ status: 'unavailable', reason: 'not_configured' }, 503)
+    try { return json({ status: 'ready', changes: await portfolioChanges(symbols, { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY }) }) }
+    catch (error) { return json({ status: 'unavailable', ...binanceFailure(error) }, 503) }
+  }
+  if (pathname === '/api/wallet/activity' || pathname === '/api/wallet/cost-basis') {
+    if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
+    const id = await getUserId(request, env)
+    if (!id) return json({ error: 'unauthorized' }, 401)
+    return handleWalletActivity(request, env, id)
   }
   if (['/api/withdrawals/prepare', '/api/withdrawals/submit', '/api/withdrawals/status'].includes(pathname)) {
     if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)

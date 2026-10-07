@@ -19,7 +19,7 @@ import type { PaymentToken } from '../lib/trade-assets'
 import { displayQuantity } from './wallet-balances'
 import { BSC_USDT } from '../lib/funding'
 import { useTradeBalance } from './use-trade-balance'
-import { clearSignedTrade, clearTradeApproval, mergeTradeOrder, readSignedTrades, readTradeHistory, readTradeReceipts, storeSignedTrade, storeTradeReceipt } from '../lib/trade-storage'
+import { clearSignedTrade, clearTradeApproval, mergeTradeOrder, readSignedTrades, readWalletOrders, storeSignedTrade, storeTradeReceipt } from '../lib/trade-storage'
 
 const client = createPublicClient({ chain: bsc, transport: http('https://bsc-dataseed.bnbchain.org', { timeout: 10_000, retryCount: 0 }) })
 const words = {
@@ -175,9 +175,10 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     signedAttemptsRef.current = []
     setSignedAttempts([]); setOrders([])
     if (address) try {
-      const restored = new Map<string, AgentOrder>()
-      for (const saved of [...readTradeHistory(localStorage, address), ...readTradeReceipts(localStorage, address).map(saved => ({ ...saved, status: 'PENDING_VENDOR' as const, canCancel: false, txHash: null, inputAmount: null, outputAmount: null }))]) restored.set(saved.orderId, mergeTradeOrder(restored.get(saved.orderId), saved))
-      setOrders([...restored.values()])
+      const restored = readWalletOrders(localStorage, address)
+      // Migrate legacy terminal pointers without resetting them to open.
+      for (const saved of restored) if (terminalOrder(saved.status)) persist(saved, address)
+      setOrders(restored)
     } catch { /* Local history is only a pointer; the server verifies the receipt. */ }
     if (address) try {
       const pending = JSON.parse(localStorage.getItem(`firstbell-pending-approval:${address.toLowerCase()}`) ?? 'null') as ApprovalAttempt | null

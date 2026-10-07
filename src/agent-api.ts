@@ -59,6 +59,9 @@ function orderResponse(value: unknown): AgentOrder {
     || !/^\d+(?:\.\d+)?$/.test(trade.amount) || !['USDT', 'USDC'].includes(trade.side === 'buy' ? trade.inputSymbol : trade.outputSymbol)
     || (trade.side === 'buy' ? trade.outputSymbol : trade.inputSymbol) !== trade.symbol
     || !['binance-web3', 'cow-protocol'].includes(trade.source) || !Number.isFinite(Date.parse(trade.expiresAt)))) throw new Error('invalid_provider_response')
+  if (trade?.quotedOutputAmount !== undefined && !/^\d+(?:\.\d+)?$/.test(trade.quotedOutputAmount)
+    || trade?.requestId !== undefined && !/^[a-f0-9-]{36}$/.test(trade.requestId)
+    || order.createdAt !== undefined && (!Number.isFinite(Date.parse(order.createdAt)) || Date.parse(order.createdAt) > Date.now() + 120_000)) throw new Error('invalid_provider_response')
   if (order.canCancel !== undefined && typeof order.canCancel !== 'boolean'
     || order.cancellationRequested !== undefined && typeof order.cancellationRequested !== 'boolean'
     || order.canCancel && (!trade || trade.source !== 'cow-protocol' || order.status !== 'PENDING_VENDOR')) throw new Error('invalid_provider_response')

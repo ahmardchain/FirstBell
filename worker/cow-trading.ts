@@ -158,22 +158,24 @@ export async function submitCowOrder(plan: Plan, signature: string, recovering: 
   return orderId
 }
 
-export async function checkCowOrder(orderId: string, plan: Pick<Plan, 'route'>): Promise<{ orderId: string; status: AgentOrder['status']; txHash: Hex | null }> {
+export async function checkCowOrder(orderId: string, plan: Pick<Plan, 'route'>): Promise<{ orderId: string; status: AgentOrder['status']; txHash: Hex | null; createdAt?: string }> {
   if (!uid(orderId)) throw new RouteError('invalid_provider_response')
   const response = await cowRequest('GET', `/api/v1/orders/${orderId}`)
   if (response === null) throw new RouteError('order_not_found', 404)
   const order = verifyCowOrder(response, orderId, plan)
+  const created = typeof order.creationDate === 'string' ? Date.parse(order.creationDate) : NaN
+  const dates = Number.isFinite(created) && created >= 1_500_000_000_000 && created <= Date.now() + 120_000 ? { createdAt: new Date(created).toISOString() } : {}
   const statuses: Record<string, AgentOrder['status']> = { open: 'PENDING_VENDOR', fulfilled: 'FILLED', cancelled: 'CANCELLED', expired: 'EXPIRED' }
   const status = statuses[String(order.status)]
   if (!status) throw new RouteError('invalid_provider_response')
-  if (status !== 'FILLED') return { orderId, status, txHash: null }
+  if (status !== 'FILLED') return { orderId, status, txHash: null, ...dates }
   const trades = await cowRequest('GET', `/api/v2/trades?orderUid=${orderId}&offset=0&limit=2`)
   if (!Array.isArray(trades)) throw new RouteError('invalid_provider_response')
-  if (!trades.length) return { orderId, status: 'CONFIRMING', txHash: null }
+  if (!trades.length) return { orderId, status: 'CONFIRMING', txHash: null, ...dates }
   const trade = object(trades[0])
   if (trades.length !== 1 || !trade || !same(trade.orderUid, orderId) || !same(trade.owner, plan.route.walletAddress)
     || !same(trade.sellToken, String(order.sellToken)) || !same(trade.buyToken, String(order.buyToken))) throw new RouteError('settlement_not_verified', 409)
-  if (trade.txHash === null) return { orderId, status: 'CONFIRMING', txHash: null }
+  if (trade.txHash === null) return { orderId, status: 'CONFIRMING', txHash: null, ...dates }
   if (typeof trade.txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(trade.txHash)) throw new RouteError('invalid_provider_response')
-  return { orderId, status: 'FILLED', txHash: trade.txHash as Hex }
+  return { orderId, status: 'FILLED', txHash: trade.txHash as Hex, ...dates }
 }

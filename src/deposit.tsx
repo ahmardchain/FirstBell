@@ -2,6 +2,7 @@ import * as React from 'react'
 import { ArrowLeft, ArrowUpRight, Check, Copy, CreditCard, Landmark, LoaderCircle, QrCode, RefreshCw } from 'lucide-react'
 import { checkoutAsset, depositProvider, isDepositTerminal, sessionAsset, type DepositSession } from '../lib/funding'
 import type { DepositController } from './deposits-api'
+import { displayQuantity } from './wallet-balances'
 import './deposit.css'
 
 type Language = 'en' | 'zh'
@@ -133,16 +134,16 @@ export function DepositPage({ address, language, onBack, onCard, busy = false, e
   </div>
 }
 
-export function DepositHistory({ controller, language, onOpen, search = '', hideEmpty = false }: { controller: DepositController; language: Language; onOpen: (id: string) => void; search?: string; hideEmpty?: boolean }) {
+export function DepositHistory({ controller, language, onOpen, search = '', hideEmpty = false, sessions: suppliedSessions, hidden = false }: { controller: DepositController; language: Language; onOpen: (id: string) => void; search?: string; hideEmpty?: boolean; sessions?: DepositSession[]; hidden?: boolean }) {
   const t = copy[language]
-  const sessions = controller.sessions.filter(session => `${depositProvider(session) === 'onramper' ? 'Onramper' : 'MoonPay'} ${session.amount} ${session.fiatCurrency} ${t.statuses[session.status]}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const sessions = (suppliedSessions ?? controller.sessions).filter(session => `${depositProvider(session) === 'onramper' ? 'Onramper' : 'MoonPay'} ${session.amount} ${session.fiatCurrency} ${t.statuses[session.status]}`.toLowerCase().includes(search.trim().toLowerCase()))
   return <div className="deposit-history">
     {controller.loading ? <div className="portfolio-content-empty" role="status">{t.loading}</div> : sessions.length ? <div className="deposit-history-rows">{sessions.map(session => {
       const selected = session.id === controller.selectedId
       const asset = sessionAsset(session)
       const compatible = controller.config?.mode === session.mode && depositProvider(session) === (controller.config.provider ?? 'moonpay') && checkoutAsset(controller.config.mode, controller.config.provider).currencyCode === asset.currencyCode
       return <React.Fragment key={session.id}>
-        <button type="button" aria-expanded={selected} aria-controls={`deposit-${session.id}`} onClick={() => onOpen(session.id)}><CreditCard size={20} /><span><strong>{session.amount ? `${session.amount} ${session.fiatCurrency.toUpperCase()}` : depositProvider(session) === 'onramper' ? 'Onramper' : 'MoonPay'}</strong><small>{new Date(session.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en', { month: 'short', day: 'numeric' })}</small></span><span className="deposit-history-status">{t.statuses[session.status]}</span><ArrowUpRight size={15} /></button>
+        <button type="button" aria-expanded={selected} aria-controls={`deposit-${session.id}`} onClick={() => onOpen(session.id)}><CreditCard size={20} /><span><strong>{language === 'zh' ? '充值' : 'Deposit'} · {depositProvider(session) === 'onramper' ? 'Onramper' : 'MoonPay'}</strong><small>{hidden ? '••••••' : session.mode === 'live' && session.receivedAmount ? `${displayQuantity(session.receivedAmount, 8)} ${asset.symbol}` : session.amount ? `${session.amount} ${session.fiatCurrency.toUpperCase()}` : '—'} · {new Date(session.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en', { month: 'short', day: 'numeric' })}</small></span><span className="deposit-history-status">{t.statuses[session.status]}</span><ArrowUpRight size={15} /></button>
         {selected && <div className="deposit-activity-details" id={`deposit-${session.id}`}>
           <p role="status">{statusMessage(session, language)}</p>
           {controller.error && <p className="deposit-error" role="alert">{depositErrorMessage(controller.error, language)}</p>}

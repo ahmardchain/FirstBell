@@ -7,9 +7,24 @@ const read = (storage: StoragePort, key: string) => { try { return JSON.parse(st
 export function mergeTradeOrder(previous: AgentOrder | undefined, next: AgentOrder): AgentOrder {
   // A late status/cancel response cannot erase a verified fill, its amounts or
   // the description received with the original acknowledgement.
-  if (previous?.status === 'FILLED') return previous
-  return { ...previous, ...next, trade: next.trade ?? previous?.trade,
+  if (previous?.status === 'FILLED') return { ...next, ...previous, trade: next.trade ? { ...next.trade, ...previous.trade } : previous.trade }
+  return { ...previous, ...next, trade: next.trade ? { ...previous?.trade, ...next.trade } : previous?.trade,
+    recordedAt: previous?.recordedAt ?? next.recordedAt,
     cancellationRequested: next.cancellationRequested || previous?.cancellationRequested }
+}
+
+export function readWalletOrders(storage: StoragePort, owner: string): AgentOrder[] {
+  const orders = new Map<string, AgentOrder>()
+  for (const order of [...readTradeReceipts(storage, owner), ...readTradeHistory(storage, owner)]) {
+    if (!['PENDING_VENDOR', 'PENDING_ONCHAIN', 'CONFIRMING', 'FILLED', 'FAILED', 'EXPIRED', 'CANCELLED'].includes(order.status)) continue
+    orders.set(order.orderId, mergeTradeOrder(orders.get(order.orderId), order))
+  }
+  return [...orders.values()]
+}
+
+export const walletActivityEvent = 'firstbell-wallet-activity'
+export function notifyWalletActivity(owner: string) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(walletActivityEvent, { detail: owner.toLowerCase() }))
 }
 
 export function readTradeHistory(storage: StoragePort, owner: string): AgentOrder[] {
@@ -61,6 +76,7 @@ export function storeTradeReceipt(storage: StoragePort, owner: string, receipt: 
   const historyKey = `firstbell-order-history:${owner.toLowerCase()}`
   const history = readTradeHistory(storage, owner)
   receipt = mergeTradeOrder(history.find(item => item.orderId === receipt.orderId) ?? existing.find(item => item.orderId === receipt.orderId), receipt)
+  receipt.recordedAt ??= new Date().toISOString()
   const remainingHistory = terminalOrder(receipt.status)
     ? history.some(item => item.orderId === receipt.orderId) ? history.map(item => item.orderId === receipt.orderId ? receipt : item) : [...history, receipt]
     : history.filter(item => item.orderId !== receipt.orderId)
@@ -77,6 +93,7 @@ export function storeTradeReceipt(storage: StoragePort, owner: string, receipt: 
       else storage.removeItem(key)
     }
   } else if (!current || current.orderId === receipt.orderId) storage.setItem(key, JSON.stringify(receipt))
+  notifyWalletActivity(owner)
 }
 
 export function clearTradeApproval(storage: StoragePort, owner: string, hash: string | undefined) {

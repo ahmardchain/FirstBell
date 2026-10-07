@@ -23,9 +23,13 @@ export type AgentTradePlan = {
   planToken: string;
 }
 export type AgentOrder = { orderId: string; status: 'PENDING_VENDOR' | 'PENDING_ONCHAIN' | 'CONFIRMING' | 'FILLED' | 'FAILED' | 'EXPIRED' | 'CANCELLED'; txHash: Hex | null; inputAmount: string | null; outputAmount: string | null; receiptToken: string;
-  trade?: { symbol: string; side: 'buy' | 'sell'; amount: string; inputSymbol: string; outputSymbol: string; expiresAt: string; source: 'binance-web3' | 'cow-protocol' };
+  trade?: { symbol: string; side: 'buy' | 'sell'; amount: string; inputSymbol: string; outputSymbol: string; expiresAt: string; source: 'binance-web3' | 'cow-protocol'; quotedOutputAmount?: string; requestId?: string };
+  createdAt?: string; recordedAt?: string;
   canCancel?: boolean; cancellationRequested?: boolean }
 export const terminalOrder = (status: AgentOrder['status']) => ['FILLED', 'FAILED', 'EXPIRED', 'CANCELLED'].includes(status)
+// CONFIRMING means a fill was observed and its settlement is being verified.
+// Keep checking it, but do not present it as an unfilled, cancellable order.
+export const openOrder = (order: AgentOrder) => ['PENDING_VENDOR', 'PENDING_ONCHAIN'].includes(order.status)
 const obj = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const sameAddress = (a: unknown, b: string) => typeof a === 'string' && /^0x[a-fA-F0-9]{40}$/.test(a) && a.toLowerCase() === b.toLowerCase()
 const integer = (value: unknown): value is string => typeof value === 'string' && /^(?:0|[1-9]\d{0,77})$/.test(value)
