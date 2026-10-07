@@ -54,7 +54,7 @@ function fixture() {
       assert.equal(init.headers['User-Agent'], 'FirstBell/0.1.0')
       s.calls.push({ provider: 'megafuel', method: body.method, params: body.params })
       let result
-      if (body.method === 'pm_isSponsorable') result = { Sponsorable: s.sponsorable, SponsorPolicy: 'fixture-private-policy' }
+      if (body.method === 'pm_isSponsorable') result = { sponsorable: s.sponsorable }
       else if (body.method === 'eth_getTransactionCount') { assert.equal(body.params[1], 'pending'); result = `0x${s.nonce.toString(16)}` }
       else if (body.method === 'eth_sendRawTransaction') {
         const raw = body.params[0], tx = parseTransaction(raw), hash = keccak256(raw)

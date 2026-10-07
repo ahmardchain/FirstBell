@@ -48,9 +48,16 @@ export function validateApprovalAction(plan: Plan, approval: Approval) {
 
 async function checkPolicy(approval: { to: string; data: Hex; sponsorship: { gas: string } }, owner: string, env: ApiEnv, signal?: AbortSignal) {
   const gas = BigInt(approval.sponsorship.gas)
-  const result = await rpc(env, 'pm_isSponsorable', [{ from: owner, to: approval.to, data: approval.data, value: '0x0', gas: toHex(gas) }], signal) as { Sponsorable?: boolean; SponsorPolicy?: string } | null
-  if (!result || typeof result.Sponsorable !== 'boolean') throw new RouteError('sponsorship_unavailable')
-  if (!result.Sponsorable) throw new RouteError('sponsorship_rejected', 409)
+  const response = await rpc(env, 'pm_isSponsorable', [{ from: owner, to: approval.to, data: approval.data, value: '0x0', gas: toHex(gas) }], signal)
+  if (!response || typeof response !== 'object' || Array.isArray(response)) throw new RouteError('sponsorship_unavailable')
+  const result = response as Record<string, unknown>
+  // MegaFuel's live response uses lowercase; BNB's API spec and the older
+  // NodeReal SDK use uppercase. Require an explicit, unambiguous boolean.
+  const lower = Object.hasOwn(result, 'sponsorable'), legacy = Object.hasOwn(result, 'Sponsorable')
+  if ((!lower && !legacy) || (lower && typeof result.sponsorable !== 'boolean')
+    || (legacy && typeof result.Sponsorable !== 'boolean')
+    || (lower && legacy && result.sponsorable !== result.Sponsorable)) throw new RouteError('sponsorship_unavailable')
+  if (!(lower ? result.sponsorable : result.Sponsorable)) throw new RouteError('sponsorship_rejected', 409)
 }
 
 export async function sponsorApproval(approval: Approval, owner: Address, estimatedGas: bigint, env: ApiEnv, signal?: AbortSignal): Promise<Approval> {
