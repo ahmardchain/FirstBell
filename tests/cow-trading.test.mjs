@@ -6,7 +6,7 @@ import { BSC_USDT } from '../lib/funding.ts'
 import { tokenAddresses } from '../lib/asset-catalog.ts'
 import { COW_SETTLEMENT, COW_RELAYER, validateAgentTradePlan } from '../lib/agent-trading.ts'
 import { clearTradingMetadataCache, tradingClient } from '../worker/binance-trading.ts'
-import { prepareAgentTrade, submitAgentTrade, checkAgentOrder } from '../worker/agent-trading.ts'
+import { prepareAgentTrade, submitAgentTrade, checkAgentOrder, recoverAgentTrade } from '../worker/agent-trading.ts'
 import { cowOrderUid, getCowTrade } from '../worker/cow-trading.ts'
 
 // Every provider/RPC call is mocked; this unfunded signer is a public fixture.
@@ -150,6 +150,24 @@ test('lost acknowledgement recovers the same direct order after expiry without s
   t.mock.method(Date, 'now', () => elapsed)
   const recovered = await s.submit({ started: true, orderId: null, beforeDispatch: async () => { starts++ } })
   assert.equal(recovered.orderId, uid); assert.equal(s.calls.filter(call => call.path.endsWith('/orders')).length, 1)
+})
+
+test('read-only reconciliation finds an expired signed order by its exact UID without another dispatch', async t => {
+  const s = fixture(); await s.prepare(); s.acknowledged = false
+  await assert.rejects(s.submit, /submission_unknown/)
+  const elapsed = Date.now() + 180_000
+  t.mock.method(Date, 'now', () => elapsed)
+  s.balance = 0n; s.allowance = 0n; s.status = 'fulfilled'
+  const recovered = await recoverAgentTrade(s.plan, s.signature, credentials, { started: true, orderId: null })
+  assert.equal(recovered.orderId, cowOrderUid(s.plan)); assert.equal(recovered.status, 'FILLED')
+  assert.equal(s.calls.filter(call => call.path.endsWith('/orders')).length, 1)
+})
+
+test('a missing signed order remains unknown and is never automatically submitted or marked filled', async () => {
+  const s = fixture(); await s.prepare()
+  const signature = await signer.signTypedData(s.plan.typedData)
+  assert.equal(await recoverAgentTrade(s.plan, signature, credentials, { started: true, orderId: null }), null)
+  assert.equal(s.calls.some(call => call.path.endsWith('/orders')), false)
 })
 
 test('a duplicate order is recovered only by its exact UID, while a mismatched acknowledgement stays unknown', async () => {

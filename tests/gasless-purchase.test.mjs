@@ -336,3 +336,38 @@ test('fixture: a lost order acknowledgement can recover the same dispatch after 
   const again = await call(); assert.equal(again.status, 200)
   assert.equal(s.calls.filter(c => c.method.endsWith('/order/submit')).length, 2)
 })
+
+test('authenticated recovery and historical status reconcile existing orders without any dispatch', async () => {
+  const s = fixture(); s.allowance = rawAmount
+  const plan = await s.prepare(), signature = await signer.signTypedData(plan.typedData)
+  const pair = await generateKeyPair('ES256'), app = 'fixture-read-recovery-app', user = 'did:privy:fixture'
+  const identity = await new SignJWT({ linked_accounts: JSON.stringify([{ type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: owner }]) })
+    .setProtectedHeader({ alg: 'ES256' }).setSubject(user).setIssuer('privy.io').setAudience(app).setExpirationTime('1h').sign(pair.privateKey)
+  const paths = [], values = new Map()
+  const storage = { get: async key => structuredClone(values.get(key)), put: async (key, value) => { values.set(key, structuredClone(value)) } }
+  const apiEnv = { ...env, PRIVY_APP_ID: app, PRIVY_VERIFICATION_KEY: await exportSPKI(pair.publicKey), BINANCE_WEB3_API_KEY: credentials.apiKey, BINANCE_WEB3_SECRET_KEY: credentials.secretKey,
+    ACCOUNTS: { idFromName: id => id, get: () => ({ fetch: req => { paths.push(new URL(req.url).pathname); return handleAccountRequest(req, {}, storage) } }) } }
+  const headers = { Origin: 'https://firstbell.test', 'Content-Type': 'application/json', Authorization: `Bearer ${identity}`, 'privy-id-token': identity }
+  const call = (path, body) => handleApiRequest(new Request(`https://firstbell.test/api/trade/${path}`, { method: 'POST', headers, body: JSON.stringify({ walletAddress: owner, ...body }) }), apiEnv)
+  const initial = await call('recover', { planToken: plan.planToken, signature })
+  assert.equal(initial.status, 200); assert.equal((await initial.json()).order, null)
+  assert.equal(s.calls.some(c => c.method.endsWith('/order/submit')), false)
+  const submitted = await call('submit', { planToken: plan.planToken, signature })
+  assert.equal(submitted.status, 200)
+  const dispatchCount = s.calls.filter(c => c.method.endsWith('/order/submit')).length
+  const beforeRecovery = structuredClone(values.get('tradeAttempts'))
+  const key = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`firstbell-agent-orders-v1:${credentials.secretKey}`)))
+  const historical = (kind, value) => new SignJWT({ ...value, kind }).setProtectedHeader({ alg: 'HS256', typ: 'JWT' }).setIssuer('firstbell-agent').setAudience(`firstbell-${kind}`).setSubject(user)
+    .setIssuedAt(Math.floor(Date.now() / 1000) - 172_800).setExpirationTime(Math.floor(Date.now() / 1000) - 86_400).sign(key)
+  const planToken = await historical('plan', { plan })
+  const recovered = await call('recover', { planToken, signature })
+  assert.equal(recovered.status, 200)
+  assert.equal((await recovered.json()).order.status, 'FILLED')
+  assert.deepEqual(values.get('tradeAttempts'), beforeRecovery, 'recovery does not start or complete a durable dispatch')
+  const receiptToken = await historical('receipt', { plan, orderId: 'fixture-submitted-order' })
+  const checked = await call('status', { receiptToken })
+  assert.equal(checked.status, 200); assert.equal((await checked.json()).order.status, 'FILLED')
+  assert.equal((await call('submit', { planToken, signature })).status, 403, 'historical tickets never authorize dispatch')
+  assert.equal(s.calls.filter(c => c.method.endsWith('/order/submit')).length, dispatchCount)
+  assert.ok(paths.includes('/trade-status-rate'))
+})

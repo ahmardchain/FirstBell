@@ -5,7 +5,7 @@ import { TradeRequestError } from '../lib/trade-error.ts'
 import { keccak256, type Hex } from 'viem'
 import type { PaymentToken } from '../lib/trade-assets.ts'
 
-async function post(path: 'prepare' | 'submit' | 'status' | 'approval/submit' | 'approval/refresh', body: Record<string, unknown>, session: WalletSession, signal?: AbortSignal): Promise<Record<string, unknown>> {
+async function post(path: 'prepare' | 'submit' | 'status' | 'recover' | 'approval/submit' | 'approval/refresh', body: Record<string, unknown>, session: WalletSession, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const timeout = AbortSignal.timeout(path === 'prepare' ? PREPARE_TIMEOUT_MS : 30_000)
   try {
     const response = await fetch(`/api/trade/${path}`, { method: 'POST', cache: 'no-store',
@@ -56,6 +56,10 @@ function orderResponse(value: unknown): AgentOrder {
 export async function submitTrade(plan: AgentTradePlan, signature: string, session: WalletSession): Promise<AgentOrder> {
   const result = await post('submit', { planToken: plan.planToken, signature, walletAddress: plan.route.walletAddress }, session)
   return orderResponse(result.order)
+}
+export async function recoverTrade(plan: AgentTradePlan, signature: string, session: WalletSession): Promise<AgentOrder | null> {
+  const result = await post('recover', { planToken: plan.planToken, signature, walletAddress: plan.route.walletAddress }, session)
+  return result.order === null ? null : orderResponse(result.order)
 }
 export async function checkTrade(order: AgentOrder, walletAddress: string, session: WalletSession, signal?: AbortSignal): Promise<AgentOrder> {
   const result = await post('status', { receiptToken: order.receiptToken, walletAddress }, session, signal)

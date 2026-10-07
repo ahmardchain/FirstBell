@@ -54,6 +54,7 @@
 .trade-entry .trade-submit { font-size:13px; }
 .trade-progress { margin-top:18px; padding-top:16px; border-top:1px solid var(--line); font-size:12px; }
 .trade-progress-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--foreground); }
+.trade-progress-record + .trade-progress-record { margin-top:12px; padding-top:8px; border-top:1px solid var(--line); }
 .trade-progress p { display:flex; align-items:flex-start; gap:6px; margin:8px 0; color:var(--muted); line-height:1.5; }
 .trade-progress svg { flex-shrink:0; }
 .trade-progress-action,.trade-progress a { display:inline-flex; align-items:center; gap:6px; min-height:44px; padding:0; border:0; background:transparent; color:var(--foreground); font:inherit; text-decoration:underline; text-underline-offset:3px; }

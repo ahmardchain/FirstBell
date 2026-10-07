@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { clearSignedTrade, clearTradeApproval, storeTradeReceipt } from '../lib/trade-storage.ts'
+import { clearSignedTrade, clearTradeApproval, readSignedTrades, readTradeReceipts, storeSignedTrade, storeTradeReceipt } from '../lib/trade-storage.ts'
 
 const owner = `0x${'11'.repeat(20)}`
 function storage() {
@@ -47,4 +47,44 @@ test('receipt and recovery cleanup remain scoped to the original wallet', () => 
   storeTradeReceipt(store, owner.toUpperCase(), receipt('first-wallet', 'FILLED'))
   assert.equal(store.getItem(`firstbell-agent-order:${owner}`), null)
   assert.equal(JSON.parse(store.getItem(`firstbell-agent-order:${other}`)).orderId, 'second-wallet')
+})
+
+test('separate pending trades both survive reload and resolve independently', () => {
+  const store = storage()
+  storeTradeReceipt(store, owner, receipt('first'))
+  storeTradeReceipt(store, owner, receipt('second'))
+  assert.deepEqual(readTradeReceipts(store, owner).map(item => item.orderId), ['first', 'second'])
+  storeTradeReceipt(store, owner, receipt('first', 'CONFIRMING'))
+  assert.deepEqual(readTradeReceipts(store, owner).map(item => item.status), ['CONFIRMING', 'PENDING_VENDOR'])
+  storeTradeReceipt(store, owner, receipt('first', 'FILLED'))
+  assert.deepEqual(readTradeReceipts(store, owner).map(item => item.orderId), ['second'])
+  assert.equal(JSON.parse(store.getItem(`firstbell-agent-order:${owner}`)).orderId, 'second')
+  storeTradeReceipt(store, owner, receipt('second', 'EXPIRED'))
+  assert.deepEqual(readTradeReceipts(store, owner), [])
+})
+
+test('a second independently signed trade retains both exact recoverable signatures', () => {
+  const store = storage()
+  const attempt = (number, bytes) => ({ signature: `0x${bytes.repeat(65)}`, plan: { requestId: `${number.repeat(8)}-${number.repeat(4)}-${number.repeat(4)}-${number.repeat(4)}-${number.repeat(12)}`, planToken: `ticket-${number}`, route: { walletAddress: owner } } })
+  const first = attempt('1', 'aa'), second = attempt('2', 'bb')
+  storeSignedTrade(store, owner, first)
+  storeSignedTrade(store, owner, second)
+  assert.deepEqual(readSignedTrades(store, owner), [first, second])
+  clearSignedTrade(store, owner, { ...first, signature: second.signature })
+  assert.deepEqual(readSignedTrades(store, owner), [first, second])
+  clearSignedTrade(store, owner, first)
+  assert.deepEqual(readSignedTrades(store, owner), [second])
+  assert.deepEqual(JSON.parse(store.getItem(`firstbell-pending-order:${owner}`)), second)
+  clearSignedTrade(store, owner, second)
+  assert.deepEqual(readSignedTrades(store, owner), [])
+})
+
+test('legacy records migrate into the queues without duplicates or another wallet signature', () => {
+  const store = storage()
+  store.setItem(`firstbell-agent-order:${owner}`, JSON.stringify(receipt('legacy')))
+  storeTradeReceipt(store, owner, receipt('new'))
+  assert.deepEqual(readTradeReceipts(store, owner).map(item => item.orderId), ['legacy', 'new'])
+  const other = `0x${'22'.repeat(20)}`
+  store.setItem(`firstbell-pending-order:${owner}`, JSON.stringify({ signature: `0x${'aa'.repeat(65)}`, plan: { requestId: '11111111-1111-1111-1111-111111111111', planToken: 'ticket', route: { walletAddress: other } } }))
+  assert.deepEqual(readSignedTrades(store, owner), [])
 })

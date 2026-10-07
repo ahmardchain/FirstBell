@@ -119,7 +119,7 @@ export async function handleApiRequest(request: Request, env: ApiEnv): Promise<R
       return handleAgentTrade(bounded, env, id)
     })
   }
-  if (['/api/trade/submit', '/api/trade/status', '/api/trade/approval/submit', '/api/trade/approval/refresh'].includes(pathname)) {
+  if (['/api/trade/submit', '/api/trade/status', '/api/trade/recover', '/api/trade/approval/submit', '/api/trade/approval/refresh'].includes(pathname)) {
     if (!privyAuthConfigured(env)) return json({ error: 'account_not_configured' }, 503)
     const id = await getUserId(request, env)
     if (!id) return json({ error: 'unauthorized' }, 401)
