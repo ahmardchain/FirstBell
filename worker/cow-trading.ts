@@ -13,7 +13,7 @@ const appData = '{}'
 const appDataHash = keccak256(toHex(appData))
 const uid = (value: unknown): value is Hex => typeof value === 'string' && /^0x[a-fA-F0-9]{112}$/.test(value)
 const rejectionReasons: Record<string, string> = {
-  NoLiquidity: 'no_verified_route', UnsupportedToken: 'no_verified_route',
+  NoLiquidity: 'liquidity_unavailable', UnsupportedToken: 'token_unavailable',
   SellAmountDoesNotCoverFee: 'minimum_order_not_met', InsufficientBalance: 'insufficient_balance', InsufficientAllowance: 'approval_required',
   NonZeroFee: 'order_fee_changed', QuoteNotFound: 'stale_quote', QuoteExpired: 'stale_quote', InvalidQuote: 'stale_quote',
   ValidToTooSoon: 'stale_quote', InsufficientValidTo: 'stale_quote',

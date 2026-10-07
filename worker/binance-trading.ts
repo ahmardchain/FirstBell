@@ -97,7 +97,7 @@ export async function tradingRequest(method: 'GET' | 'POST', endpoint: string, i
           ? result.msg.match(/\bminimum order amount is ((?:0|[1-9]\d{0,8})(?:\.\d{1,2})?) USD\b/i)?.[1] : undefined
         throw new RouteError('minimum_order_not_met', 400, minimum)
       }
-      const reason = ({ 40304: 'provider_unavailable', 40367: 'market_closed', 40369: 'market_closed', 40374: 'no_verified_route', 40401: 'stale_quote', 40462: 'invalid_provider_response' } as Record<number, string>)[Number(result?.code)]
+      const reason = ({ 40304: 'provider_unavailable', 40367: 'market_closed', 40369: 'market_closed', 40374: 'liquidity_unavailable', 40421: 'liquidity_unavailable', 40441: 'no_verified_route', 40461: 'no_verified_route', 40401: 'stale_quote', 40462: 'invalid_provider_response' } as Record<number, string>)[Number(result?.code)]
       throw new RouteError(reason ?? 'provider_error')
     }
     return result
@@ -114,7 +114,7 @@ export async function tradingRequest(method: 'GET' | 'POST', endpoint: string, i
 
 export function normalizeRoutes(result: Json, request: {
   symbol: Symbol; side: 'buy' | 'sell'; amount: string; rawAmount: string; walletAddress: string; tokenDecimals: number; startedAt: number; paymentToken?: PaymentToken
-}): TradingRoute {
+}, executableOnly = false): TradingRoute {
   if (!Array.isArray(result.data)) throw new RouteError('invalid_provider_response')
   if (typeof result.timestamp !== 'number' || !Number.isSafeInteger(result.timestamp)
     || result.timestamp < request.startedAt - 30_000 || result.timestamp > Date.now() + 10_000
@@ -130,13 +130,22 @@ export function normalizeRoutes(result: Json, request: {
     return typeof token?.tokenContractAddress === 'string' && token.tokenContractAddress.toLowerCase() === address.toLowerCase()
       && String(token.decimal) === String(decimals)
   }
-  const routes = result.data.map(object).filter((route): route is Json => Boolean(route
+  const verified = result.data.map(object).filter((route): route is Json => Boolean(route
     && route.binanceChainId === '56' && route.fromTokenAmount === request.rawAmount && units(route.toTokenAmount)
     && matchesToken(route.fromToken, fromAddress, fromDecimals) && matchesToken(route.toToken, toAddress, toDecimals)
-    // Binance documents equity routes as signed RFQ orders, not ordinary swaps.
-    && route.executionMode === 'RFQ' && typeof route.vendorName === 'string' && /^[A-Za-z0-9 ._-]{1,64}$/.test(route.vendorName)
+    // xStocks use SWAP. Recognize that quote without enabling raw-tx execution.
+    && (route.executionMode === 'SWAP' || (route.executionMode === 'RFQ'
+      && typeof route.vendorName === 'string' && /^[A-Za-z0-9 ._-]{1,64}$/.test(route.vendorName)))
     && typeof route.quoteId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(route.quoteId)))
-  if (!routes.length) throw new RouteError('no_verified_route')
+  if (!verified.length) throw new RouteError(result.data.length ? 'invalid_provider_response' : 'no_verified_route')
+  const rfq = verified.filter(route => route.executionMode === 'RFQ')
+  const routes = executableOnly ? rfq.filter(route => route.vendorName === 'CowSwap') : rfq
+  if (!routes.length) {
+    const reason = verified.some(route => route.executionMode === 'SWAP') ? 'unsupported_execution_mode' : 'unsupported_route_vendor'
+    // Only a fixed reason: no upstream payload, wallet, amount or credentials.
+    console.info('TRADE_ROUTE_REJECTION', { reason })
+    throw new RouteError(reason, 409)
+  }
   const route = routes.reduce((best, candidate) => BigInt(candidate.toTokenAmount as string) > BigInt(best.toTokenAmount as string) ? candidate : best)
   return {
     source: 'binance-web3', chainId: 56, symbol: request.symbol, side: request.side, walletAddress: request.walletAddress,
@@ -184,12 +193,11 @@ export async function getQuoteContext(symbol: Symbol, side: 'buy' | 'sell', amou
   ])
   const { rawAmount, startedAt, result } = quoted
   signal?.throwIfAborted()
-  // Only the audited CoW Order schema is executable. Other RFQ vendors remain
-  // available to the existing read-only route checker.
-  const selected = executableOnly && Array.isArray(result.data) ? { ...result, data: result.data.filter(row => object(row)?.vendorName === 'CowSwap') } : result
+  // Validate the full result before selecting the audited CoW Order schema,
+  // so an unsupported execution path does not masquerade as missing liquidity.
   const context = { symbol, side, amount, rawAmount, walletAddress, tokenDecimals, startedAt, paymentToken }
-  const route = normalizeRoutes(selected, context)
-  const providerRoute = (selected.data as Json[]).find(row => row.vendorName === route.vendor
+  const route = normalizeRoutes(result, context, executableOnly)
+  const providerRoute = (result.data as unknown[]).map(object).find(row => row && row.vendorName === route.vendor
     && row.binanceChainId === '56' && row.executionMode === 'RFQ' && row.fromTokenAmount === rawAmount && units(row.toTokenAmount)
     && sameToken(row.fromToken, side === 'buy' ? cash.address : assets[symbol], side === 'buy' ? cash.decimals : tokenDecimals)
     && sameToken(row.toToken, side === 'buy' ? assets[symbol] : cash.address, side === 'buy' ? tokenDecimals : cash.decimals)

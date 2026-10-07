@@ -4,7 +4,7 @@ import { after, beforeEach, test } from 'node:test'
 import { exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import { BSC_USDT } from '../lib/funding.ts'
 import { assets } from '../worker/market.ts'
-import { clearTradingMetadataCache, getTradingRoute, normalizeRoutes } from '../worker/binance-trading.ts'
+import { clearTradingMetadataCache, getTradingRoute, normalizeRoutes, tradingRequest } from '../worker/binance-trading.ts'
 import { handleTradingRoute } from '../worker/trading.ts'
 
 const originalFetch = globalThis.fetch
@@ -79,14 +79,40 @@ test('sell routes use on-chain token decimals, reject excess precision, and retu
   assert.equal(quoted, 1, 'over-precision amounts never reach the quote provider')
 })
 
-test('normalization rejects wrong-chain, wrong-token, wrong-amount, wrong-decimal and non-RFQ responses', () => {
+test('normalization rejects wrong-chain, wrong-token, wrong-amount, wrong-decimal and malformed responses', () => {
   for (const changes of [{ binanceChainId: '1' }, { fromTokenAmount: '5000000' }, { toToken: token(other) },
-    { fromToken: token(BSC_USDT.address, '6') }, { executionMode: 'SWAP' }, { toTokenAmount: '1e6' }, { quoteId: '' }])
-    assert.throws(() => normalizeRoutes(result([route(changes)]), request()), /no_verified_route/)
+    { fromToken: token(BSC_USDT.address, '6') }, { executionMode: 'unknown' }, { toTokenAmount: '1e6' }, { quoteId: '' }])
+    assert.throws(() => normalizeRoutes(result([route(changes)]), request()), /invalid_provider_response/)
   assert.throws(() => normalizeRoutes(result([]), request()), /no_verified_route/)
   assert.throws(() => normalizeRoutes(result({}), request()), /invalid_provider_response/)
   assert.throws(() => normalizeRoutes({ ...result([route()]), timestamp: Date.now() - 60_000 }, request()), /stale_quote/)
   assert.throws(() => normalizeRoutes(result([route()]), request({ startedAt: Date.now() - 31_000 })), /stale_quote/)
+})
+
+test('verified SWAP quotes and unsupported RFQ vendors are distinct from missing quotes', () => {
+  const swap = route({ executionMode: 'SWAP', vendorName: undefined })
+  assert.throws(() => normalizeRoutes(result([swap]), request()), error => error.reason === 'unsupported_execution_mode' && error.status === 409)
+  assert.throws(() => normalizeRoutes(result([route()]), request(), true), error => error.reason === 'unsupported_route_vendor' && error.status === 409)
+  for (const changed of [{ binanceChainId: '1' }, { toToken: token(other) }, { fromTokenAmount: '1' }, { quoteId: '' }]) {
+    assert.throws(() => normalizeRoutes(result([{ ...swap, ...changed }]), request(), true), /invalid_provider_response/)
+  }
+  assert.throws(() => normalizeRoutes(result([]), request(), true), /no_verified_route/)
+})
+
+test('only documented liquidity errors assert no liquidity; empty or failed vendor quotes remain unavailable', async () => {
+  for (const [code, reason] of [[40374, 'liquidity_unavailable'], [40421, 'liquidity_unavailable'],
+    [40441, 'no_verified_route'], [40461, 'no_verified_route']]) {
+    globalThis.fetch = async () => Response.json({ code, success: false, msg: 'private fixture', data: null })
+    await assert.rejects(() => tradingRequest('GET', '/api/v1/dex/aggregator/quote', {}, credentials), error => error.reason === reason)
+  }
+})
+
+test('executable selection keeps the exact CoW RFQ quote even beside higher-output unsupported routes', () => {
+  const checked = normalizeRoutes(result([null, route({ executionMode: 'SWAP', toTokenAmount: '999999999999999999' }),
+    route({ vendorName: 'PcsXRfq', toTokenAmount: '999999999999999998' }), route({ vendorName: 'CowSwap' })]), request(), true)
+  assert.equal(checked.vendor, 'CowSwap'); assert.equal(checked.executionMode, 'RFQ')
+  assert.equal(checked.outputAmount, '0.025'); assert.equal(checked.executable, false)
+  assert.equal(Object.hasOwn(checked, 'tx'), false)
 })
 
 test('the highest valid output is selected with integer precision, excluding larger unverified routes', () => {

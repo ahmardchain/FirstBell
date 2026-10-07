@@ -36,6 +36,12 @@ The hackathon-linked Trading API docs advertise a one-call Flash API, but curren
 
 Binance error `40375` means the requested trade value is below the Ondo provider's minimum. The app returns `minimum_order_not_met` with a validated numeric `minimumUsd` when the provider supplies it, and shows that threshold in Trade and Agent. If no threshold can be extracted, it shows a general minimum-value message. The documented 20 USD value is an example, not a universal limit. The user chooses the revised amount and requests a new quote; FirstBell never raises the spend automatically or relays the raw provider message.
 
+## Quote availability failures
+
+Trade and Agent distinguish `liquidity_unavailable` (provider liquidity/route errors), `token_unavailable` (CoW rejects the token), and available Binance routes outside the enabled executor (`unsupported_execution_mode` or `unsupported_route_vendor`). Empty quote results remain `no_verified_route`; mismatched chain, contracts, decimals, amount, mode or quote identifiers fail as `invalid_provider_response`. Neither case is a completed trade.
+
+The enabled executor still signs only the validated CoW Order schema. It may obtain a fresh direct CoW quote at the user's exact amount when Binance has no enabled route, liquidity or a usable minimum. If that fallback returns a valid quote, the user reviews it normally. If an available Binance route is not enabled and CoW has no liquidity or does not support the token, the final error explains the execution limitation. Authentication, region, market-closure, timeout and validation errors are not hidden behind that message. No SWAP transaction is signed or broadcast by this change, and no live $1 purchase is claimed.
+
 ## Configuration and verification
 
 Use the existing server configuration: `BINANCE_WEB3_API_KEY`, `BINANCE_WEB3_SECRET_KEY`, `PRIVY_APP_ID` and either Privy identity tokens or a valid `PRIVY_APP_SECRET` for server lookup. The existing account storage supplies per-account rate limits. Do not expose server secrets in Vite environment variables. The app checks provider trading availability and never circumvents provider restrictions.
