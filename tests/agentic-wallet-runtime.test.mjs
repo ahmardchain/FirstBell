@@ -19,7 +19,7 @@ test('CLI failures never echo provider text or quoted/unlabeled credentials', ()
 })
 const report = () => ({ source: 'binance-wallet-skills', checkedAt: new Date().toISOString(), stock: { symbol: 'AAPLon', address: tokenAddresses.AAPLon, chainId: 56, market: { open: true, reason: 'TRADING', detail: null } }, audit: { available: true, level: 1, label: 'LOW', buyTax: 0, sellTax: 0, verified: true, risks: [] }, trace: [] })
 function fixture() {
-  const calls = [], rows = new Map(), state = { connected: true, wallet, pending: 'PENDING', swapError: false, changedRisk: false, received: '0.005', now: Date.now(), quote: '0.005' }
+  const calls = [], rows = new Map(), state = { connected: true, wallet, pending: 'PENDING', swapError: false, changedRisk: false, unsupportedAudit: false, received: '0.005', now: Date.now(), quote: '0.005' }
   const journal = { get: async id => structuredClone(rows.get(id) ?? null), list: async () => [...rows.values()].map(v => structuredClone(v)), save: async row => { rows.set(row.reviewId, structuredClone(row)) } }
   const runCli = async args => {
     calls.push(args)
@@ -39,7 +39,7 @@ function fixture() {
     if (args[1] === 'list') return { list: [{ orderId: 'baw-order-1', chain: '56', fromToken: BSC_USDT.address, toToken: tokenAddresses.AAPLon, fromTokenQty: '1.0', status: state.pending, txHash: state.pending === 'FINISHED' ? '0x' + 'ab'.repeat(32) : null }] }
     throw new Error('Unexpected CLI command ' + args.join(' '))
   }
-  const agent = createBinanceAgent({ runCli, journal, research: async () => report(), check: async () => { const value = report(); if (state.changedRisk) value.audit.buyTax = 7; return value },
+  const agent = createBinanceAgent({ runCli, journal, research: async () => { const value = report(); if (state.unsupportedAudit) value.audit = { available: false, reason: 'unsupported', level: null, label: null, buyTax: null, sellTax: null, verified: null, risks: [] }; return value }, check: async () => { const value = report(); if (state.unsupportedAudit) value.audit = { available: false, reason: 'unsupported', level: null, label: null, buyTax: null, sellTax: null, verified: null, risks: [] }; if (state.changedRisk) value.audit.buyTax = 7; return value },
     verifySettlement: async (_, hash) => state.received ? { txHash: hash, inputAmount: '1', outputAmount: state.received } : null, now: () => state.now })
   return { agent, state, calls, rows, journal }
 }
@@ -127,4 +127,37 @@ test('local journal survives restart with UNKNOWN/FAILED status and original wal
     await createOrderJournal(directory).save({ ...row, status: 'FAILED' })
     assert.equal((await createOrderJournal(directory).list())[0].status, 'FAILED')
   } finally { await rm(directory, { recursive: true, force: true }) }
+})
+test('personal wallet unsupported audit needs acknowledgement and fresh checks before exactly one execution', async () => {
+  const f = fixture(); f.state.unsupportedAudit = true
+  const plan = await f.agent.prepareTrade({ symbol: 'AAPLon', side: 'buy', amount: '1' })
+  await assert.rejects(f.agent.executeReviewed(plan.reviewId), /skill_audit_acknowledgement_required/)
+  assert.ok(f.agent.getReview(plan.reviewId)); assert.equal(f.calls.some(c => c[1] === 'swap'), false)
+  assert.equal((await f.agent.executeReviewed(plan.reviewId, { auditAcknowledged: true })).status, 'PENDING')
+  assert.equal(f.calls.filter(c => c[1] === 'swap').length, 1)
+  const changed = fixture(); changed.state.unsupportedAudit = true
+  const old = await changed.agent.prepareTrade({ symbol: 'AAPLon', side: 'buy', amount: '1' })
+  changed.state.unsupportedAudit = false
+  assert.equal((await changed.agent.executeReviewed(old.reviewId, { auditAcknowledged: true })).status, 'FAILED')
+  assert.equal(changed.calls.some(c => c[1] === 'swap'), false)
+})
+test('loopback unsupported audit uses the browser checkbox; missing or malformed consent leaves the review unspent', async () => {
+  const f = fixture(); f.state.unsupportedAudit = true
+  const plan = await f.agent.prepareTrade({ symbol: 'AAPLon', side: 'buy', amount: '1' }), server = await createReviewServer(f.agent)
+  try {
+    const url = server.add(plan), origin = new URL(url).origin, confirm = url.replace('/review/', '/confirm/')
+    assert.match(await (await fetch(url)).text(), /name="auditAcknowledged".*required/)
+    const click = body => new Promise((resolve, reject) => {
+      const req = request(confirm, { method: 'POST', headers: { Origin: origin, 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-User': '?1', 'Sec-Fetch-Dest': 'document',
+        'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) } }, res => {
+        let text = ''; res.setEncoding('utf8'); res.on('data', chunk => text += chunk); res.on('end', () => resolve({ status: res.statusCode, body: text }))
+      }); req.on('error', reject); req.end(body)
+    })
+    for (const body of ['', 'auditAcknowledged=false', 'auditAcknowledged=on&extra=true']) assert.equal((await click(body)).status, 400)
+    assert.equal(f.calls.some(c => c[1] === 'swap'), false)
+    assert.equal((await fetch(url)).status, 200)
+    assert.equal((await click('auditAcknowledged=on')).status, 200)
+    assert.equal((await click('auditAcknowledged=on')).status, 404)
+    assert.equal(f.calls.filter(c => c[1] === 'swap').length, 1)
+  } finally { await server.close() }
 })

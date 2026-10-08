@@ -39,6 +39,8 @@ export interface AIChatCardProps {
   composerCaption?: string
   agentLabel?: string
   headingLabel?: string
+  headerActions?: React.ReactNode
+  beforeMessages?: React.ReactNode
 }
 
 export function AIChatCard({
@@ -47,6 +49,7 @@ export function AIChatCard({
   icon, autoType = true, onSend, onReset, className, afterMessages, status, busy = false, resetDisabled = false,
   composerCaption = 'BNB SMART CHAIN', agentLabel = 'FIRSTBELL / SOURCE',
   headingLabel = 'FIRSTBELL / AGENT',
+  headerActions, beforeMessages,
 }: AIChatCardProps) {
   const rootRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -84,13 +87,13 @@ export function AIChatCard({
   return <div ref={rootRef} className={cn('ai-chat-card', className)}>
     <header className="ai-chat-header">
       <div><span className="ai-chat-index">{headingLabel}</span><h1>{title}</h1><p>{subtitle}</p>{status}</div>
-      <motion.button type="button" className="ai-chat-reset" aria-label={resetLabel} title={resetLabel}
+      <div className="ai-chat-header-actions">{headerActions}<motion.button type="button" className="ai-chat-reset" aria-label={resetLabel} title={resetLabel}
         whileTap={reduce ? undefined : { scale: .93 }} disabled={busy || resetDisabled}
         onClick={() => { setSpins(count => count + 1); setUserActive(false); setUserMessage(''); onReset() }}>
         <motion.span animate={reduce ? undefined : { rotate: spins * 360 }} transition={{ duration: .55 }}><RefreshCw size={18} /></motion.span>
-      </motion.button>
+      </motion.button></div>
     </header>
-
+    {beforeMessages}
     <div className="ai-chat-body">
       {messages.length === 0 && !afterMessages ? <div className="ai-chat-empty">
         <motion.div className="ai-chat-icon" animate={reduce ? undefined : { y: [0, -3, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
@@ -114,7 +117,7 @@ export function AIChatCard({
         {userActive || !autoType || messages.length > 0 ? <textarea ref={textareaRef} value={userMessage}
           onChange={event => setUserMessage(event.target.value)}
           onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send() } }}
-          placeholder={placeholder} aria-label={placeholder} rows={2} />
+          placeholder={placeholder} aria-label={placeholder} maxLength={4_000} rows={2} />
         : <button type="button" className="ai-chat-typewriter" onClick={takeOver} aria-label={`${placeholder}: ${typedMessage || prompts[0]}`}>
           {typedMessage || <span className="ai-chat-placeholder">{placeholder}</span>}<span className="ai-chat-caret" aria-hidden="true" />
         </button>}

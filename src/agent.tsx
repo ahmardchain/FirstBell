@@ -1,7 +1,7 @@
 import { amountForInput, localized, text, localeFor, formatText, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { getIdentityToken, useIdentityToken, usePrivy, useSendTransaction, useSignTypedData, useWallets } from '@privy-io/react-auth'
-import { Check, ExternalLink, LoaderCircle, Wallet } from 'lucide-react'
+import { Check, ExternalLink, History, LoaderCircle, Wallet } from 'lucide-react'
 import { createPublicClient, formatUnits, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { AIChatCard, type AIChatMessage } from '@/components/spectrumui/ai-chat-card'
@@ -15,7 +15,11 @@ import { checkTrade, prepareTrade, recoverTrade, submitTrade, researchStockWithS
 import { walletSkillsCopy } from '../lib/wallet-skills-copy'
 import { WalletSkillReport } from './wallet-skill-report'
 import { displayQuantity, readWalletBalances } from './wallet-balances'
-import { clearSignedTrade, readSignedTrades, readWalletOrders, storeSignedTrade, storeTradeReceipt } from '../lib/trade-storage'
+import { clearSignedTrade, readSignedTrades, readWalletOrders, storeSignedTrade, storeTradeReceipt, walletActivityEvent } from '../lib/trade-storage'
+import { requiresAuditAcknowledgement } from '../lib/binance-wallet-skills'
+import { agentHistoryCopy } from '../lib/agent-history-copy'
+import { useAgentHistory } from './use-agent-history'
+import { AgentHistoryPanel } from './agent-history'
 import { getTradingRoute } from './market-api'
 import manifest from '@/asset-sources.json'
 
@@ -64,14 +68,19 @@ const copy = {
 
 export function AgentWorkspace({ language }: { language: Language }) {
   const t = localized(copy, language)
-  const { authenticated, login, getAccessToken } = usePrivy()
+  const { authenticated, user, login, getAccessToken } = usePrivy()
   const { wallets, ready } = useWallets()
   const { identityToken } = useIdentityToken()
   const { signTypedData } = useSignTypedData()
   const { sendTransaction } = useSendTransaction()
   const wallet = wallets.find(item => item.walletClientType === 'privy' || item.walletClientType === 'privy_v2')
   const address = authenticated && ready ? wallet?.address : undefined
-  const [messages, setMessages] = React.useState<AIChatMessage[]>([])
+  const owner = address && user?.id ? `${user.id}|${address.toLowerCase()}` : authenticated ? undefined : 'guest'
+  const chat = useAgentHistory(owner)
+  const historyText = agentHistoryCopy[language]
+  const [historyOpen, setHistoryOpen] = React.useState(false)
+  const [walletOrders, setWalletOrders] = React.useState<AgentOrder[]>([])
+  const [auditAcknowledged, setAuditAcknowledged] = React.useState(false)
   const [plan, setPlan] = React.useState<AgentTradePlan | null>(null)
   const [intent, setIntent] = React.useState<TradeIntent | null>(null)
   const [order, setOrder] = React.useState<AgentOrder | null>(null)
@@ -87,7 +96,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
   const operation = React.useRef(0)
   const busy = ['loading', 'wallet', 'approval', 'submitted'].includes(phase)
   const pending = Boolean(order && !terminalOrder(order.status)) || phase === 'uncertain'
-  const say = (text: string, source = false) => setMessages(list => [...list, { id: list.length + 1, role: 'guide', text, source }])
+  const say = (text: string, source = false) => chat.append({ role: 'guide', text, source })
   const errorText = (error: unknown) => {
     const reason = error instanceof Error ? error.message : ''
     if (reason in skillsText.errors) return skillsText.errors[reason as keyof typeof skillsText.errors]
@@ -102,7 +111,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
 
   React.useEffect(() => {
     operation.current += 1; controller.current?.abort(); signedAttempt.current = null
-    setPlan(null); setIntent(null); setOrder(null); setPhase('idle'); busyRef.current = false; setNotice('')
+    setPlan(null); setIntent(null); setOrder(null); setPhase('idle'); busyRef.current = false; setNotice(''); setAuditAcknowledged(false)
     if (address) { try {
       const records = readWalletOrders(localStorage, address)
       const saved = records.at(-1)
@@ -111,6 +120,14 @@ export function AgentWorkspace({ language }: { language: Language }) {
       if (signedAttempt.current) { setPhase('uncertain'); setNotice(t.uncertain) }
     } catch { /* Ignore invalid local history. Server verifies the ticket. */ } }
     return () => { operation.current += 1; controller.current?.abort(); live.current.active = false }
+  }, [owner])
+  React.useEffect(() => {
+    const load = () => { try { setWalletOrders(address ? readWalletOrders(localStorage, address) : []) } catch { setWalletOrders([]) } }
+    const onActivity = (event: Event) => { if ((event as CustomEvent<string>).detail === address?.toLowerCase()) load() }
+    const onStorage = (event: StorageEvent) => { if (address && (event.key === null || event.key?.endsWith(address.toLowerCase()))) load() }
+    load()
+    window.addEventListener(walletActivityEvent, onActivity); window.addEventListener('storage', onStorage)
+    return () => { window.removeEventListener(walletActivityEvent, onActivity); window.removeEventListener('storage', onStorage) }
   }, [address])
   React.useEffect(() => {
     setExpired(false)
@@ -135,7 +152,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
     controller.current?.abort(); const abort = new AbortController(); controller.current = abort
     const deadline = AbortSignal.timeout(next.quoteOnly ? QUOTE_TIMEOUT_MS : PREPARE_TIMEOUT_MS)
     const signal = AbortSignal.any([abort.signal, deadline])
-    setPhase('loading'); setNotice(t.loading); setPlan(null); setIntent(next)
+    setPhase('loading'); setNotice(t.loading); setAuditAcknowledged(false); setPlan(null); setIntent(next)
     try {
       const asset = assetCatalog.find(item => item.symbol === next.symbol)!
       let amount = next.amount
@@ -149,12 +166,12 @@ export function AgentWorkspace({ language }: { language: Language }) {
       if (next.quoteOnly) {
         const report = await researchStockWithSkills(asset.symbol, signal)
         const route = await session(value => getTradingRoute(asset.symbol, next.side, amount!, address, value.accessToken, value.identityToken, signal), signal)
-        if (version === operation.current) { setMessages(list => [...list, { id: list.length + 1, role: 'guide', text: `${route.inputAmount} ${route.inputSymbol} → ${displayQuantity(route.outputAmount, 6, localeFor(language))} ${route.outputSymbol}. ${t.quoteOnly}`, source: false, attachment: <WalletSkillReport report={report} language={language} /> }]); setIntent(null); setNotice('') }
+        if (version === operation.current) { chat.append({ role: 'guide', text: `${route.inputAmount} ${route.inputSymbol} → ${displayQuantity(route.outputAmount, 6, localeFor(language))} ${route.outputSymbol}. ${t.quoteOnly}`, source: false, report }); setIntent(null); setNotice('') }
       } else {
         const prepared = await session(value => prepareTrade({ symbol: asset.symbol, side: next.side, amount: amount!, walletAddress: address, walletSkills: true }, value, signal), signal)
         if (version === operation.current) { setPlan(prepared); setIntent({ ...next, amount, fraction: null }); setNotice('') }
       }
-    } catch (error) { if (version === operation.current) setNotice(errorText(deadline.aborted && !abort.signal.aborted ? new Error('quote_timeout') : error)) }
+    } catch (error) { if (version === operation.current) { setNotice(''); say(errorText(deadline.aborted && !abort.signal.aborted ? new Error('quote_timeout') : error)) } }
     finally { if (version === operation.current) { setPhase('idle'); busyRef.current = false } }
   }
 
@@ -178,6 +195,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
 
   const confirm = async () => {
     if (!plan || !address || busyRef.current || pending) return
+    if (requiresAuditAcknowledgement(plan.walletSkills) && !auditAcknowledged) return
     busyRef.current = true; setPhase('wallet'); setNotice(t.walletConfirm)
     const version = operation.current
     const owner = address
@@ -201,7 +219,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
         signedAttempt.current = { plan: reviewed, signature }
         try { storeSignedTrade(localStorage, owner, signedAttempt.current) } catch { /* Retain the exact submission in memory. */ }
         setPhase('submitted'); setNotice(t.submitted)
-        const submitted = await session(value => { assertWallet(owner); return submitTrade(reviewed, signature, value) })
+        const submitted = await session(value => { assertWallet(owner); return submitTrade(reviewed, signature, value, { auditAcknowledged }) })
         persist(submitted, owner)
         try { clearSignedTrade(localStorage, owner, { plan: reviewed, signature }) } catch { /* Receipt deduplicates the saved attempt. */ }
         if (version !== operation.current) return
@@ -245,7 +263,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
 
   const answer = async (prompt: string) => {
     if (busyRef.current) return
-    setMessages(list => [...list, { id: list.length + 1, role: 'user', text: prompt }])
+    chat.append({ role: 'user', text: prompt })
     const parsed = parseAgentIntent(prompt, language)
     if (parsed.kind === 'status') { if (order) await checkOrder(); else say(t.noOrder); return }
     if (parsed.kind === 'cancel') { if (pending) say(t.pending); else { setPlan(null); setIntent(null); setNotice(''); say(t.cancel) }; return }
@@ -256,7 +274,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
       controller.current?.abort(); const abort = new AbortController(); controller.current = abort
       try {
         const report = await researchStockWithSkills(parsed.symbol, abort.signal)
-        if (version === operation.current) setMessages(list => [...list, { id: list.length + 1, role: 'guide', text: `${skillsText[parsed.field]} · ${skillsText.noTrade}`, source: false, attachment: <WalletSkillReport report={report} language={language} /> }])
+        if (version === operation.current) chat.append({ role: 'guide', text: `${skillsText[parsed.field]} · ${skillsText.noTrade}`, source: false, report })
       } catch (error) { if (version === operation.current && !abort.signal.aborted) say(errorText(error)) }
       finally { if (version === operation.current) { busyRef.current = false; setPhase('idle') } }
       return
@@ -277,24 +295,33 @@ export function AgentWorkspace({ language }: { language: Language }) {
     finally { if (version === operation.current) { setPhase('idle'); busyRef.current = false } }
   }
   const selected = plan ? assetCatalog.find(item => item.symbol === plan.route.symbol) : null
-  const clearReview = () => { setPlan(null); setIntent(null); setNotice(''); say(t.cancel) }
+  const messages: AIChatMessage[] = chat.messages.map(message => ({ ...message, attachment: message.report ? <WalletSkillReport report={message.report} language={language} historical={message.restored}
+    onRefresh={() => void answer(`${skillsText.refreshCommand} ${message.report!.stock.symbol}`)} busy={busy} /> : undefined }))
+  const clearConversationState = () => { operation.current += 1; controller.current?.abort(); setPlan(null); setIntent(null); setNotice('') }
+  const focusComposer = () => requestAnimationFrame(() => document.querySelector<HTMLElement>('.ai-chat-composer textarea,.ai-chat-typewriter')?.focus())
+  const clearReview = () => { if (busyRef.current || pending) return; setPlan(null); setIntent(null); setNotice(''); setAuditAcknowledged(false); say(t.cancel) }
   const tradeCard = <>
     {plan && selected && <section className="agent-trade-review" aria-label={t.review}>
       <div className="agent-review-heading"><img src={assetLogo(selected)} alt="" onError={tokenLogoError} /><div><span>{t.review}</span><strong>{plan.route.side === 'buy' ? (text(language, 'Buy', '买入')) : (text(language, 'Sell', '卖出'))} {selected.company}</strong><small>{selected.symbol} · Ondo</small></div></div>
       <dl><div><dt>{t.spend}</dt><dd>{amountForInput(plan.route.inputAmount, language)} {plan.route.inputSymbol}</dd></div><div><dt>{t.receive}</dt><dd>{displayQuantity(plan.route.outputAmount, 6, localeFor(language))} {plan.route.outputSymbol}</dd></div><div><dt>{t.minimum}</dt><dd>{displayQuantity(formatUnits(BigInt(plan.minimumReceive), plan.outputDecimals), 6, localeFor(language))} {plan.route.outputSymbol}</dd></div><div><dt>{plan.estimatedFeeAmount === undefined ? t.fee : t.feeEstimate}</dt><dd>{displayQuantity(formatUnits(BigInt(plan.estimatedFeeAmount ?? plan.feeAmount), plan.inputDecimals), 6, localeFor(language))} {plan.route.inputSymbol}</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain · 56</dd></div><div><dt>{t.vendor}</dt><dd>Binance Web3 / CowSwap</dd></div><div><dt>{t.destination}</dt><dd title={plan.route.walletAddress}>{plan.route.walletAddress.slice(0, 7)}…{plan.route.walletAddress.slice(-5)}</dd></div><div><dt>{t.expires}</dt><dd>{new Date(plan.expiresAt).toLocaleTimeString(localeFor(language))}</dd></div>{plan.approval && <div><dt>{t.gas}</dt><dd>≈ {plan.approval.gasFeeBnb} BNB</dd></div>}</dl>
       {plan.approval && <p>{t.approvalNote}</p>}{expired && <p role="status">{t.expired}</p>}
       {plan.walletSkills && <WalletSkillReport report={plan.walletSkills} language={language} compact />}
-      <div className="agent-review-actions"><button type="button" disabled={busy || pending} onClick={clearReview}>{t.cancelAction}</button><button type="button" disabled={busy || pending} className="agent-primary" onClick={() => expired && intent ? void prepare(intent) : void confirm()}>{busy ? <LoaderCircle size={16} className="agent-spinner" /> : null}{expired ? t.refresh : plan.approval ? (plan.approval.reset ? t.resetAllowance : t.approve) : t.confirm}</button></div>
+      {requiresAuditAcknowledgement(plan.walletSkills) && <label className="agent-audit-consent"><input type="checkbox" checked={auditAcknowledged} disabled={busy} onChange={event => setAuditAcknowledged(event.target.checked)} /><span>{historyText.auditConsent}</span></label>}
+      <div className="agent-review-actions"><button type="button" disabled={busy || pending} onClick={clearReview}>{t.cancelAction}</button><button type="button" disabled={busy || pending || !expired && requiresAuditAcknowledgement(plan.walletSkills) && !auditAcknowledged} className="agent-primary" onClick={() => expired && intent ? void prepare(intent) : void confirm()}>{busy ? <LoaderCircle size={16} className="agent-spinner" /> : null}{expired ? t.refresh : plan.approval ? (plan.approval.reset ? t.resetAllowance : t.approve) : t.confirm}</button></div>
     </section>}
     {notice && <p className="agent-notice" role="status">{busy ? <LoaderCircle size={16} className="agent-spinner" /> : order?.status === 'FILLED' ? <Check size={16} /> : null}{notice}</p>}
     {!plan && intent && !pending && <button type="button" className="agent-inline-action" disabled={busy} onClick={() => void prepare(intent)}>{t.refresh}</button>}
     {phase === 'uncertain' && <button type="button" className="agent-inline-action" disabled={busyRef.current} onClick={() => void recover()}>{t.recovery}</button>}
     {order && <div className="agent-order-status"><span>{order.orderId}</span><button type="button" disabled={busy} onClick={() => void checkOrder()}>{t.check}</button>{order.txHash && <a href={`https://bscscan.com/tx/${order.txHash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a>}</div>}
   </>
-  return <section className="agent-workspace" aria-label={t.title}><AIChatCard title={t.title} subtitle={t.subtitle} greeting={t.greeting}
+  return <section className="agent-workspace" aria-label={t.title}><AIChatCard key={`${owner}:${chat.history.activeId}`} title={t.title} subtitle={t.subtitle} greeting={t.greeting}
     prompt={skillsText.help} prompts={skillsText.examples} placeholder={t.prompt} sendLabel={t.send} resetLabel={t.reset} messages={messages}
     note={skillsText.note} sourceHref={manifest.sourceTokenList} sourceLabel={t.records} agentLabel="FIRSTBELL" headingLabel={'FIRSTBELL / ' + text(language, 'Agent', '助手').toUpperCase()} composerCaption={`BNB SMART CHAIN / ${assetCatalog.length} TOKENS`}
     icon={<img src="/assets/firstbell-mark.svg" alt="" />} busy={busy} resetDisabled={pending} afterMessages={messages.length || order || notice || plan ? tradeCard : undefined}
+    headerActions={<button type="button" className="agent-history-toggle" aria-label={historyText.history} title={historyText.history} aria-expanded={historyOpen} aria-controls="agent-history-panel" disabled={!owner} onClick={() => setHistoryOpen(value => !value)}><History size={18} /><span>{historyText.history}</span></button>}
+    beforeMessages={historyOpen ? <AgentHistoryPanel history={chat.history} orders={address ? walletOrders : []} language={language} locked={busy || pending || Boolean(plan)} failed={chat.failed}
+      onSelect={id => { if (busyRef.current || pending || plan) return; clearConversationState(); chat.select(id); setHistoryOpen(false); focusComposer() }}
+      onDelete={id => { if (busyRef.current || pending || plan) return; if (id === chat.history.activeId) clearConversationState(); chat.remove(id); requestAnimationFrame(() => document.querySelector<HTMLElement>('.agent-history-toggle')?.focus()) }} /> : chat.failed ? <p className="agent-history-note" role="status">{historyText.unsaved}</p> : undefined}
     status={<div className="agent-wallet-status"><Wallet size={14} />{address ? <span title={address}>{t.connected} · {address.slice(0, 6)}…{address.slice(-4)}</span> : authenticated ? <span>{t.walletLoading}</span> : <button type="button" onClick={login}>{t.login}</button>}</div>}
-    onSend={prompt => void answer(prompt)} onReset={() => { if (busy || pending) return; operation.current += 1; controller.current?.abort(); setMessages([]); setPlan(null); setIntent(null); setNotice('') }} /></section>
+    onSend={prompt => void answer(prompt)} onReset={() => { if (busyRef.current || pending) return; clearConversationState(); chat.start(); setHistoryOpen(false); focusComposer() }} /></section>
 }

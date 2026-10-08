@@ -88,7 +88,7 @@ export function validateAgentTradePlan(value: unknown, request: { symbol: string
   if (plan.walletSkills) {
     try {
       validateSkillReport(plan.walletSkills, request.symbol, tokenAddresses[request.symbol])
-      if (skillTradeBlock(plan.walletSkills)) throw new Error('invalid_order_payload')
+      if (skillTradeBlock(plan.walletSkills, { allowUnsupportedAudit: true })) throw new Error('invalid_order_payload')
     } catch { throw new Error('invalid_order_payload') }
   }
   if (hashTypedData(typedData) !== plan.typedDataHash || Date.parse(plan.expiresAt) !== Number(typedData.message.validTo) * 1000

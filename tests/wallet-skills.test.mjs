@@ -62,7 +62,7 @@ test('missing underlying reference is unavailable, not zero or an invented premi
 test('unsupported, missing or request-mismatched audits hide all unreliable risk/tax fields and block execution', async () => {
   for (const options of [{ auditAvailable: false }, { auditSupported: false }, { badRequestId: true }]) {
     fixture(options); const report = await researchStock('AAPLon')
-    assert.deepEqual(report.audit, { available: false, level: null, label: null, buyTax: null, sellTax: null, verified: null, risks: [] })
+    assert.deepEqual(report.audit, { available: false, reason: options.auditSupported === false ? 'unsupported' : options.badRequestId ? 'invalid_response' : 'no_result', level: null, label: null, buyTax: null, sellTax: null, verified: null, risks: [] })
     assert.equal(skillTradeBlock(report), 'skill_checks_unavailable')
   }
   assert.equal(parseSkillAudit({ hasResult: true, isSupported: true, requestId: 'a', riskLevel: NaN }, 'a').available, false)
@@ -79,6 +79,17 @@ test('level 5 risks, corporate-action pauses and closed token markets prevent a 
   fixture({ open: false, reason: 'ASSET_PAUSED' }); const report = await researchStock('AAPLon')
   assert.equal(report.stock.market.detail, 'stock_split'); assert.equal(skillTradeBlock(report), 'skill_asset_unavailable')
   fixture({ open: false, reason: 'MARKET_CLOSED' }); await assert.rejects(checkSkillTrade('AAPLon'), /skill_asset_unavailable/)
+})
+test('explicit unsupported audit keeps valid Apple research and can reach a separately acknowledged review; missing and mismatched results remain blocked', async () => {
+  fixture({ auditSupported: false }); const report = await researchStock('AAPLon')
+  assert.equal(report.stock.tokenPrice, 400); assert.equal(report.audit.reason, 'unsupported')
+  assert.equal(report.trace.find(t => t.operation === 'audit').status, 'unsupported')
+  assert.equal(skillTradeBlock(report), 'skill_checks_unavailable')
+  assert.equal(skillTradeBlock(report, { allowUnsupportedAudit: true }), null)
+  for (const options of [{ auditAvailable: false }, { badRequestId: true }]) {
+    fixture(options); assert.equal(skillTradeBlock(await researchStock('AAPLon'), { allowUnsupportedAudit: true }), 'skill_checks_unavailable')
+  }
+  fixture({ auditSupported: false, open: false }); assert.equal(skillTradeBlock(await researchStock('AAPLon'), { allowUnsupportedAudit: true }), 'skill_asset_unavailable')
 })
 test('wrong dynamic identity, HTML/rate failures, oversized bodies and redirects never create usable data', async () => {
   fixture({ symbol: 'TSLAon' }); await assert.rejects(researchStock('AAPLon'), /skill_asset_not_verified/)
