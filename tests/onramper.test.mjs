@@ -134,6 +134,44 @@ test('setup names every invalid setting without revealing its value or parser er
   assert.deepEqual(unknownMode.cardFunding.invalid, ['ONRAMPER_ENVIRONMENT'])
 })
 
+test('copied PEM quotes and line endings preserve the exact Ed25519 signing identity', async () => {
+  const forms = [privatePem, privatePem.replace(/\n/g, '\\n'), privatePem.replace(/\n/g, '\\r\\n'),
+    privatePem.replace(/\n/g, '\r\n'), JSON.stringify(privatePem), '"' + privatePem + '"',
+    "'" + privatePem.replace(/\n/g, '\\n') + "'"]
+  const payload = Buffer.from('FirstBell signing-key formatting regression')
+  for (const value of forms) {
+    const credentials = await getOnramperCredentials({ ...env, ONRAMPER_SIGNING_PRIVATE_KEY: value })
+    const signature = await crypto.subtle.sign('Ed25519', credentials.privateKey, payload)
+    assert.equal(verify(null, payload, pair.publicKey, Buffer.from(signature)), true)
+    const health = await (await handleApiRequest(new Request('https://firstbell.example/api/health'),
+      { ...env, ONRAMPER_SIGNING_PRIVATE_KEY: value })).json()
+    assert.equal(health.cardFunding.configured, true)
+    assert.equal(health.cardFunding.signingKeyIssue, undefined)
+  }
+})
+
+test('key-format diagnostics stay fixed codes and never reveal the rejected key', async () => {
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' })
+  const cases = [
+    [pair.publicKey.export({ type: 'spki', format: 'pem' }), 'public_key'],
+    ['-----BEGIN ENCRYPTED PRIVATE KEY-----\nfixture\n-----END ENCRYPTED PRIVATE KEY-----', 'encrypted_private_key'],
+    ['-----BEGIN RSA PRIVATE KEY-----\nfixture\n-----END RSA PRIVATE KEY-----', 'non_pkcs8_private_key'],
+    ['pk_test_fixture', 'not_pem'], ['/path/to/private.pem', 'not_pem'],
+    ['-----BEGIN PRIVATE KEY-----\nnot-base64\n-----END PRIVATE KEY-----', 'invalid_ed25519_pkcs8'],
+    [rsa, 'invalid_ed25519_pkcs8'],
+  ]
+  for (const [value, expected] of cases) {
+    const fields = { ...env, ONRAMPER_SIGNING_PRIVATE_KEY: value }
+    const response = await handleApiRequest(new Request('https://firstbell.example/api/health'), fields)
+    const body = await response.text(), health = JSON.parse(body)
+    assert.equal(health.cardFunding.configured, false)
+    assert.deepEqual(health.cardFunding.invalid, ['ONRAMPER_SIGNING_PRIVATE_KEY'])
+    assert.equal(health.cardFunding.signingKeyIssue, expected)
+    for (const secret of [value, env.ONRAMPER_API_KEY, env.ONRAMPER_WEBHOOK_SECRET]) assert.equal(body.includes(secret), false)
+    await assert.rejects(getOnramperCredentials(fields), { reason: 'invalid_configuration', status: 503 })
+  }
+})
+
 test('verified provider updates pin order and fiat while rejecting wrong assets, recipients and contexts', () => {
   const first = applyOnramperEvent(session, event(), env.ONRAMPER_API_KEY)
   assert.equal(first.status, 'processing'); assert.equal(first.amount, '50'); assert.equal(first.fiatCurrency, 'usd')
