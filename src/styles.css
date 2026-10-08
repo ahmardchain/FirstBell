@@ -43,6 +43,18 @@
 .hero-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; }
 .hero-cta-secondary { background:transparent; border-color:var(--line); color:var(--foreground)!important; font-weight:500; }
 
+/* Plain editorial rows explain funding, gas and withdrawals before the asset preview. */
+.landing-benefits { border-top:1px solid var(--line); }
+.landing-benefits-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:clamp(24px,4vw,64px); padding-block:40px; }
+.landing-benefit h2 { margin:0 0 12px; font-size:clamp(22px,2vw,28px); font-weight:600; letter-spacing:-.04em; line-height:1.2; }
+.landing-benefit p { margin:0; max-width:380px; color:var(--muted); font-size:14px; line-height:1.65; text-wrap:pretty; }
+@media(max-width:800px) {
+  .landing-benefits-grid { grid-template-columns:1fr; gap:0; padding-block:8px; }
+  .landing-benefit { padding-block:24px; }
+  .landing-benefit + .landing-benefit { border-top:1px solid var(--line); }
+  .landing-benefit p { max-width:560px; }
+}
+
 /* Softer landing corners follow the app's panels and pill actions. */
 .site-nav, #top, .site-footer { --landing-panel-radius:24px; --landing-control-radius:16px; --landing-action-radius:999px; }
 .hero-cta, .nav-app, .profile-links a { border-radius:var(--landing-action-radius); }

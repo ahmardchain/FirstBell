@@ -50,8 +50,14 @@ const content = {
     navigation: ['Overview', 'App', 'How it works'], language: 'Language', theme: 'Toggle color theme', menu: 'Toggle navigation',
     eyebrow: 'FirstBell — tokenized stocks on BNB Smart Chain',
     hero: 'Buy your first stock on-chain.',
-    heroSub: 'Sign up with Google or email, pay with your card, and own a piece of the stock in under a minute. No seed phrase. No brokerage account.',
+    heroSub: 'Start with Google or email. Fund in your local currency by card or bank transfer, then buy tokenized stocks with USDT. No seed phrase to manage.',
     heroCta: 'Buy your first stock', heroSecondaryCta: 'See how it works',
+    benefitsLabel: 'An easier way on-chain',
+    benefits: [
+      ['Local currency in.', 'Fund through Onramper by card or bank transfer. Available currencies and payment methods depend on your country.'],
+      ['Gas covered.', 'FirstBell sponsors gas through MegaFuel on supported transactions, so you do not need extra BNB for those fees.'],
+      ['USDT out.', 'Sell to USDT and withdraw to a wallet. Follow your position value and gains or losses in your portfolio.'],
+    ],
     loop: 'Trading on FirstBell',
     overviewKicker: '01 / THE DISTINCTION', overviewTitle: 'The ticker is familiar. The product is different.',
     overviewText: 'You own a token issued by Ondo Global Markets on BNB Smart Chain. Its issuer terms define the rights it carries. Check the issuer and contract before you buy.',
@@ -60,28 +66,34 @@ const content = {
       ['02', 'See the issuer', 'Understand who issues the token and which network it lives on.'],
       ['03', 'Verify the contract', 'Open the contract record yourself on BscScan.'],
     ],
-    appKicker: '02 / THE APP', appTitle: 'Start with the stock you know.', appText: 'Five tokenized equities with real issuers and verified contracts on BNB Smart Chain.',
+    appKicker: '02 / THE APP', appTitle: 'Start with the stock you know.', appText: 'Explore familiar companies as tokenized equities. See the issuer, network and contract before you buy.',
     search: 'Search company or symbol', listLabel: 'Tokenized equity assets', noResults: 'No assets match your search.', clear: 'Clear search',
     assetProfile: 'ASSET FILE', issuer: 'Issuer', chain: 'Network', symbol: 'Token symbol', address: 'Contract address',
     explorer: 'Open on BscScan', source: 'View source token list', aboutToken: 'Issuer terms and location rules determine whether a token is available to you and what rights it carries.',
     howKicker: '03 / HOW IT WORKS', howTitle: 'How it works.',
-    howText: 'From your account to your first tokenized stock.',
+    howText: 'Familiar login. Local-currency funding. Your first tokenized stock on BNB Smart Chain.',
     howSteps: [
       { title: 'Create account', description: 'Create your account with Google or email. Simple — your wallet is made for you, no seed phrase to write down.', colorTheme: 'orange' },
-      { title: 'Deposit from your card', description: 'Pay with your card. Your funds land on BNB Smart Chain, ready to trade.', colorTheme: 'blue' },
-      { title: 'Choose a stock', description: 'Explore the stocks and check the token, issuer, and contract.', colorTheme: 'purple' },
-      { title: 'Trade your tokenized equity', description: 'Buy and sell. Own your first tokenized stock in under a minute.', colorTheme: 'orange' },
+      { title: 'Fund your way', description: 'Choose a supported local currency and pay by card or bank transfer. Receive USDT on BNB Smart Chain.', colorTheme: 'blue' },
+      { title: 'Buy your first stock', description: 'Choose a tokenized stock, check its issuer and review your trade before confirming with USDT.', colorTheme: 'purple' },
+      { title: 'Track and withdraw', description: 'See your position value, gains or losses, and activity. Sell to USDT and withdraw to your chosen wallet.', colorTheme: 'orange' },
     ],
-    endKicker: 'FIRSTBELL', endTitle: 'Your first stock is a minute away.', endCta: 'Buy your first stock',
-    footerText: 'Your first stock, on-chain.', footerNote: 'Independent interface concept. Asset availability and terms vary by location.',
+    endKicker: 'FIRSTBELL', endTitle: 'Your first stock starts here.', endCta: 'Buy your first stock',
+    footerText: 'Your first stock, on-chain.', footerNote: 'Independent interface. Asset and payment availability and terms vary by location.',
     product: 'Product', resources: 'Resources', community: 'Community', docs: 'Documentation', github: 'GitHub source', bnbDocs: 'BNB Chain docs', x: 'BNB Chain on X', tokenList: 'Token source', top: 'Back to top',
   },
   zh: {
     navigation: ['概览', '应用', '使用流程'], language: '语言', theme: '切换明暗主题', menu: '切换导航',
     eyebrow: 'FirstBell — BNB 智能链上的代币化股票',
     hero: '在链上买入你的第一只股票。',
-    heroSub: '使用 Google 或邮箱注册，使用银行卡付款，不到一分钟即可拥有一份股票。无需助记词，无需证券账户。',
+    heroSub: '使用 Google 或邮箱登录。通过银行卡或银行转账以本地货币充值，再用 USDT 买入代币化股票。无需管理助记词。',
     heroCta: '买入你的第一只股票', heroSecondaryCta: '了解使用流程',
+    benefitsLabel: '更轻松地进入链上世界',
+    benefits: [
+      ['本地货币充值。', '通过 Onramper 使用银行卡或银行转账充值。可用货币与支付方式取决于你所在的国家。'],
+      ['Gas 费用由我们承担。', 'FirstBell 通过 MegaFuel 赞助受支持交易的 Gas 费用，你无需额外准备 BNB 来支付这些费用。'],
+      ['以 USDT 提现。', '卖出换成 USDT 并提现到钱包。在投资组合中查看持仓价值以及盈亏。'],
+    ],
     loop: '在 FirstBell 交易',
     overviewKicker: '01 / 产品区别', overviewTitle: '熟悉的股票代码，不同的产品。',
     overviewText: '你拥有的是 Ondo Global Markets 在 BNB 智能链上发行的代币。发行方条款决定其代表的权益。买入前，请查看发行方与合约。',
@@ -90,20 +102,20 @@ const content = {
       ['02', '查看发行方', '了解代币由谁发行、运行在哪条链上。'],
       ['03', '验证合约', '在 BscScan 上自行查看合约记录。'],
     ],
-    appKicker: '02 / 应用', appTitle: '从你熟悉的股票开始。', appText: '五种代币化股票，拥有真实发行方和 BNB 智能链上经过验证的合约。',
+    appKicker: '02 / 应用', appTitle: '从你熟悉的股票开始。', appText: '探索熟悉公司的代币化股票。买入前查看发行方、网络和合约。',
     search: '搜索公司或代币符号', listLabel: '代币化股票资产', noResults: '未找到匹配的资产。', clear: '清除搜索',
     assetProfile: '资产资料', issuer: '发行方', chain: '网络', symbol: '代币符号', address: '合约地址',
     explorer: '在 BscScan 查看', source: '查看代币来源', aboutToken: '代币是否对你开放以及它所代表的权益，取决于发行方条款和你所在的地区。',
     howKicker: '03 / 使用流程', howTitle: '使用流程。',
-    howText: '从创建账户，到拥有你的第一只代币化股票。',
+    howText: '熟悉的登录方式，本地货币充值，在 BNB 智能链上买入你的第一只代币化股票。',
     howSteps: [
       { title: '创建账户', description: '使用 Google 或邮箱创建账户。很简单——系统会为你创建钱包，无需记录助记词。', colorTheme: 'orange' },
-      { title: '使用银行卡充值', description: '使用银行卡付款。资金将到账 BNB 智能链，随时准备交易。', colorTheme: 'blue' },
-      { title: '选择股票', description: '浏览股票，并查看代币、发行方和合约。', colorTheme: 'purple' },
-      { title: '交易代币化股票', description: '买入和卖出。不到一分钟，拥有你的第一只代币化股票。', colorTheme: 'orange' },
+      { title: '按你的方式充值', description: '选择受支持的本地货币，通过银行卡或银行转账付款。在 BNB 智能链上收到 USDT。', colorTheme: 'blue' },
+      { title: '买入第一只股票', description: '选择代币化股票，查看发行方，并在确认使用 USDT 交易前检查交易详情。', colorTheme: 'purple' },
+      { title: '追踪与提现', description: '查看持仓价值、盈亏和账户活动。卖出换成 USDT，并提现到你选择的钱包。', colorTheme: 'orange' },
     ],
-    endKicker: 'FIRSTBELL', endTitle: '一分钟，拥有你的第一只股票。', endCta: '买入你的第一只股票',
-    footerText: '你的第一只股票，在链上。', footerNote: '独立界面概念。资产可用性和条款因地区而异。',
+    endKicker: 'FIRSTBELL', endTitle: '你的第一只股票，从这里开始。', endCta: '买入你的第一只股票',
+    footerText: '你的第一只股票，在链上。', footerNote: '独立界面。资产与支付方式的可用性及条款因地区而异。',
     product: '产品', resources: '资源', community: '社区', docs: '项目文档', github: 'GitHub 源码', bnbDocs: 'BNB Chain 文档', x: 'BNB Chain 的 X', tokenList: '代币来源', top: '返回顶部',
   },
 } as const
@@ -159,6 +171,9 @@ export default function FirstBellLanding() {
         <span className="hero-eyebrow">{t.eyebrow}</span>
         <span className="hero-index" aria-hidden="true">FB / 001</span>
       </div>
+      <section className="landing-benefits" aria-label={t.benefitsLabel}>
+        <div className="content-width landing-benefits-grid">{t.benefits.map(([title, description]) => <div className="landing-benefit" key={title}><h2>{title}</h2><p>{description}</p></div>)}</div>
+      </section>
       <section className="logo-ribbon" aria-label={t.loop}><span>{t.loop}</span><LogoLoop logos={tokenLogos} speed={38} gap={72} logoHeight={40} pauseOnHover ariaLabel={t.loop} /></section>
       <section id="overview" className="editorial-section overview-section" aria-labelledby="overview-title">
         <div className="content-width overview-grid">

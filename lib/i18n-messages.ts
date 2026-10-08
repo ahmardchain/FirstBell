@@ -1,5 +1,62 @@
 // Authored UI messages: Spanish, French, Brazilian Portuguese.
 export const translations: Record<string, readonly [string, string, string]> = {
+  "Start with Google or email. Fund in your local currency by card or bank transfer, then buy tokenized stocks with USDT. No seed phrase to manage.": [
+    "Empieza con Google o tu correo. Añade fondos en tu moneda local con tarjeta o transferencia bancaria y compra acciones tokenizadas con USDT. Sin frase semilla que gestionar.",
+    "Commencez avec Google ou votre e-mail. Alimentez votre compte dans votre monnaie locale par carte ou virement, puis achetez des actions tokenisées avec des USDT. Aucune phrase de récupération à gérer.",
+    "Comece com Google ou e-mail. Adicione fundos na sua moeda local por cartão ou transferência bancária e compre ações tokenizadas com USDT. Sem frase de recuperação para gerenciar."
+  ],
+  "An easier way on-chain": ["Una forma más fácil de acceder a la cadena", "Un accès plus simple à la blockchain", "Uma forma mais fácil de acessar a blockchain"],
+  "Local currency in.": ["Deposita en tu moneda local.", "Déposez en monnaie locale.", "Deposite na sua moeda local."],
+  "Fund through Onramper by card or bank transfer. Available currencies and payment methods depend on your country.": [
+    "Añade fondos mediante Onramper con tarjeta o transferencia bancaria. Las monedas y los métodos de pago disponibles dependen de tu país.",
+    "Alimentez votre compte via Onramper par carte ou virement bancaire. Les monnaies et moyens de paiement disponibles dépendent de votre pays.",
+    "Adicione fundos pelo Onramper por cartão ou transferência bancária. As moedas e formas de pagamento disponíveis dependem do seu país."
+  ],
+  "Gas covered.": ["Gas cubierto.", "Frais de gas pris en charge.", "Gas por nossa conta."],
+  "FirstBell sponsors gas through MegaFuel on supported transactions, so you do not need extra BNB for those fees.": [
+    "FirstBell cubre el gas mediante MegaFuel en las transacciones compatibles, por lo que no necesitas BNB adicional para esas comisiones.",
+    "FirstBell prend en charge le gas via MegaFuel pour les transactions compatibles : aucun BNB supplémentaire n’est nécessaire pour ces frais.",
+    "A FirstBell patrocina o gas pelo MegaFuel nas transações compatíveis, então você não precisa de BNB adicional para essas taxas."
+  ],
+  "USDT out.": ["Retira en USDT.", "Retirez en USDT.", "Saque em USDT."],
+  "Sell to USDT and withdraw to a wallet. Follow your position value and gains or losses in your portfolio.": [
+    "Vende por USDT y retira a una cartera. Sigue el valor de tus posiciones y las ganancias o pérdidas en tu cartera de inversión.",
+    "Vendez contre des USDT et retirez-les vers un portefeuille. Suivez la valeur de vos positions et vos gains ou pertes dans votre portefeuille d’investissement.",
+    "Venda por USDT e saque para uma carteira. Acompanhe o valor das suas posições e os ganhos ou perdas no seu portfólio."
+  ],
+  "Explore familiar companies as tokenized equities. See the issuer, network and contract before you buy.": [
+    "Explora empresas conocidas como acciones tokenizadas. Consulta el emisor, la red y el contrato antes de comprar.",
+    "Découvrez des entreprises familières sous forme d’actions tokenisées. Consultez l’émetteur, le réseau et le contrat avant d’acheter.",
+    "Explore empresas conhecidas como ações tokenizadas. Confira o emissor, a rede e o contrato antes de comprar."
+  ],
+  "Familiar login. Local-currency funding. Your first tokenized stock on BNB Smart Chain.": [
+    "Un inicio de sesión familiar. Fondos en tu moneda local. Tu primera acción tokenizada en BNB Smart Chain.",
+    "Une connexion familière. Des dépôts en monnaie locale. Votre première action tokenisée sur BNB Smart Chain.",
+    "Um login familiar. Depósitos na sua moeda local. Sua primeira ação tokenizada na BNB Smart Chain."
+  ],
+  "Fund your way": ["Añade fondos a tu manera", "Alimentez votre compte à votre façon", "Adicione fundos do seu jeito"],
+  "Choose a supported local currency and pay by card or bank transfer. Receive USDT on BNB Smart Chain.": [
+    "Elige una moneda local compatible y paga con tarjeta o transferencia bancaria. Recibe USDT en BNB Smart Chain.",
+    "Choisissez une monnaie locale prise en charge et payez par carte ou virement bancaire. Recevez des USDT sur BNB Smart Chain.",
+    "Escolha uma moeda local compatível e pague por cartão ou transferência bancária. Receba USDT na BNB Smart Chain."
+  ],
+  "Choose a tokenized stock, check its issuer and review your trade before confirming with USDT.": [
+    "Elige una acción tokenizada, consulta su emisor y revisa tu operación antes de confirmarla con USDT.",
+    "Choisissez une action tokenisée, vérifiez son émetteur et examinez votre opération avant de la confirmer avec des USDT.",
+    "Escolha uma ação tokenizada, confira o emissor e revise a negociação antes de confirmar com USDT."
+  ],
+  "Track and withdraw": ["Sigue y retira", "Suivez et retirez", "Acompanhe e saque"],
+  "See your position value, gains or losses, and activity. Sell to USDT and withdraw to your chosen wallet.": [
+    "Consulta el valor de tus posiciones, las ganancias o pérdidas y tu actividad. Vende por USDT y retira a la cartera que elijas.",
+    "Consultez la valeur de vos positions, vos gains ou pertes et votre activité. Vendez contre des USDT et retirez-les vers le portefeuille de votre choix.",
+    "Veja o valor das suas posições, os ganhos ou perdas e sua atividade. Venda por USDT e saque para a carteira que escolher."
+  ],
+  "Your first stock starts here.": ["Tu primera acción empieza aquí.", "Votre première action commence ici.", "Sua primeira ação começa aqui."],
+  "Independent interface. Asset and payment availability and terms vary by location.": [
+    "Interfaz independiente. La disponibilidad de activos y pagos y sus condiciones varían según la ubicación.",
+    "Interface indépendante. La disponibilité des actifs et des paiements ainsi que leurs conditions varient selon votre lieu de résidence.",
+    "Interface independente. A disponibilidade de ativos e pagamentos e suas condições variam conforme a localização."
+  ],
   "No order history yet.": ["Todavía no hay historial de órdenes.", "Aucun historique d’ordres pour le moment.", "Ainda não há histórico de ordens."],
   "Deposits, withdrawals and trades.": ["Depósitos, retiros y operaciones.", "Dépôts, retraits et opérations.", "Depósitos, saques e negociações."],
   "Trade in your own words": [
