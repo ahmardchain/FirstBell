@@ -44,7 +44,9 @@ export function positionPerformance(symbol: string, quantity: string, price: num
 
 export type CashTransfer = { id: string; kind: 'deposit' | 'withdrawal'; amount: string;
   status: 'success' | 'fail' | 'pending'; hash: string; createdAt: string; counterparty: string }
-export type WalletActivityPage = { transfers: CashTransfer[]; cursor: string | null }
+export type WalletTrade = { id: string; orderId: string; symbol: string; side: 'buy' | 'sell'; inputSymbol: string; outputSymbol: string;
+  inputAmount: string; outputAmount: string; hash: string; createdAt: string }
+export type WalletActivityPage = { transfers: CashTransfer[]; cursor: string | null; trades?: WalletTrade[]; partial?: boolean }
 
 export type PurchaseBasis = { symbol: string; quantity: string; cost: number; asOf: string }
 export function performanceFromBasis(basis: PurchaseBasis | undefined, quantity: string, price: number | null) {

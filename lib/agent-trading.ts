@@ -25,7 +25,7 @@ export type AgentTradePlan = {
 export type AgentOrder = { orderId: string; status: 'PENDING_VENDOR' | 'PENDING_ONCHAIN' | 'CONFIRMING' | 'FILLED' | 'FAILED' | 'EXPIRED' | 'CANCELLED'; txHash: Hex | null; inputAmount: string | null; outputAmount: string | null; receiptToken: string;
   trade?: { symbol: string; side: 'buy' | 'sell'; amount: string; inputSymbol: string; outputSymbol: string; expiresAt: string; source: 'binance-web3' | 'cow-protocol'; quotedOutputAmount?: string; requestId?: string };
   createdAt?: string; recordedAt?: string;
-  canCancel?: boolean; cancellationRequested?: boolean }
+  canCancel?: boolean; cancellationRequested?: boolean; failureReason?: string }
 export const terminalOrder = (status: AgentOrder['status']) => ['FILLED', 'FAILED', 'EXPIRED', 'CANCELLED'].includes(status)
 // CONFIRMING means a fill was observed and its settlement is being verified.
 // Keep checking it, but do not present it as an unfilled, cancellable order.

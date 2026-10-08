@@ -275,3 +275,16 @@ test('existing server-test project stages both app pages while retaining the dia
     assert.equal(await readFile(new URL('../server-test/api/index.mjs', import.meta.url), 'utf8'), await readFile(new URL('../api/index.mjs', import.meta.url), 'utf8'))
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
+
+
+test('explicit failures persist for read-only recovery, bind signatures, prevent restart and cannot overwrite acknowledged orders', async () => {
+  const db = redisFixture(), attempt = { requestId: '11111111-1111-1111-1111-111111111111', typedDataHash: '0x' + 'aa'.repeat(32), signatureHash: '0x' + 'bb'.repeat(32) }
+  const call = (action, extra = {}) => stub(namespace(db)).fetch(internal(user, 'POST', { ...attempt, action, ...extra }, '/trade-attempt'))
+  assert.equal((await call('fail', { failureReason: 'submission_unknown' })).status, 400)
+  assert.deepEqual(await (await call('fail', { failureReason: 'stale_quote' })).json(), { started: false, orderId: null, failureReason: 'stale_quote' })
+  assert.deepEqual(await (await call('get')).json(), { started: false, orderId: null, failureReason: 'stale_quote' })
+  assert.equal((await call('start')).status, 409)
+  assert.equal((await call('get', { signatureHash: '0x' + 'cc'.repeat(32) })).status, 409)
+  assert.equal((await call('complete', { orderId: 'acknowledged-order' })).status, 200)
+  assert.equal((await call('fail', { failureReason: 'stale_quote' })).status, 409)
+})

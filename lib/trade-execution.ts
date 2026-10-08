@@ -4,6 +4,13 @@ import type { PaymentToken } from './trade-assets.ts'
 
 export type ReviewedTrade = { symbol: string; side: 'buy' | 'sell'; amount: string; walletAddress: string; paymentToken?: PaymentToken }
 export type SignedTradeAttempt = { plan: AgentTradePlan; signature: string }
+
+// These responses explicitly reject this signed order. Timeouts, server faults,
+// missing acknowledgements and missing status rows never imply failure.
+export const rejectedTradeReason = (reason: unknown): reason is string => typeof reason === 'string' && [
+  'order_fee_changed', 'stale_quote', 'insufficient_balance', 'approval_required', 'invalid_order_signature', 'invalid_order_payload',
+  'minimum_order_not_met', 'liquidity_unavailable', 'token_unavailable',
+].includes(reason)
 type ExecutionPorts = {
   assertWallet: (owner: string) => void
   switchChain: () => Promise<void>

@@ -40,6 +40,7 @@ function mock(side = 'buy') {
   calls = []; allowance = BigInt(amount); balance = BigInt(amount); orderState = 'PENDING_VENDOR'; confirmations = 2; typedOverride = null; simulationState = 'SUCCESS'; receiptMismatch = false
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url)
+    if (parsed.hostname === 'api.cow.fi' && parsed.pathname.includes('/orders/')) return new Response('', { status: 404 })
     if (parsed.hostname === 'bsc-dataseed.bnbchain.org') {
       const input = JSON.parse(options.body)
       const rpc = input => {

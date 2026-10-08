@@ -10,6 +10,7 @@ import { megaFuelConfigured, relaySponsoredApproval, sponsorApproval } from './m
 import { tradeAttempt } from './trade-attempts.ts'
 import { cancelCowOrder, checkCowOrder, cowOrderUid, getCowTrade, submitCowOrder } from './cow-trading.ts'
 import { cowCancellationTypedData } from '../lib/order-cancellation.ts'
+import { rejectedTradeReason } from '../lib/trade-execution.ts'
 
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -182,8 +183,10 @@ export async function submitAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, 
   return { orderId: order.orderId, status: 'PENDING_VENDOR' as const, txHash: null, inputAmount: null, outputAmount: null }
 }
 
-export async function checkAgentOrder(orderId: string, plan: Pick<AgentTradePlan, 'route' | 'rawAmount' | 'minimumReceive' | 'inputDecimals' | 'outputDecimals'>, credentials: Credentials): Promise<Omit<AgentOrder, 'receiptToken'>> {
-  const order = plan.route.source === 'cow-protocol' ? await checkCowOrder(orderId, plan)
+export async function checkAgentOrder(orderId: string, plan: Pick<AgentTradePlan, 'route' | 'typedData' | 'rawAmount' | 'minimumReceive' | 'inputDecimals' | 'outputDecimals'>, credentials: Credentials): Promise<Omit<AgentOrder, 'receiptToken'>> {
+  // Binance RFQ uses the same CoW signed payload. When its acknowledgement was
+  // lost, an exact deterministic CoW UID can still identify the actual order.
+  const order = plan.route.source === 'cow-protocol' || same(orderId, cowOrderUid(plan)) ? await checkCowOrder(orderId, plan)
     : object((await tradingRequest('GET', `/api/v1/dex/aggregator/order/${orderId}`, {}, credentials)).data)
   const statuses = ['PENDING_VENDOR', 'PENDING_ONCHAIN', 'CONFIRMING', 'FILLED', 'FAILED', 'EXPIRED', 'CANCELLED'] as const
   if (!order || order.orderId !== orderId || !statuses.includes(order.status as typeof statuses[number])) throw new RouteError('invalid_provider_response')
@@ -239,16 +242,26 @@ export async function cancelAgentOrder(orderId: string, plan: Omit<AgentTradePla
   catch { throw new RouteError('cancellation_unknown', 503) }
 }
 
-export async function recoverAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, signature: string, credentials: Credentials, previous: { started: boolean; orderId: string | null }): Promise<Omit<AgentOrder, 'receiptToken'> | null> {
+function failedOrder(plan: Omit<AgentTradePlan, 'planToken'>, failureReason: string): Omit<AgentOrder, 'receiptToken'> {
+  return { orderId: plan.route.source === 'cow-protocol' ? cowOrderUid(plan) : `failed-${plan.requestId}`, status: 'FAILED', txHash: null,
+    inputAmount: null, outputAmount: null, failureReason, createdAt: plan.expiresAt }
+}
+
+export async function recoverAgentTrade(plan: Omit<AgentTradePlan, 'planToken'>, signature: string, credentials: Credentials, previous: { started: boolean; orderId: string | null; failureReason?: string }): Promise<Omit<AgentOrder, 'receiptToken'> | null> {
   if (!/^0x[a-fA-F0-9]{130}$/.test(signature)) throw new RouteError('invalid_order_signature', 400)
   const typedData = validateOrderTypedData(plan.typedData, plan, Date.parse(plan.expiresAt) - 10_000)
   if (hashTypedData(typedData) !== plan.typedDataHash || !await verifyTypedData({ ...typedData, address: plan.route.walletAddress as Address, signature: signature as Hex })) throw new RouteError('invalid_order_signature', 403)
-  const orderId = previous.orderId ?? (plan.route.source === 'cow-protocol' ? cowOrderUid(plan) : null)
-  if (!orderId) return null
+  if (!previous.orderId && rejectedTradeReason(previous.failureReason)) return failedOrder(plan, previous.failureReason)
+  const orderId = previous.orderId ?? cowOrderUid(plan)
   try { return await checkAgentOrder(orderId, plan, credentials) }
   catch (error) {
-    // A 404 is an unknown outcome, never evidence of cancellation or a fill.
-    if (error instanceof RouteError && error.reason === 'order_not_found') return null
+    if (error instanceof RouteError && error.reason === 'order_not_found') {
+      // The obsolete nonzero-fee payload was rejected by this route. Check its
+      // exact UID first so an acknowledged historical order always wins.
+      if (!previous.orderId && plan.typedData.message.feeAmount !== '0') return failedOrder(plan, 'order_fee_changed')
+      // A missing otherwise valid submission remains unknown, never retried.
+      return null
+    }
     throw error
   }
 }
@@ -318,9 +331,21 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
     if (path === '/api/trade/submit') {
       if (!plan || typeof body.signature !== 'string') throw new RouteError('invalid_order_signature', 400)
       const previous = await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'get')
-      const submitted = await submitAgentTrade(plan, body.signature, credentials, { ...previous,
-        beforeDispatch: async () => { await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature as string, 'start') },
-      })
+      let submitted: Omit<AgentOrder, 'receiptToken'>
+      if (!previous.orderId && rejectedTradeReason(previous.failureReason)) submitted = failedOrder(plan, previous.failureReason)
+      else try {
+        submitted = await submitAgentTrade(plan, body.signature, credentials, { ...previous,
+          beforeDispatch: async () => { await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature as string, 'start') },
+        })
+      } catch (error) {
+        if (previous.orderId || !(error instanceof RouteError) || !rejectedTradeReason(error.reason)) throw error
+        await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'fail', undefined, error.reason)
+        submitted = { ...failedOrder(plan, error.reason), createdAt: new Date().toISOString() }
+      }
+      if (submitted.status === 'FAILED') {
+        const receiptToken = await sealTradeTicket({ plan, orderId: submitted.orderId, failureReason: submitted.failureReason }, userId, credentials.secretKey, 'receipt')
+        return json({ order: orderReceipt(submitted, plan, receiptToken) })
+      }
       await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'complete', submitted.orderId)
       const receiptToken = await sealTradeTicket({ plan, orderId: submitted.orderId }, userId, credentials.secretKey, 'receipt')
       return json({ order: orderReceipt(submitted, plan, receiptToken) })
@@ -330,11 +355,12 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
       const previous = await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'get')
       const recovered = await recoverAgentTrade(plan, body.signature, credentials, previous)
       if (!recovered) return json({ order: null })
-      const receiptToken = await sealTradeTicket({ plan, orderId: recovered.orderId }, userId, credentials.secretKey, 'receipt')
+      const receiptToken = await sealTradeTicket({ plan, orderId: recovered.orderId, ...(recovered.failureReason ? { failureReason: recovered.failureReason } : {}) }, userId, credentials.secretKey, 'receipt')
       return json({ order: orderReceipt(recovered, plan, receiptToken) })
     }
     if (path === '/api/trade/cancel' && plan && id(ticket?.orderId)) return json({ order: orderReceipt(await cancelAgentOrder(ticket.orderId, plan, body.signature, credentials), plan, body.receiptToken as string) })
-    if (path === '/api/trade/status' && plan && id(ticket?.orderId)) return json({ order: orderReceipt(await checkAgentOrder(ticket.orderId, plan, credentials), plan, body.receiptToken as string) })
+    if (path === '/api/trade/status' && plan && id(ticket?.orderId)) return json({ order: orderReceipt(rejectedTradeReason(ticket.failureReason)
+      ? failedOrder(plan, ticket.failureReason) : await checkAgentOrder(ticket.orderId, plan, credentials), plan, body.receiptToken as string) })
     return json({ error: 'not_found' }, 404)
   } catch (error) {
     if (error instanceof WalletVerificationError) return json({ error: error.message }, error.status)

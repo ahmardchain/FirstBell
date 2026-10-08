@@ -1,5 +1,7 @@
 // Authored UI messages: Spanish, French, Brazilian Portuguese.
 export const translations: Record<string, readonly [string, string, string]> = {
+  "No order history yet.": ["Todavía no hay historial de órdenes.", "Aucun historique d’ordres pour le moment.", "Ainda não há histórico de ordens."],
+  "Deposits, withdrawals and trades.": ["Depósitos, retiros y operaciones.", "Dépôts, retraits et opérations.", "Depósitos, saques e negociações."],
   "Trade in your own words": [
     "Opera con tus propias palabras",
     "Tradez avec vos propres mots",
