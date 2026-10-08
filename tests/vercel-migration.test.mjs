@@ -241,7 +241,7 @@ test('deployed API bundle starts with no source folders or node_modules beside i
     const response = await entry.fetch(new Request('https://firstbell.example/api/index?__fb_path=health'))
     assert.equal(response.status, 200)
     assert.deepEqual(await response.json(), { status: 'ok', agentTrading: { configured: false, chainId: 56, executionVendor: 'CowSwap', quoteSources: ['binance-web3', 'cow-protocol'], confirmationRequired: true }, walletVerification: { serverLookupConfigured: false },
-      cardFunding: { provider: 'onramper', mode: null, configured: false,
+      cardFunding: { provider: 'onramper', mode: null, signatureVersion: 'v2', configured: false,
         missing: ['ONRAMPER_API_KEY', 'ONRAMPER_SIGNING_PRIVATE_KEY', 'ONRAMPER_WEBHOOK_SECRET', 'ONRAMPER_BSC_USDT_ID', 'ONRAMPER_ENVIRONMENT'],
         reason: 'not_configured' } })
   } finally { await rm(directory, { recursive: true, force: true }) }
