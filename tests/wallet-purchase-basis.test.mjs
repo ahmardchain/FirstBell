@@ -7,14 +7,14 @@ import { COW_RELAYER, COW_SETTLEMENT } from '../lib/agent-trading.ts'
 import { tokenAddresses } from '../lib/asset-catalog.ts'
 import { performanceFromBasis } from '../lib/portfolio-performance.ts'
 import { clearTradingMetadataCache, tradingClient } from '../worker/binance-trading.ts'
-import { recoverWalletPurchaseBasis, settlementTradeAbi } from '../worker/wallet-purchase-basis.ts'
+import { recoverWalletPurchaseBasis, recoverWalletTrades, settlementTradeAbi } from '../worker/wallet-purchase-basis.ts'
 import { walletPurchaseBasis, handleWalletActivity } from '../worker/wallet-activity.ts'
 import { handleApiRequest } from '../worker/router.ts'
 
 // All indexer, analytics, receipt and RPC responses are isolated fixtures.
 const owner = '0x' + '11'.repeat(20), other = '0x' + '22'.repeat(20), stock = tokenAddresses.AAPLon
 const originalFetch = globalThis.fetch
-const originals = Object.fromEntries(['readContract', 'getChainId', 'getTransactionReceipt', 'getBlockNumber'].map(method => [method, tradingClient[method]]))
+const originals = Object.fromEntries(['readContract', 'getChainId', 'getTransactionReceipt', 'getBlockNumber', 'getBlock'].map(method => [method, tradingClient[method]]))
 afterEach(() => { globalThis.fetch = originalFetch; Object.assign(tradingClient, originals) })
 beforeEach(() => clearTradingMetadataCache())
 
@@ -39,6 +39,7 @@ function fixture(trades = [fill()]) {
   tradingClient.getChainId = async () => state.chain
   tradingClient.readContract = async args => { assert.equal(args.functionName, 'decimals'); return 18 }
   tradingClient.getBlockNumber = async () => state.tip
+  tradingClient.getBlock = async ({ blockNumber }) => ({ number: blockNumber, timestamp: BigInt(Math.floor(Date.now() / 1000)) - 1000n + blockNumber })
   tradingClient.getTransactionReceipt = async ({ hash }) => { state.reads.push(hash); const result = state.receipts.get(hash); if (!result) throw Error('fixture receipt missing'); return result }
   globalThis.fetch = async (url, init) => {
     const u = new URL(url); state.calls.push({ host: u.hostname, method: init.method, path: u.pathname, offset: u.searchParams.get('offset') })
@@ -157,4 +158,41 @@ test('cost recovery requires authenticated same-origin wallet ownership and rate
   env.ACCOUNTS.get = () => ({ fetch: async () => new Response('{}', { status: 429 }) })
   assert.equal((await handleWalletActivity(request(), env, userId)).status, 429)
   assert.equal(state.calls.length, before)
+})
+
+
+test('wallet activity recovers confirmed buys and sells with exact amounts, actual block time and stable fill IDs without device receipts', async () => {
+  const buy = fill(), sell = fill(2, 'sell', '.6', '.001')
+  const state = fixture([sell, buy, buy])
+  const started = performance.now()
+  const trades = await recoverWalletTrades(owner)
+  assert.equal(trades.length, 2)
+  assert.equal(trades[0].side, 'buy'); assert.equal(trades[0].inputAmount, '1'); assert.equal(trades[0].outputAmount, '0.002948612345')
+  assert.equal(trades[1].side, 'sell'); assert.equal(trades[1].inputAmount, '0.001'); assert.equal(trades[1].outputAmount, '0.6')
+  assert.equal(trades[0].id, buy.txHash + ':5'); assert.equal(trades[0].orderId, buy.orderUid)
+  assert.ok(Date.parse(trades[1].createdAt) > Date.parse(trades[0].createdAt))
+  assert.ok(state.calls.every(call => call.method === 'GET'))
+  console.info('WALLET_ACTIVITY_FIXTURE_TIMING', { durationMs: Math.round(performance.now() - started), trades: trades.length })
+})
+
+test('wallet activity never presents an indexer row as a fill without receipt, owner, settlement, amount and confirmation evidence', async () => {
+  const state = fixture()
+  state.receipts.get(fill().txHash).logs[0].data = encodeAbiParameters([{ type: 'uint256' }], [2n])
+  await assert.rejects(() => recoverWalletTrades(owner), /purchase_history_unverified/)
+  fixture(); tradingClient.getBlock = async () => { throw Error('fixture block unavailable') }
+  await assert.rejects(() => recoverWalletTrades(owner), /purchase_history_unverified/)
+})
+
+test('authenticated activity restores trades without analytics configuration and reports the unavailable cash source honestly', async () => {
+  fixture()
+  const pair = await generateKeyPair('ES256'), user = 'did:privy:fixture-activity-recovery', app = 'fixture-activity-recovery'
+  const identity = await new SignJWT({ linked_accounts: JSON.stringify([{ type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: owner }]) })
+    .setProtectedHeader({ alg: 'ES256' }).setSubject(user).setIssuer('privy.io').setAudience(app).setExpirationTime('1h').sign(pair.privateKey)
+  const env = { PRIVY_APP_ID: app, PRIVY_VERIFICATION_KEY: await exportSPKI(pair.publicKey), ACCOUNTS: { idFromName: id => id, get: () => ({ fetch: async () => new Response('{}') }) } }
+  const response = await handleApiRequest(new Request('https://firstbell.example/api/wallet/activity', { method: 'POST',
+    headers: { Origin: 'https://firstbell.example', 'Content-Type': 'application/json', Authorization: 'Bearer ' + identity, 'privy-id-token': identity }, body: JSON.stringify({ walletAddress: owner }) }), env)
+  assert.equal(response.status, 200); assert.equal(response.headers.get('Cache-Control'), 'no-store')
+  const result = await response.json()
+  assert.equal(result.status, 'ready'); assert.equal(result.trades[0].inputAmount, '1'); assert.equal(result.trades[0].outputAmount, '0.002948612345')
+  assert.deepEqual(result.transfers, []); assert.equal(result.partial, true)
 })

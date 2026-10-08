@@ -31,7 +31,7 @@ const words = {
     approvalNote: 'Confirm permits only this amount and places the reviewed order.', resetNote: 'Confirm resets the existing permission, permits only this amount, and places the reviewed order.',
     note: 'Enter an amount, then choose Buy or Sell.', walletConfirm: 'Processing…', approvalPending: 'Processing…', approvalDone: 'Token permission confirmed. Review a fresh quote.',
     submitting: 'Processing…', checking: 'Checking settlement…', pending: 'Processing — waiting for settlement.', filled: 'Purchased', failed: 'Order did not fill.',
-    uncertain: 'Order outcome is still unconfirmed.', recover: 'Resume previous trade', previous: 'Previous trades', waiting: 'Token permission is still unconfirmed. Checking the same transaction before another trade.', separate: 'An earlier order is still pending. Confirm places a separate trade; it does not replace or cancel that order.', expiredOrder: 'Order expired.', cancelledOrder: 'Order cancelled.', expiredRecovery: 'This order has expired. Its outcome is still unverified; it will not be submitted again.', unavailableOrder: 'This saved order could not be verified. Its outcome is still unknown.', tx: 'View transaction', disconnected: 'Not connected',
+    uncertain: 'Order outcome is still unconfirmed.', previous: 'Previous trades', waiting: 'Token permission is still unconfirmed. Checking the same transaction before another trade.', separate: 'An earlier order is still pending. Confirm places a separate trade; it does not replace or cancel that order.', expiredOrder: 'Order expired.', cancelledOrder: 'Order cancelled.', expiredRecovery: 'This order has expired. Its outcome is still unverified; it will not be submitted again.', unavailableOrder: 'This saved order could not be verified. Its outcome is still unknown.', tx: 'View transaction', disconnected: 'Not connected',
     available: 'Available', balanceLoading: 'Loading balance…', balanceUnavailable: 'Balance unavailable', balanceLogin: 'Log in to see your balance', balanceRefresh: 'Refresh available balance',
     buy: 'Buy', sell: 'Sell', confirmBuy: 'Confirm buy', confirmSell: 'Confirm sell', closeReview: 'Close confirmation', total: 'You spend', tradeComplete: 'Trade complete',
     minimumOrder: 'The provider requires a trade worth at least ${value}. Choose an amount that meets it.', minimumOrderUnknown: 'This amount is below the provider’s minimum trade value. Choose a larger amount.',
@@ -46,7 +46,7 @@ const words = {
     approvalNote: '确认后只授权此金额并提交已审核的订单。', resetNote: '确认后重置现有授权，只授权此金额并提交已审核的订单。',
     note: '输入金额后选择买入或卖出。', walletConfirm: '处理中…', approvalPending: '处理中…', approvalDone: '代币授权已确认，请审核新报价。',
     submitting: '正在提交订单…', checking: '正在检查结算…', pending: '订单已提交，等待结算。', filled: '交易已在 BNB 智能链上确认。', failed: '订单未成交。',
-    uncertain: '订单结果尚未确认。', recover: '恢复上一笔交易', previous: '之前的交易', waiting: '代币授权尚未确认。正在查询同一笔交易，确认后可进行下一笔交易。', separate: '之前的订单仍未完成。确认会下一个独立订单，不会替换或取消之前的订单。', expiredOrder: '订单已过期。', cancelledOrder: '订单已取消。', expiredRecovery: '此订单已过期，结果尚未核实。不会再次提交此订单。', unavailableOrder: '无法核实保存的订单，结果仍未知。', tx: '查看交易', disconnected: '未连接',
+    uncertain: '订单结果尚未确认。', previous: '之前的交易', waiting: '代币授权尚未确认。正在查询同一笔交易，确认后可进行下一笔交易。', separate: '之前的订单仍未完成。确认会下一个独立订单，不会替换或取消之前的订单。', expiredOrder: '订单已过期。', cancelledOrder: '订单已取消。', expiredRecovery: '此订单已过期，结果尚未核实。不会再次提交此订单。', unavailableOrder: '无法核实保存的订单，结果仍未知。', tx: '查看交易', disconnected: '未连接',
     available: '可用余额', balanceLoading: '正在加载余额…', balanceUnavailable: '余额暂不可用', balanceLogin: '登录以查看余额', balanceRefresh: '刷新可用余额',
     buy: '买入', sell: '卖出', confirmBuy: '确认买入', confirmSell: '确认卖出', closeReview: '关闭确认', total: '支付数量', tradeComplete: '交易完成',
     minimumOrder: '服务商要求交易价值至少为 {value} 美元。请选择符合要求的金额。', minimumOrderUnknown: '此金额低于服务商的最低交易价值，请增加金额。',
@@ -384,45 +384,16 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
       if (version !== operation.current) return
       setPlan(null)
       if (result.kind === 'approval') { setNotice(t.approvalDone); setRefresh(value => value + 1) }
-      else { recordOrder(result.order); persist(result.order, owner); if (result.order.status === 'FILLED') available.refresh() }
+      else {
+        recordOrder(result.order); persist(result.order, owner)
+        if (result.order.status === 'FILLED') available.refresh()
+        if (result.order.status === 'FAILED') setNotice(t.failed)
+      }
     } catch (failure) {
       if (version !== operation.current) return
       if (createdAttempt || approvalAttempt.current) { setProgressError(errorText(failure)); setPhase('uncertain') }
       else { setError(errorText(failure)); setPlan(null) }
     } finally { if (version === operation.current) { busy.current = false; setPhase(value => value === 'uncertain' ? value : 'idle') } }
-  }
-  const recover = async (attempt?: SignedTradeAttempt) => {
-    if (!address || inputLocked || progressInFlight.current) return
-    const pendingApproval = attempt ? null : approvalAttempt.current
-    if (!pendingApproval && !attempt) return
-    progressInFlight.current = true; setProgressBusy(true); setProgressError('')
-    const version = progressVersion.current, owner = address
-    try {
-      assertWallet(owner)
-      if (pendingApproval) {
-        if (pendingApproval.raw) await session(value => { assertWallet(owner); return relayApproval(pendingApproval.plan, pendingApproval.raw!, value, true) })
-        const receipt = await client.waitForTransactionReceipt({ hash: pendingApproval.hash, confirmations: 2, timeout: 120_000, pollingInterval: 1000 })
-        assertWallet(owner)
-        saveApproval(null, owner, pendingApproval.hash)
-        if (receipt.status !== 'success') throw new Error('approval_failed')
-        if (version === progressVersion.current) {
-          operation.current++; abort.current?.abort(); quoteScheduler.clear(); busy.current = false
-          setPlan(null); setPhase('idle'); setNotice(t.approvalDone); setRefresh(value => value + 1)
-        }
-      } else if (attempt) {
-        let submitted = await session(value => { assertWallet(owner); return recoverTrade(attempt.plan, attempt.signature, value) })
-        // An explicit resume may dispatch only the same still-valid order.
-        // Expired and unacknowledged orders remain recorded as unknown.
-        if (!submitted) {
-          if (Date.parse(attempt.plan.expiresAt) <= Date.now() + 5_000) throw new Error('expired_recovery')
-          submitted = await session(value => { assertWallet(owner); return submitTrade(attempt.plan, attempt.signature, value) })
-        }
-        persist(submitted, owner); saveSignedOrder(null, owner, attempt)
-        assertWallet(owner)
-        if (version === progressVersion.current) { recordOrder(submitted); setProgressError(''); if (submitted.status === 'FILLED') available.refresh() }
-      }
-    } catch (failure) { if (version === progressVersion.current) setProgressError(failure instanceof Error && failure.message === 'expired_recovery' ? t.expiredRecovery : errorText(failure)) }
-    finally { if (version === progressVersion.current) { progressInFlight.current = false; setProgressBusy(false) } }
   }
   const cancelOrder = async (order: AgentOrder) => {
     if (!address || !wallet || inputLocked || cancelBusy.current || progressInFlight.current || approvalAttempt.current || !order.canCancel) return
@@ -484,7 +455,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
       <div className="trade-confirm-actions"><button type="button" className="trade-cancel" disabled={inputLocked} onClick={cancel}>{t.cancel}</button><button ref={primaryRef} type="submit" className={`trade-submit trade-${side}`} disabled={loading || inputLocked || (authenticated && (!address || !validAmount))}>{loading && <LoaderCircle size={16} className="trade-spinner" />}{actionLabel}</button></div>
     </form>
     {(authenticated || orders.length > 0 || signedAttempts.length > 0) && <TradeOrders orders={orders} attempts={signedAttempts} approvalHash={approvalAttempt.current?.hash} language={language}
-      busy={progressBusy || cancelId !== null} locked={inputLocked} cancelId={cancelId} cancelFailure={cancelFailure} error={progressError} onRecover={attempt => { void recover(attempt) }} onCancel={order => { void cancelOrder(order) }} />}
+      busy={progressBusy || cancelId !== null} locked={inputLocked} cancelId={cancelId} cancelFailure={cancelFailure} error={progressError} onCancel={order => { void cancelOrder(order) }} />}
 
     {typeof document !== 'undefined' && createPortal(<AnimatePresence>{confirmationOpen && plan && <div className="trade-sheet-layer">
       <motion.button type="button" className="trade-sheet-scrim" aria-label={t.closeReview} tabIndex={-1} onClick={closeConfirmation} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />

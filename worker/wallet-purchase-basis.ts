@@ -1,7 +1,7 @@
 import { decodeEventLog, erc20Abi, formatUnits, parseAbi, type Hex, type TransactionReceipt } from 'viem'
 import { COW_SETTLEMENT } from '../lib/agent-trading.ts'
 import { BSC_USDT } from '../lib/funding.ts'
-import type { PurchaseBasis } from '../lib/portfolio-performance.ts'
+import type { PurchaseBasis, WalletTrade } from '../lib/portfolio-performance.ts'
 import { getCowWalletTrades } from './cow-trading.ts'
 import { readTokenDecimals, RouteError, tradingClient } from './binance-trading.ts'
 import { assets, type Symbol } from './market.ts'
@@ -59,7 +59,7 @@ export function verifyPurchaseFill(fill: Fill, receipt: TransactionReceipt, owne
   return ownEvents === 1 && matchingEvent && spent === fill.sellAmount && received === fill.buyAmount
 }
 
-async function recover(owner: string, symbols: Symbol[], signal: AbortSignal): Promise<PurchaseBasis[]> {
+async function recover(owner: string, symbols: Symbol[], signal: AbortSignal, activity = false): Promise<{ costs: PurchaseBasis[]; trades: WalletTrade[] }> {
   const values = await getCowWalletTrades(owner, signal)
   const unique = new Map<string, Fill>()
   for (const value of values) {
@@ -71,7 +71,8 @@ async function recover(owner: string, symbols: Symbol[], signal: AbortSignal): P
   }
   const fills = [...unique.values()].filter(fill => symbols.some(symbol => same(fill.sellToken, assets[symbol]) || same(fill.buyToken, assets[symbol])))
     .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex)
-  if (!fills.length || fills.length > 40) return []
+  if (!fills.length) return { costs: [], trades: [] }
+  if (fills.length > 40) throw new RouteError('purchase_history_unverified')
   const relevant = symbols.filter(symbol => fills.some(fill => same(fill.sellToken, assets[symbol]) || same(fill.buyToken, assets[symbol])))
   const [tip, chain, metadata] = await Promise.all([tradingClient.getBlockNumber({ cacheTime: 0 }), tradingClient.getChainId(),
     Promise.allSettled(relevant.map(async symbol => [symbol, await readTokenDecimals(symbol)] as const))])
@@ -88,7 +89,7 @@ async function recover(owner: string, symbols: Symbol[], signal: AbortSignal): P
       if (result.status === 'fulfilled') receipts.set(hashes[start + index], result.value)
     }
   }
-  const costs: PurchaseBasis[] = [], asOf = new Date().toISOString()
+  const costs: PurchaseBasis[] = [], trades: WalletTrade[] = [], asOf = new Date().toISOString()
   for (const [symbol, tokenDecimals] of metadata.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])) {
     let held = 0n, cost = 0, valid = true
     for (const fill of fills.filter(fill => same(fill.sellToken, assets[symbol]) || same(fill.buyToken, assets[symbol]))) {
@@ -108,13 +109,46 @@ async function recover(owner: string, symbols: Symbol[], signal: AbortSignal): P
     // current wallet balance; missing purchases/transfers cannot imply profit.
     if (valid && held > 0n && cost > 0 && Number.isFinite(cost)) costs.push({ symbol, quantity: formatUnits(held, tokenDecimals), cost, asOf })
   }
-  return costs
+  if (activity) {
+    const decimals = new Map(metadata.flatMap(result => result.status === 'fulfilled' ? [result.value] : []))
+    const verified = fills.filter(fill => { const receipt = receipts.get(fill.txHash.toLowerCase()); return receipt && verifyPurchaseFill(fill, receipt, owner, tip) })
+    const blocks = new Map<number, bigint>()
+    const numbers = [...new Set(verified.map(fill => fill.blockNumber))]
+    for (let start = 0; start < numbers.length; start += 3) {
+      signal.throwIfAborted()
+      const results = await Promise.allSettled(numbers.slice(start, start + 3).map(blockNumber => tradingClient.getBlock({ blockNumber: BigInt(blockNumber) })))
+      for (let index = 0; index < results.length; index++) {
+        const result = results[index]
+        if (result.status === 'fulfilled' && result.value.number === BigInt(numbers[start + index])) blocks.set(numbers[start + index], result.value.timestamp)
+      }
+    }
+    for (const fill of verified) {
+      const symbol = relevant.find(symbol => same(fill.sellToken, assets[symbol]) || same(fill.buyToken, assets[symbol]))
+      const buying = symbol ? same(fill.buyToken, assets[symbol]) : false, timestamp = blocks.get(fill.blockNumber), tokenDecimals = symbol ? decimals.get(symbol) : undefined
+      if (!symbol || tokenDecimals === undefined || !timestamp || !same(buying ? fill.sellToken : fill.buyToken, BSC_USDT.address)) continue
+      const at = Number(timestamp) * 1000
+      if (!Number.isFinite(at) || at < 1_500_000_000_000 || at > Date.now() + 120_000) continue
+      trades.push({ id: `${fill.txHash.toLowerCase()}:${fill.logIndex}`, orderId: fill.orderUid, symbol, side: buying ? 'buy' : 'sell',
+        inputSymbol: buying ? 'USDT' : symbol, outputSymbol: buying ? symbol : 'USDT',
+        inputAmount: formatUnits(fill.sellAmount, buying ? BSC_USDT.decimals : tokenDecimals),
+        outputAmount: formatUnits(fill.buyAmount, buying ? tokenDecimals : BSC_USDT.decimals), hash: fill.txHash, createdAt: new Date(at).toISOString() })
+    }
+    if (trades.length !== fills.length) throw new RouteError('purchase_history_unverified')
+  }
+  return { costs, trades }
+}
+
+async function boundedRecovery(owner: string, symbols: Symbol[], activity = false) {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12_000)
+  const aborted = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new RouteError('purchase_history_timeout')), { once: true }))
+  try { return await Promise.race([recover(owner, symbols, controller.signal, activity), aborted]) }
+  finally { clearTimeout(timer) }
 }
 
 export async function recoverWalletPurchaseBasis(owner: string, symbols: Symbol[]): Promise<PurchaseBasis[]> {
-  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12_000)
-  const aborted = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new RouteError('purchase_history_timeout')), { once: true }))
-  try { return await Promise.race([recover(owner, symbols, controller.signal), aborted]) }
-  catch { return [] }
-  finally { clearTimeout(timer) }
+  try { return (await boundedRecovery(owner, symbols)).costs } catch { return [] }
+}
+
+export async function recoverWalletTrades(owner: string): Promise<WalletTrade[]> {
+  return (await boundedRecovery(owner, Object.keys(assets) as Symbol[], true)).trades
 }

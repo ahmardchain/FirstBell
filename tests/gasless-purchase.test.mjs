@@ -48,6 +48,7 @@ function fixture() {
   }
   globalThis.fetch = async (url, init) => {
     const u = new URL(url), body = init.body ? JSON.parse(init.body) : null
+    if (u.hostname === 'api.cow.fi' && u.pathname.includes('/orders/')) return new Response('', { status: 404 })
     if (u.hostname === 'open-platform-ap.nodereal.io') {
       assert.equal(u.pathname, `/${env.MEGAFUEL_API_KEY}/megafuel/56`)
       assert.equal(init.headers['X-MegaFuel-Policy-Uuid'], env.MEGAFUEL_POLICY_UUID)

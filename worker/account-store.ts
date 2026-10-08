@@ -1,6 +1,7 @@
 import type { KeyValueStore } from './env.ts'
 import type { FundingEnv } from './moonpay.ts'
 import { handleStoredDeposits } from './deposits.ts'
+import { rejectedTradeReason } from '../lib/trade-execution.ts'
 
 type Account = {
   id: string
@@ -38,28 +39,36 @@ export async function handleAccountRequest(request: Request, env: FundingEnv, st
   }
   if (new URL(request.url).pathname === '/trade-attempt') {
     if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
-    const body = await request.json() as { action: string; requestId: string; typedDataHash: string; signatureHash: string; orderId?: string }
-    if (!['get', 'start', 'complete'].includes(body?.action) || !/^[a-f0-9-]{36}$/.test(body.requestId)
+    const body = await request.json() as { action: string; requestId: string; typedDataHash: string; signatureHash: string; orderId?: string; failureReason?: string }
+    if (!['get', 'start', 'complete', 'fail'].includes(body?.action) || !/^[a-f0-9-]{36}$/.test(body.requestId)
       || !/^0x[a-fA-F0-9]{64}$/.test(body.typedDataHash) || !/^0x[a-fA-F0-9]{64}$/.test(body.signatureHash)
-      || (body.action === 'complete' && !/^[A-Za-z0-9_-]{1,256}$/.test(body.orderId ?? ''))) return json({ error: 'Invalid trade attempt' }, 400)
-    type Attempt = { requestId: string; typedDataHash: string; signatureHash: string; createdAt: number; orderId: string | null }
-    let attempts = (await storage.get<Attempt[]>('tradeAttempts') ?? []).filter(item => item.createdAt > Date.now() - 86_400_000)
+      || (body.action === 'complete' && !/^[A-Za-z0-9_-]{1,256}$/.test(body.orderId ?? ''))
+      || body.action === 'fail' && !rejectedTradeReason(body.failureReason)) return json({ error: 'Invalid trade attempt' }, 400)
+    type Attempt = { requestId: string; typedDataHash: string; signatureHash: string; createdAt: number; orderId: string | null; started?: boolean; failureReason?: string }
+    let attempts = (await storage.get<Attempt[]>('tradeAttempts') ?? []).filter(item => item.createdAt > Date.now() - 30 * 86_400_000)
     let previous = attempts.find(item => item.requestId === body.requestId)
     if (previous && (previous.typedDataHash !== body.typedDataHash || previous.signatureHash !== body.signatureHash)) return json({ error: 'Trade attempt mismatch' }, 409)
     if (body.action !== 'get') {
       if (!previous) {
         if (body.action === 'complete') return json({ error: 'Trade attempt missing' }, 409)
-        previous = { requestId: body.requestId, typedDataHash: body.typedDataHash, signatureHash: body.signatureHash, createdAt: Date.now(), orderId: null }
+        previous = { requestId: body.requestId, typedDataHash: body.typedDataHash, signatureHash: body.signatureHash, createdAt: Date.now(), orderId: null, started: body.action === 'start' }
         attempts.push(previous)
+      }
+      if (body.action === 'start' && previous.failureReason) return json({ error: 'Trade already failed' }, 409)
+      if (body.action === 'start') previous.started = true
+      if (body.action === 'fail') {
+        if (previous.orderId) return json({ error: 'Acknowledged order cannot be failed' }, 409)
+        previous.failureReason = body.failureReason
       }
       if (body.action === 'complete') {
         if (previous.orderId && previous.orderId !== body.orderId) return json({ error: 'Trade attempt mismatch' }, 409)
-        previous.orderId = body.orderId!
+        previous.orderId = body.orderId!; delete previous.failureReason
       }
       attempts = attempts.slice(-512)
       await storage.put('tradeAttempts', attempts)
     }
-    return json({ started: Boolean(previous), orderId: previous?.orderId ?? null })
+    return json({ started: Boolean(previous) && previous?.started !== false, orderId: previous?.orderId ?? null,
+      ...(previous?.failureReason ? { failureReason: previous.failureReason } : {}) })
   }
   if (new URL(request.url).pathname.startsWith('/deposits')) {
     return handleStoredDeposits(request, env, storage)

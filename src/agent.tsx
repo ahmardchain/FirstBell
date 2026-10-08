@@ -11,8 +11,9 @@ import { terminalOrder, validateAgentTradePlan, type AgentOrder, type AgentTrade
 import { withWalletSession, type WalletSession } from '../lib/wallet-session'
 import { abortable, PREPARE_TIMEOUT_MS, QUOTE_TIMEOUT_MS } from '../lib/quote-timeout'
 import { routeFailureMessages, TradeRequestError } from '../lib/trade-error'
-import { checkTrade, prepareTrade, submitTrade } from './agent-api'
+import { checkTrade, prepareTrade, recoverTrade, submitTrade } from './agent-api'
 import { displayQuantity, readWalletBalances } from './wallet-balances'
+import { clearSignedTrade, readSignedTrades, readWalletOrders, storeSignedTrade, storeTradeReceipt } from '../lib/trade-storage'
 import { getTradingRoute } from './market-api'
 import manifest from '@/asset-sources.json'
 
@@ -33,7 +34,7 @@ const copy = {
     approve: 'Approve this amount', resetAllowance: 'Reset token permission', approvalNote: 'A token permission is needed before trading. You confirm this in your wallet; it does not place an order.', gas: 'Estimated network fee',
     confirm: 'Confirm trade', cancelAction: 'Cancel', refresh: 'Refresh quote', expired: 'The order expired. Get a fresh quote to review.',
     walletConfirm: 'Confirm in your wallet…', approvalPending: 'Waiting for token permission to confirm…', approvalDone: 'Token permission confirmed. Get a fresh quote and review it before signing the order.',
-    submitted: 'Order submitted. Checking settlement…', checking: 'Checking order…', pending: 'Your order is still processing. Check its status again shortly.', filled: 'Trade confirmed on BNB Smart Chain.', failed: 'The order did not fill. No trade success is recorded.', check: 'Check order status', tx: 'View transaction', recovery: 'Check same submission', uncertain: 'Submission could not be confirmed. Check the same submission before starting another trade.',
+    submitted: 'Order submitted. Checking settlement…', checking: 'Checking order…', pending: 'Your order is still processing. Check its status again shortly.', filled: 'Trade confirmed on BNB Smart Chain.', failed: 'The order did not fill. No trade success is recorded.', check: 'Check order status', tx: 'View transaction', recovery: 'Check order status', uncertain: 'Submission could not be confirmed. Check the same submission before starting another trade.',
     busy: 'Finish or cancel the current trade before starting another.', records: 'View token list',
     errors: { ...routeFailureMessages.en, insufficient_balance: 'Your wallet does not have enough of the input token.', insufficient_gas: 'Add a little BNB for the token permission’s network fee.',
       unsupported_order_schema: 'This trading route cannot be safely signed in FirstBell yet.', invalid_order_payload: 'The returned order did not match your requested trade.',
@@ -54,7 +55,7 @@ const copy = {
     balance: '可用金额为 {usdt} USDT，网络费用余额为 {bnb} BNB。', empty: '此钱包暂无目录内的股票代币。',
     quoteOnly: '仅报价，未下单', review: '审核交易', spend: '支付', receive: '报价接收数量', minimum: '最低接收数量', fee: '已含订单费用', feeEstimate: '费用估算 · 已包含', network: '网络', vendor: '路线', destination: '你的钱包', expires: '订单到期时间',
     approve: '授权此金额', resetAllowance: '重置代币授权', approvalNote: '交易前需要代币授权。此步骤由钱包确认，并不会下单。', gas: '预计网络费', confirm: '确认交易', cancelAction: '取消', refresh: '刷新报价', expired: '订单已过期，请获取新报价。',
-    walletConfirm: '请在钱包中确认…', approvalPending: '等待代币授权确认…', approvalDone: '代币授权已确认。请获取新报价并审核，然后签署订单。', submitted: '订单已提交，正在检查结算…', checking: '正在查询订单…', pending: '订单仍在处理中，请稍后查询。', filled: '交易已在 BNB 智能链上确认。', failed: '订单未成交，未记录交易成功。', check: '查询订单状态', tx: '查看交易', recovery: '查询本次提交', uncertain: '无法确认提交结果。开始新交易前请查询同一次提交。', busy: '请先完成或取消当前交易。', records: '查看代币列表',
+    walletConfirm: '请在钱包中确认…', approvalPending: '等待代币授权确认…', approvalDone: '代币授权已确认。请获取新报价并审核，然后签署订单。', submitted: '订单已提交，正在检查结算…', checking: '正在查询订单…', pending: '订单仍在处理中，请稍后查询。', filled: '交易已在 BNB 智能链上确认。', failed: '订单未成交，未记录交易成功。', check: '查询订单状态', tx: '查看交易', recovery: '查询订单状态', uncertain: '无法确认提交结果。开始新交易前请查询同一次提交。', busy: '请先完成或取消当前交易。', records: '查看代币列表',
     errors: { ...routeFailureMessages.zh, insufficient_balance: '钱包中的支付代币不足。', insufficient_gas: '请添加少量 BNB 支付网络费用。', unsupported_order_schema: '此路线尚不支持安全签名。', invalid_order_payload: '订单与交易请求不符。', simulation_failed: '代币授权模拟失败，未发送交易。', market_closed: '此代币市场关闭，暂不支持交易。', provider_unavailable: '服务器无法使用交易服务。', not_configured: '请配置 Binance 交易凭证。', account_not_configured: '请配置账户验证。', wallet_verification_not_configured: '请启用 Privy 钱包验证。', wallet_verification_unavailable: '钱包验证失败，请检查 Privy 凭证。', wallet_not_verified: '钱包无法验证，请重新登录。', unauthorized: '请重新登录。', order_fee_changed: '服务商的费用格式已改变。请获取新报价并重新确认。', stale_quote: '报价已过期，请重新获取。', rate_limited: '请等待一分钟后重试。', quote_timeout: '请求超时，请稍后重试。', settlement_not_verified: '无法核实链上结算，请再次查询。', invalid_order_signature: '钱包签名与订单不符。', approval_required: '请先完成代币授权。', provider_error: '交易服务暂不可用，请稍后重试。', wallet_loading: '钱包仍在准备中。', session_timeout: '登录状态加载超时，请重试。', wallet_rejected: '已取消钱包确认。', wallet_changed: '钱包已改变，请重新发起交易。', approval_failed: '代币授权交易失败。', balance_unavailable: '无法加载余额，请重试。' },
   },
 }
@@ -93,14 +94,17 @@ export function AgentWorkspace({ language }: { language: Language }) {
   const session = <T,>(action: (value: WalletSession) => Promise<T>, signal?: AbortSignal) => withWalletSession({ getAccessToken,
     getIdentityToken: () => live.current.identityToken, refreshIdentityToken: getIdentityToken }, action, signal)
   const assertWallet = (owner: string) => { if (!live.current.active || live.current.address?.toLowerCase() !== owner.toLowerCase()) throw new Error('wallet_changed') }
-  const persist = (next: AgentOrder, owner: string) => { try { localStorage.setItem(`firstbell-agent-order:${owner.toLowerCase()}`, JSON.stringify(next)) } catch { /* Status stays available in this view. */ } }
+  const persist = (next: AgentOrder, owner: string) => { try { storeTradeReceipt(localStorage, owner, next) } catch { /* Status stays available in this view. */ } }
 
   React.useEffect(() => {
     operation.current += 1; controller.current?.abort(); signedAttempt.current = null
     setPlan(null); setIntent(null); setOrder(null); setPhase('idle'); busyRef.current = false; setNotice('')
     if (address) { try {
-      const saved = JSON.parse(localStorage.getItem(`firstbell-agent-order:${address.toLowerCase()}`) ?? 'null') as AgentOrder | null
-      if (saved && typeof saved.receiptToken === 'string' && /^[A-Za-z0-9_-]{1,256}$/.test(saved.orderId)) setOrder({ ...saved, status: 'PENDING_VENDOR', txHash: null, inputAmount: null, outputAmount: null })
+      const records = readWalletOrders(localStorage, address)
+      const saved = records.at(-1)
+      if (saved) setOrder(saved)
+      signedAttempt.current = readSignedTrades(localStorage, address).find(attempt => !records.some(order => order.trade?.requestId === attempt.plan.requestId)) ?? null
+      if (signedAttempt.current) { setPhase('uncertain'); setNotice(t.uncertain) }
     } catch { /* Ignore invalid local history. Server verifies the ticket. */ } }
     return () => { operation.current += 1; controller.current?.abort(); live.current.active = false }
   }, [address])
@@ -190,15 +194,19 @@ export function AgentWorkspace({ language }: { language: Language }) {
         const { signature } = await signTypedData(reviewed.typedData, { address: owner, uiOptions: { showWalletUIs: true, title: `${reviewed.route.side === 'buy' ? 'Buy' : 'Sell'} ${reviewed.route.symbol}` } })
         assertWallet(owner)
         signedAttempt.current = { plan: reviewed, signature }
+        try { storeSignedTrade(localStorage, owner, signedAttempt.current) } catch { /* Retain the exact submission in memory. */ }
         setPhase('submitted'); setNotice(t.submitted)
         const submitted = await session(value => { assertWallet(owner); return submitTrade(reviewed, signature, value) })
+        persist(submitted, owner)
+        try { clearSignedTrade(localStorage, owner, { plan: reviewed, signature }) } catch { /* Receipt deduplicates the saved attempt. */ }
         if (version !== operation.current) return
-        setOrder(submitted); persist(submitted, owner); signedAttempt.current = null; setPlan(null); setIntent(null)
+        setOrder(submitted); signedAttempt.current = null; setPlan(null); setIntent(null)
+        setNotice(submitted.status === 'FILLED' ? t.filled : terminalOrder(submitted.status) ? t.failed : t.pending)
       }
     } catch (error) {
       if (version !== operation.current) return
       // Once a signature exists, a missing response is ambiguous. Never create
-      // another requestId; explicit recovery reuses the same signed attempt.
+      // another requestId; reconciliation only reads the same submission.
       if (signedAttempt.current) { setPhase('uncertain'); setNotice(t.uncertain) }
       else { setPhase('idle'); setNotice(errorText(error)) }
     } finally { if (version === operation.current) { busyRef.current = false; setPhase(value => value === 'uncertain' ? value : 'idle') } }
@@ -211,12 +219,24 @@ export function AgentWorkspace({ language }: { language: Language }) {
     const version = operation.current
     try {
       assertWallet(attempt.plan.route.walletAddress)
-      const submitted = await session(value => { assertWallet(attempt.plan.route.walletAddress); return submitTrade(attempt.plan, attempt.signature, value) })
+      const submitted = await session(value => { assertWallet(attempt.plan.route.walletAddress); return recoverTrade(attempt.plan, attempt.signature, value) })
+      if (submitted) {
+        persist(submitted, attempt.plan.route.walletAddress)
+        try { clearSignedTrade(localStorage, attempt.plan.route.walletAddress, attempt) } catch { /* Receipt deduplicates the saved attempt. */ }
+      }
       if (version !== operation.current) return
-      setOrder(submitted); persist(submitted, address); signedAttempt.current = null; setPlan(null); setIntent(null); setPhase('idle')
+      if (!submitted) { setPhase('uncertain'); setNotice(t.uncertain); return }
+      setOrder(submitted); signedAttempt.current = null; setPlan(null); setIntent(null); setPhase('idle')
+      setNotice(submitted.status === 'FILLED' ? t.filled : terminalOrder(submitted.status) ? t.failed : t.pending)
     } catch { if (version === operation.current) { setPhase('uncertain'); setNotice(t.uncertain) } }
     finally { if (version === operation.current) busyRef.current = false }
   }
+
+  React.useEffect(() => {
+    if (phase !== 'uncertain' || !address || busy || !signedAttempt.current) return
+    const timer = window.setTimeout(() => { void recover() }, 10_000)
+    return () => window.clearTimeout(timer)
+  }, [phase, address, busy])
 
   const answer = async (prompt: string) => {
     if (busyRef.current) return

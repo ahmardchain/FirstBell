@@ -405,3 +405,64 @@ test('authenticated cancellation uses only the account-bound receipt and write l
   assert.equal(result.trade.symbol, 'NVDAon'); assert.equal(result.trade.amount, '5'); assert.equal(result.trade.inputSymbol, 'USDT')
   assert.equal(s.calls.filter(c => c.method === 'DELETE').length, 1)
 })
+
+
+test('obsolete nonzero-fee signed attempts become Failed after exact-UID absence, while valid missing submissions remain unknown', async () => {
+  const s = fixture(); await s.prepare()
+  s.plan.typedData.message.feeAmount = '1'
+  s.plan.typedData.message.sellAmount = (s.raw - 1n).toString()
+  s.plan.typedDataHash = hashTypedData(s.plan.typedData)
+  s.signature = await signer.signTypedData(s.plan.typedData)
+  const failed = await recoverAgentTrade(s.plan, s.signature, credentials, { started: true, orderId: null })
+  assert.equal(failed.status, 'FAILED'); assert.equal(failed.failureReason, 'order_fee_changed')
+  assert.equal(failed.orderId, cowOrderUid(s.plan))
+  assert.ok(s.calls.every(call => call.method !== 'POST' || !call.path.endsWith('/orders')))
+  s.plan.typedData.message.feeAmount = '0'; s.plan.typedData.message.sellAmount = s.raw.toString(); s.plan.typedDataHash = hashTypedData(s.plan.typedData)
+  s.signature = await signer.signTypedData(s.plan.typedData)
+  assert.equal(await recoverAgentTrade(s.plan, s.signature, credentials, { started: true, orderId: null }), null)
+  const saved = await recoverAgentTrade(s.plan, s.signature, credentials, { started: true, orderId: null, failureReason: 'stale_quote' })
+  assert.equal(saved.status, 'FAILED'); assert.equal(saved.failureReason, 'stale_quote')
+})
+
+test('authenticated rejected submissions return durable Failed receipts and never dispatch again on status or recovery', async () => {
+  const s = fixture(); await s.prepare(); s.signature = await signer.signTypedData(s.plan.typedData)
+  s.rejection = { type: 'NonZeroFee', status: 400 }
+  const pair = await generateKeyPair('ES256'), user = 'did:privy:fixture-failed-order', app = 'fixture-failed-order-app'
+  const identity = await new SignJWT({ linked_accounts: JSON.stringify([{ type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: owner }]) })
+    .setProtectedHeader({ alg: 'ES256' }).setSubject(user).setIssuer('privy.io').setAudience(app).setExpirationTime('1h').sign(pair.privateKey)
+  const { handleAccountRequest } = await import('../worker/account-store.ts')
+  const values = new Map(), storage = { get: async key => structuredClone(values.get(key)), put: async (key, value) => values.set(key, structuredClone(value)) }
+  const env = { PRIVY_APP_ID: app, PRIVY_VERIFICATION_KEY: await exportSPKI(pair.publicKey), BINANCE_WEB3_API_KEY: credentials.apiKey, BINANCE_WEB3_SECRET_KEY: credentials.secretKey,
+    ACCOUNTS: { idFromName: id => id, get: () => ({ fetch: req => handleAccountRequest(req, {}, storage) }) } }
+  const planToken = await sealTradeTicket({ plan: s.plan }, user, credentials.secretKey, 'plan')
+  const call = (path, extra = {}) => handleApiRequest(new Request('https://firstbell.example/api/trade/' + path, { method: 'POST',
+    headers: { Origin: 'https://firstbell.example', 'Content-Type': 'application/json', Authorization: 'Bearer ' + identity, 'privy-id-token': identity },
+    body: JSON.stringify({ walletAddress: owner, planToken, signature: s.signature, ...extra }) }), env)
+  const started = performance.now()
+  const response = await call('submit'); assert.equal(response.status, 200)
+  const failed = (await response.json()).order
+  assert.equal(failed.status, 'FAILED'); assert.equal(failed.trade.symbol, 'NVDAon'); assert.equal(failed.failureReason, 'order_fee_changed')
+  assert.equal(failed.txHash, null); assert.equal(failed.outputAmount, null); assert.equal(failed.canCancel, false)
+  assert.equal(values.get('tradeAttempts')[0].failureReason, 'order_fee_changed')
+  const writes = () => s.calls.filter(call => call.method === 'POST' && call.path.endsWith('/orders')).length
+  assert.equal(writes(), 1)
+  assert.equal((await (await call('recover')).json()).order.status, 'FAILED')
+  assert.equal((await (await call('status', { receiptToken: failed.receiptToken })).json()).order.status, 'FAILED')
+  assert.equal((await (await call('submit')).json()).order.status, 'FAILED')
+  assert.equal(writes(), 1)
+  console.info('FAILED_ORDER_FIXTURE_TIMING', { durationMs: Math.round(performance.now() - started), writes: writes() })
+})
+
+
+test('lost Binance RFQ acknowledgements use the same exact CoW UID for read-only history recovery', async () => {
+  const s = fixture(); await s.prepare(); s.signature = await signer.signTypedData(s.plan.typedData)
+  s.plan.route.source = 'binance-web3'
+  s.stored = {}; s.status = 'open'
+  const recovered = await recoverAgentTrade(s.plan, s.signature, credentials, { started: true, orderId: null })
+  assert.equal(recovered.status, 'PENDING_VENDOR'); assert.equal(recovered.orderId, cowOrderUid(s.plan))
+  assert.ok(s.calls.some(call => call.path.endsWith('/orders/' + cowOrderUid(s.plan)) && call.method === 'GET'))
+  assert.equal(s.calls.some(call => call.method === 'POST' && call.path.endsWith('/orders')), false)
+  s.stored = null; s.plan.typedData.message.feeAmount = '1'; s.plan.typedData.message.sellAmount = (s.raw - 1n).toString()
+  s.plan.typedDataHash = hashTypedData(s.plan.typedData); s.signature = await signer.signTypedData(s.plan.typedData)
+  assert.equal((await recoverAgentTrade(s.plan, s.signature, credentials, { started: true, orderId: null })).status, 'FAILED')
+})

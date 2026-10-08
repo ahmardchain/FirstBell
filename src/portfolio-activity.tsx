@@ -1,7 +1,7 @@
 import { localized, text, localeFor, type Language } from '../lib/i18n'
 import { ArrowDownLeft, ArrowRightLeft, ArrowUpRight, RefreshCw } from 'lucide-react'
 import type { AgentOrder } from '../lib/agent-trading'
-import { orderAmounts, type CashTransfer } from '../lib/portfolio-performance'
+import { orderAmounts, type CashTransfer, type WalletTrade } from '../lib/portfolio-performance'
 import type { WithdrawalRecord } from '../lib/withdrawal-history'
 import { DepositHistory } from './deposit'
 import type { DepositController } from './deposits-api'
@@ -16,31 +16,38 @@ export function PortfolioActivity({ orders, withdrawals, cash, deposits, languag
   const t = localized({ en: { deposit: 'Deposit', withdrawal: 'Withdrawal', buy: 'Buy', sell: 'Sell', trade: 'Trade', filled: 'Filled', pending: 'Pending', settling: 'Settling',
       cancelled: 'Cancelled', failed: 'Failed', expired: 'Expired', unknown: 'Checking outcome', confirmed: 'Confirmed', notSent: 'Not sent',
       received: 'Received', expected: 'Estimated receive', receipt: 'View transaction', date: 'Time not recorded', empty: 'No activity yet',
-      unavailable: 'Some activity is unavailable. Saved records are still shown.', retry: 'Retry', more: 'Load more', checking: 'Checking…', note: 'On-chain transfers cover the last 6 months; orders and withdrawals are saved on this device.' }, zh: { deposit: '充值', withdrawal: '提现', buy: '买入', sell: '卖出', trade: '交易', filled: '已成交', pending: '等待确认', settling: '结算中',
+      unavailable: 'Some activity is unavailable. Saved records are still shown.', retry: 'Retry', more: 'Load more', checking: 'Checking…', note: 'Deposits, withdrawals and trades.' }, zh: { deposit: '充值', withdrawal: '提现', buy: '买入', sell: '卖出', trade: '交易', filled: '已成交', pending: '等待确认', settling: '结算中',
     cancelled: '已取消', failed: '失败', expired: '已过期', unknown: '正在核实', confirmed: '已确认', notSent: '未发送',
     received: '收到', expected: '预计收到', receipt: '查看交易', date: '时间未记录', empty: '暂无活动',
-    unavailable: '部分活动暂不可用，已保存的记录仍在显示。', retry: '重试', more: '加载更多', checking: '查询中…', note: '链上转账来自最近六个月的记录；订单和提现保存在此设备。' } }, language)
+    unavailable: '部分活动暂不可用，已保存的记录仍在显示。', retry: '重试', more: '加载更多', checking: '查询中…', note: '充值、提现和交易。' } }, language)
   const date = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(localeFor(language), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : t.date
   const quantity = (value: string, symbol = 'USDT') => hidden ? '••••••' : `${displayQuantity(value, 8, localeFor(language))} ${symbol}`
   const orderStatus = (status: AgentOrder['status']) => status === 'FILLED' ? t.filled : status === 'CONFIRMING' ? t.settling : status === 'CANCELLED' ? t.cancelled
     : status === 'FAILED' ? t.failed : status === 'EXPIRED' ? t.expired : t.pending
   const withdrawalStatus = (status: WithdrawalRecord['status']) => status === 'completed' ? t.confirmed : status === 'failed' ? t.failed
     : status === 'not_submitted' ? t.notSent : status === 'unknown' ? t.unknown : t.pending
-  const knownHashes = new Set([...orders.map(order => order.txHash), ...withdrawals.map(item => item.hash)].filter(Boolean).map(hash => hash!.toLowerCase()))
+  const walletTrades = cash?.trades ?? []
+  const visibleOrders = orders.filter(order => order.status === 'FILLED' || !walletTrades.some(trade => trade.orderId.toLowerCase() === order.orderId.toLowerCase()
+    || trade.hash.toLowerCase() === order.txHash?.toLowerCase()))
+  const recoveredTrades = walletTrades.filter(trade => !orders.some(order => order.status === 'FILLED' && order.txHash?.toLowerCase() === trade.hash.toLowerCase()))
+  const knownHashes = new Set([...orders.map(order => order.txHash), ...walletTrades.map(trade => trade.hash), ...withdrawals.map(item => item.hash)].filter(Boolean).map(hash => hash!.toLowerCase()))
   const sessions = deposits?.sessions ?? []
   const cardHashes = new Set(sessions.filter(session => session.mode === 'live').map(session => session.transactionHash?.toLowerCase()).filter(Boolean))
   const transfers = (cash?.transfers ?? []).filter(item => !knownHashes.has(item.hash.toLowerCase()) && !cardHashes.has(item.hash.toLowerCase()))
   type Entry = { id: string; at?: string; type: 'order'; order: AgentOrder }
+    | { id: string; at: string; type: 'trade'; trade: WalletTrade }
     | { id: string; at: string; type: 'withdrawal'; withdrawal: WithdrawalRecord }
     | { id: string; at: string; type: 'transfer'; transfer: CashTransfer }
     | { id: string; at: string; type: 'card'; session: typeof sessions[number] }
   const entries: Entry[] = [
-    ...orders.map(order => ({ id: `order:${order.orderId}`, at: order.createdAt ?? order.recordedAt, type: 'order' as const, order })),
+    ...visibleOrders.map(order => ({ id: `order:${order.orderId}`, at: order.createdAt ?? order.recordedAt, type: 'order' as const, order })),
+    ...recoveredTrades.map(trade => ({ id: `trade:${trade.id}`, at: trade.createdAt, type: 'trade' as const, trade })),
     ...withdrawals.map(withdrawal => ({ id: `withdrawal:${withdrawal.hash}`, at: withdrawal.recordedAt, type: 'withdrawal' as const, withdrawal })),
     ...transfers.map(transfer => ({ id: `transfer:${transfer.id}`, at: transfer.createdAt, type: 'transfer' as const, transfer })),
     ...sessions.map(session => ({ id: `card:${session.id}`, at: session.createdAt, type: 'card' as const, session })),
   ].filter(entry => {
     const text = entry.type === 'order' ? `${t.trade} ${entry.order.trade?.side === 'buy' ? `${t.buy} buy` : `${t.sell} sell`} ${entry.order.trade?.symbol} ${entry.order.trade?.amount} ${orderStatus(entry.order.status)}`
+      : entry.type === 'trade' ? `${t.trade} ${entry.trade.side === 'buy' ? `${t.buy} buy` : `${t.sell} sell`} ${entry.trade.symbol} ${entry.trade.inputAmount} ${entry.trade.outputAmount} ${t.filled}`
       : entry.type === 'withdrawal' ? `${t.withdrawal} withdrawal USDT ${entry.withdrawal.amount} ${entry.withdrawal.recipient} ${withdrawalStatus(entry.withdrawal.status)}`
       : entry.type === 'transfer' ? `${entry.transfer.kind === 'deposit' ? t.deposit : t.withdrawal} ${entry.transfer.kind} USDT ${entry.transfer.amount} ${entry.transfer.status}`
       : `${t.deposit} deposit ${entry.session.provider ?? 'moonpay'} ${entry.session.amount} ${entry.session.fiatCurrency} ${entry.session.receivedAmount ?? ''} USDT ${entry.session.status}`
@@ -58,6 +65,11 @@ export function PortfolioActivity({ orders, withdrawals, cash, deposits, languag
         amount = values?.input ? quantity(values.input, values.inputSymbol) : '—'
         detail = values ? `${values.estimated ? t.expected : t.received} · ${values.output ? quantity(values.output, values.outputSymbol) : '—'}` : order.orderId
         status = orderStatus(order.status); hash = order.txHash
+      } else if (entry.type === 'trade') {
+        title = `${t.trade} · ${entry.trade.side === 'sell' ? t.sell : t.buy} ${entry.trade.symbol}`
+        amount = quantity(entry.trade.inputAmount, entry.trade.inputSymbol)
+        detail = `${t.received} · ${quantity(entry.trade.outputAmount, entry.trade.outputSymbol)}`
+        status = t.filled; hash = entry.trade.hash
       } else if (entry.type === 'withdrawal') {
         title = t.withdrawal; amount = quantity(entry.withdrawal.amount); status = withdrawalStatus(entry.withdrawal.status); hash = entry.withdrawal.hash
         detail = `${entry.withdrawal.recipient.slice(0, 6)}…${entry.withdrawal.recipient.slice(-4)}`
@@ -66,7 +78,7 @@ export function PortfolioActivity({ orders, withdrawals, cash, deposits, languag
         detail = `${entry.transfer.counterparty.slice(0, 6)}…${entry.transfer.counterparty.slice(-4)}`
         status = entry.transfer.status === 'success' ? t.confirmed : entry.transfer.status === 'fail' ? t.failed : t.pending; hash = entry.transfer.hash
       }
-      const Icon = entry.type === 'order' ? ArrowRightLeft : entry.type === 'transfer' && entry.transfer.kind === 'deposit' ? ArrowDownLeft : ArrowUpRight
+      const Icon = entry.type === 'order' || entry.type === 'trade' ? ArrowRightLeft : entry.type === 'transfer' && entry.transfer.kind === 'deposit' ? ArrowDownLeft : ArrowUpRight
       return <article className="portfolio-activity-row" key={entry.id} aria-label={title}>
         <span className="portfolio-activity-icon"><Icon size={19} aria-hidden="true" /></span>
         <div className="portfolio-activity-main"><strong>{title}</strong><span title={hidden ? undefined : amount}>{amount}</span><small>{detail}</small></div>

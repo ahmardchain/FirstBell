@@ -1,9 +1,10 @@
-import { formatUnits, isAddress } from 'viem'
+import { decodeEventLog, erc20Abi, formatUnits, isAddress, type Hex } from 'viem'
 import { BSC_USDT } from '../lib/funding.ts'
 import { COW_RELAYER, COW_SETTLEMENT } from '../lib/agent-trading.ts'
 import type { CashTransfer, PurchaseBasis, WalletActivityPage } from '../lib/portfolio-performance.ts'
 import { assets, isSymbol, type Symbol } from './market.ts'
-import { recoverWalletPurchaseBasis } from './wallet-purchase-basis.ts'
+import { recoverWalletPurchaseBasis, recoverWalletTrades } from './wallet-purchase-basis.ts'
+import { tradingClient } from './binance-trading.ts'
 import { signedBinanceRequest, binanceFailure, type BinanceCredentials } from './binance-api.ts'
 import { verifyWalletIdentity } from './wallet-verification.ts'
 import type { ApiEnv } from './env.ts'
@@ -23,7 +24,7 @@ export function parseCashActivity(data: unknown, owner: string): WalletActivityP
   const entries = new Map<string, CashTransfer>()
   for (const value of page.transactionList) {
     const row = object(value)
-    if (!row || String(row.binanceChainId) !== '56' || String(row.itype) !== '2'
+    if (!row || String(row.binanceChainId) !== '56' || !['0', '1', '2'].includes(String(row.itype)) || same(row.methodId, '0x095ea7b3')
       || !same(row.tokenContractAddress, BSC_USDT.address) || typeof row.txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(row.txHash)
       || !['success', 'fail', 'pending'].includes(String(row.txStatus))) continue
     const at = Number(row.txTime)
@@ -34,8 +35,10 @@ export function parseCashActivity(data: unknown, owner: string): WalletActivityP
     const outgoing = from.filter(party => same(party!.address, owner)), incoming = to.filter(party => same(party!.address, owner))
     if (Boolean(outgoing.length) === Boolean(incoming.length)) continue
     const walletParties = incoming.length ? incoming : outgoing
-    if (walletParties.some(party => !rawAmount(party!.amount))) continue
-    const amount = walletParties.reduce((sum, party) => sum + BigInt(party!.amount as string), 0n)
+    const amounts = walletParties.map(party => rawAmount(party!.amount) ? party!.amount as string
+      : walletParties.length === 1 && rawAmount(row.amount) ? row.amount : null)
+    if (amounts.some(amount => amount === null)) continue
+    const amount = amounts.reduce<bigint>((sum, amount) => sum + BigInt(amount!), 0n)
     if (amount <= 0n) continue
     const other = incoming.length ? from : to
     const counterparty = other.find(party => !same(party!.address, owner))?.address
@@ -49,12 +52,63 @@ export function parseCashActivity(data: unknown, owner: string): WalletActivityP
   return { transfers: [...entries.values()].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), cursor: page.cursor ? String(page.cursor) : null }
 }
 
-export async function walletCashActivity(owner: string, cursor: string, credentials: BinanceCredentials): Promise<WalletActivityPage> {
+async function readCashActivity(owner: string, cursor: string, credentials: BinanceCredentials, signal: AbortSignal): Promise<WalletActivityPage> {
   if (!isAddress(owner) || !validCursor(cursor)) throw new Error('invalid_wallet_activity')
-  const result = await signedBinanceRequest('GET', '/api/v1/dex/post-transaction/transactions-by-address', {
-    address: owner.toLowerCase(), chains: '56', tokenContractAddress: BSC_USDT.address, limit: '100', ...(cursor ? { cursor } : {}),
+  let unfiltered = cursor.startsWith('all-')
+  const providerCursor = unfiltered ? cursor.slice(4) : cursor
+  let result = await signedBinanceRequest('GET', '/api/v1/dex/post-transaction/transactions-by-address', {
+    address: owner.toLowerCase(), chains: '56', ...(!unfiltered ? { tokenContractAddress: BSC_USDT.address } : {}), limit: '100', ...(providerCursor ? { cursor: providerCursor } : {}),
   }, credentials)
-  return parseCashActivity(result.data, owner)
+  signal.throwIfAborted()
+  // Some indexers omit contract-filtered rows. An unfiltered read still applies
+  // the exact BSC/USDT/wallet restrictions locally; it cannot add native BNB.
+  const first = Array.isArray(result.data) ? object(result.data[0]) : null
+  if (!cursor && Array.isArray(result.data) && (!result.data.length || Array.isArray(first?.transactionList) && !first.transactionList.length)) {
+    unfiltered = true
+    result = await signedBinanceRequest('GET', '/api/v1/dex/post-transaction/transactions-by-address', { address: owner.toLowerCase(), chains: '56', limit: '100' }, credentials)
+    signal.throwIfAborted()
+  }
+  const page = parseCashActivity(result.data, owner)
+  if (unfiltered && page.cursor) {
+    if (page.cursor.length > 508) throw new Error('invalid_wallet_activity')
+    page.cursor = `all-${page.cursor}`
+  }
+  const rows = Array.isArray(result.data) && Array.isArray(object(result.data[0])?.transactionList) ? object(result.data[0])!.transactionList as unknown[] : []
+  const ambiguous = new Set(rows.map(object).filter(row => row && (String(row.itype) !== '2' || [...parties(row.from), ...parties(row.to)].some(party => !rawAmount(party!.amount))))
+    .map(row => String(row!.txHash).toLowerCase()))
+  const candidates = page.transfers.filter(item => ambiguous.has(item.hash.toLowerCase()))
+  if (!candidates.length) return page
+  if (candidates.length > 12) throw new Error('activity_unavailable')
+  const [tip, chain] = await Promise.all([tradingClient.getBlockNumber({ cacheTime: 0 }), tradingClient.getChainId()])
+  if (chain !== 56) throw new Error('activity_unavailable')
+  const verified = new Set<string>()
+  for (let start = 0; start < candidates.length; start += 3) {
+    signal.throwIfAborted()
+    await Promise.all(candidates.slice(start, start + 3).map(async item => {
+      const receipt = await tradingClient.getTransactionReceipt({ hash: item.hash as Hex })
+      signal.throwIfAborted()
+      if (!same(receipt.transactionHash, item.hash) || receipt.status !== 'success' || tip < receipt.blockNumber + 1n) return
+      let net = 0n
+      for (const log of receipt.logs) {
+        if (!same(log.address, BSC_USDT.address)) continue
+        try {
+          const event = decodeEventLog({ abi: erc20Abi, eventName: 'Transfer', data: log.data, topics: log.topics })
+          if (same(event.args.from, COW_SETTLEMENT) || same(event.args.from, COW_RELAYER) || same(event.args.to, COW_SETTLEMENT) || same(event.args.to, COW_RELAYER)) return
+          if (same(event.args.to, owner)) net += event.args.value
+          if (same(event.args.from, owner)) net -= event.args.value
+        } catch { /* Native calls and permissions have no USDT Transfer event. */ }
+      }
+      if (formatUnits(item.kind === 'deposit' ? net : -net, 18) === item.amount) verified.add(item.id)
+    }))
+  }
+  return { ...page, transfers: page.transfers.filter(item => !ambiguous.has(item.hash.toLowerCase()) || verified.has(item.id)) }
+}
+
+export async function walletCashActivity(owner: string, cursor: string, credentials: BinanceCredentials): Promise<WalletActivityPage> {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 18_000)
+  const aborted = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('activity_unavailable')), { once: true }))
+  try { return await Promise.race([readCashActivity(owner, cursor, credentials, controller.signal), aborted]) }
+  finally { clearTimeout(timer) }
 }
 
 export function parsePurchaseBasis(symbol: string, value: unknown, timestamp: unknown): PurchaseBasis | null {
@@ -116,12 +170,16 @@ export async function handleWalletActivity(request: Request, env: ApiEnv, userId
     const costRequest = new URL(request.url).pathname === '/api/wallet/cost-basis'
     if (costRequest && (!Array.isArray(body.symbols) || !body.symbols.length || body.symbols.length > 6 || body.symbols.some(symbol => typeof symbol !== 'string' || !isSymbol(symbol)))) return json({ error: 'invalid_request' }, 400)
     if (!await verifyWalletIdentity(request.headers.get('privy-id-token'), env, userId, body.walletAddress)) return json({ error: 'wallet_not_verified' }, 403)
-    if (!costRequest && (!env.BINANCE_WEB3_API_KEY || !env.BINANCE_WEB3_SECRET_KEY)) return json({ error: 'not_configured' }, 503)
     const stub = env.ACCOUNTS.get(env.ACCOUNTS.idFromName(userId))
     const allowed = await stub.fetch(new Request('https://account.internal/trade-status-rate', { method: 'POST', headers: { 'X-Privy-DID': userId } }))
     if (!allowed.ok) return json({ error: 'activity_unavailable' }, allowed.status)
     const credentials = env.BINANCE_WEB3_API_KEY && env.BINANCE_WEB3_SECRET_KEY ? { apiKey: env.BINANCE_WEB3_API_KEY, secretKey: env.BINANCE_WEB3_SECRET_KEY } : undefined
     if (costRequest) return json({ status: 'ready', costs: await walletPurchaseBasis(body.walletAddress, [...new Set(body.symbols as string[])], credentials) })
-    return json({ status: 'ready', ...await walletCashActivity(body.walletAddress, String(body.cursor ?? ''), credentials!) })
+    const [cash, trades] = await Promise.allSettled([
+      credentials ? walletCashActivity(body.walletAddress, String(body.cursor ?? ''), credentials) : Promise.reject(new Error('not_configured')),
+      recoverWalletTrades(body.walletAddress),
+    ])
+    return json({ status: 'ready', ...(cash.status === 'fulfilled' ? cash.value : { transfers: [], cursor: null }),
+      trades: trades.status === 'fulfilled' ? trades.value : [], partial: cash.status === 'rejected' || trades.status === 'rejected' })
   } catch (error) { return json({ status: 'unavailable', ...binanceFailure(error) }, 503) }
 }

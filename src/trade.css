@@ -49,7 +49,7 @@
 .trade-entry .trade-sheet-row { padding:13px 0; font-size:12px; }
 .trade-entry .trade-sheet-row strong,.trade-confirm-popup .trade-sheet-row strong { min-width:0; overflow-wrap:anywhere; text-align:right; }
 .trade-entry .trade-sheet-status { margin:18px 0; }
-.trade-entry .trade-sheet-status>span:first-child { font-size:12px; }
+.trade-entry .trade-sheet-status>span:first-child { min-width:0; max-width:100%; white-space:normal; font-size:12px; }
 .trade-entry .trade-confirm-actions { grid-template-columns:minmax(70px,.65fr) minmax(0,1.35fr); }
 .trade-entry .trade-submit { font-size:13px; }
 .trade-progress { margin-top:18px; padding-top:16px; border-top:1px solid var(--line); font-size:12px; }
