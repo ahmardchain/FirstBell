@@ -1,5 +1,13 @@
 # FirstBell visual contract
 
+## Add Money configuration recovery (2026-10-08 UTC)
+
+- Design Read: preserve the existing Deposit utility for wallet owners; paper / dark ink, compact method rows; variance 1/10, motion 1/10, density 5/10, asset dependence 1/10, brand fidelity 9/10. Keep Inter / IBM Plex Mono, shared colors and spacing, 16px surfaces, 44px method controls and reduced motion. This is a behavior and error-copy correction with no layout changes.
+- Add Money attempts the authenticated server checkout even if the initial configuration read reported unavailable. The server remains authoritative for credentials, exact asset, origin, wallet ownership, rate limits and signed checkout. Preserve same-tab navigation, the busy state and safe provider-host validation. A setup error tells users card deposits are unavailable and offers wallet/exchange transfers; it does not claim that a connection is actively being established. Translate the message into all five existing languages.
+
+- Validation: TypeScript/Vite/API build and all 301 tests pass. Actual-component Chromium checks cover unavailable setup followed by an explicit successful retry without reload, same-tab handoff with the exact wallet/asset, untrusted-host rejection, wallet changes during checkout, and translated error rendering in all five languages on 390px dark mobile. Desktop light and French phone dark renders inspected; 44px method controls, no horizontal overflow or page errors. Checkout and wallet data were fixtures; no real card payment or signing was performed.
+- Rendered critique: overall 8.7/10; philosophy 9, hierarchy 9, craft 8, functionality 9, originality 8. Keep the current method rows, logo, paper/ink palette and restrained error surface. Fixed stale client readiness blocking a server retry and copy implying active connection progress when setup was unavailable. Provider activation remains separate from visual verification.
+
 ## Binance Wallet Skills and local Agentic Wallet (2026-10-08 UTC)
 
 - Design Read: extend the existing Agent utility for first-time tokenized-stock buyers; paper / dark ink, compact chat and reviewed trade; variance 1/10, motion 1/10, density 6/10, asset dependence 2/10, brand fidelity 9/10. Preserve Inter / IBM Plex Mono, gray rules, 16px surfaces, pill actions, full company marks, 44px controls and reduced motion. Reuse the existing Spectrum chat structure and app references recorded below. No landing, Portfolio or Trade redesign.

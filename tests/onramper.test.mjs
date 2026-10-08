@@ -113,10 +113,25 @@ test('setup diagnostics distinguish missing and invalid configuration without ex
   assert.equal(invalid.cardFunding.configured, false)
   assert.deepEqual(invalid.cardFunding.missing, [])
   assert.equal(invalid.cardFunding.reason, 'invalid_configuration')
+  assert.deepEqual(invalid.cardFunding.invalid, ['ONRAMPER_SIGNING_PRIVATE_KEY'])
   const readyResponse = await handleApiRequest(request(), env), readyText = await readyResponse.text()
   assert.equal(JSON.parse(readyText).cardFunding.configured, true)
   for (const value of [env.ONRAMPER_API_KEY, env.ONRAMPER_WEBHOOK_SECRET, env.ONRAMPER_BSC_USDT_ID, privatePem])
     assert.equal(readyText.includes(value), false)
+})
+
+test('setup names every invalid setting without revealing its value or parser errors', async () => {
+  const fields = { ...env, ONRAMPER_API_KEY: 'pk_test_wrong_environment', ONRAMPER_WEBHOOK_SECRET: 'too-short',
+    ONRAMPER_BSC_USDT_ID: 'invalid asset', ONRAMPER_SIGNING_PRIVATE_KEY: 'not a PEM' }
+  const response = await handleApiRequest(new Request('https://firstbell.example/api/health'), fields)
+  const body = await response.text(), result = JSON.parse(body)
+  assert.deepEqual(result.cardFunding.invalid,
+    ['ONRAMPER_API_KEY', 'ONRAMPER_BSC_USDT_ID', 'ONRAMPER_WEBHOOK_SECRET', 'ONRAMPER_SIGNING_PRIVATE_KEY'])
+  for (const name of ['ONRAMPER_API_KEY', 'ONRAMPER_WEBHOOK_SECRET', 'ONRAMPER_BSC_USDT_ID', 'ONRAMPER_SIGNING_PRIVATE_KEY'])
+    assert.equal(body.includes(fields[name]), false)
+  await assert.rejects(getOnramperCredentials(fields), { reason: 'invalid_configuration', status: 503 })
+  const unknownMode = await (await handleApiRequest(new Request('https://firstbell.example/api/health'), { ...env, ONRAMPER_ENVIRONMENT: 'wrong-mode' })).json()
+  assert.deepEqual(unknownMode.cardFunding.invalid, ['ONRAMPER_ENVIRONMENT'])
 })
 
 test('verified provider updates pin order and fiat while rejecting wrong assets, recipients and contexts', () => {

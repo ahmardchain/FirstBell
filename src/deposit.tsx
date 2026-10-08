@@ -8,7 +8,7 @@ import './deposit.css'
 
 const copy = {
   en: {
-    setup: 'Onramper is being connected. Please try again later.',
+    setup: 'Card deposits are unavailable. Please use a wallet or exchange transfer.',
     unavailable: 'Onramper could not be opened. Please try again.', retry: 'Try again',
     verify: 'Your wallet could not be verified. Sign in again and retry.',
     session: 'Your sign-in session could not be verified. Refresh the page and try again.',
@@ -26,7 +26,7 @@ const copy = {
     statuses: { awaiting_payment: 'Awaiting payment', action_required: 'Action needed', processing: 'Processing', confirming: 'Confirming', completed: 'Deposit confirmed', failed: 'Failed', expired: 'Expired', test_completed: 'Checkout completed' },
   },
   zh: {
-    setup: 'Onramper 正在接入，请稍后重试。', unavailable: '无法打开 Onramper，请重试。', retry: '重试',
+    setup: '银行卡充值暂不可用，请使用钱包或交易所转账。', unavailable: '无法打开 Onramper，请重试。', retry: '重试',
     verify: '无法验证你的钱包，请重新登录后重试。', session: '无法验证登录状态，请刷新页面后重试。',
     identity: '此应用需要启用钱包验证。', verificationUnavailable: '钱包验证暂不可用，请重试。', timeout: '请求超时，请重试。', connection: '无法验证网络连接，请在同一网络上重新打开 Onramper。',
     limited: '请等待一分钟后再打开支付页面。', check: '查看状态', checking: '正在检查…', resume: '打开支付页面', opening: '正在打开 Onramper…',
