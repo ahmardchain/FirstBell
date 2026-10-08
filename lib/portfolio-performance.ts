@@ -55,3 +55,19 @@ export function performanceFromBasis(basis: PurchaseBasis | undefined, quantity:
   const averagePrice = basis.cost / held, gainPct = gain / basis.cost * 100
   return [value, gain, averagePrice, gainPct].every(Number.isFinite) ? { value, cost: basis.cost, averagePrice, gain, gainPct } : null
 }
+
+// All current holdings must have matching purchase evidence. Cash and realized
+// sale proceeds are excluded; percentages are weighted by remaining cost.
+export function positionsPerformance(holdings: { symbol: string; quantity: string; price: number | null }[], orders: AgentOrder[], basis: Record<string, PurchaseBasis> = {}) {
+  if (!holdings.length) return null
+  let value = 0, cost = 0
+  for (const holding of holdings) {
+    const result = positionPerformance(holding.symbol, holding.quantity, holding.price, orders)
+      ?? performanceFromBasis(basis[holding.symbol], holding.quantity, holding.price)
+    if (!result) return null
+    value += result.value
+    cost += result.cost
+  }
+  const gain = value - cost, gainPct = gain / cost * 100
+  return [value, cost, gain, gainPct].every(Number.isFinite) ? { value, cost, gain, gainPct } : null
+}

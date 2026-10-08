@@ -1,3 +1,4 @@
+import { localeFor, localized, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { ExternalLink, LoaderCircle, X } from 'lucide-react'
 import { openOrder, terminalOrder, type AgentOrder } from '../lib/agent-trading'
@@ -21,11 +22,11 @@ const words = {
 }
 
 export function TradeOrders({ orders, attempts, approvalHash, language, busy, locked, cancelId, cancelFailure, error, onRecover, onCancel }: {
-  orders: AgentOrder[]; attempts: SignedTradeAttempt[]; approvalHash?: string; language: 'en' | 'zh'; busy: boolean; locked: boolean; cancelId: string | null; error: string;
+  orders: AgentOrder[]; attempts: SignedTradeAttempt[]; approvalHash?: string; language: Language; busy: boolean; locked: boolean; cancelId: string | null; error: string;
   onRecover: (attempt?: SignedTradeAttempt) => void; onCancel: (order: AgentOrder) => void
   cancelFailure: { orderId: string; message: string } | null
 }) {
-  const t = words[language]
+  const t = localized(words, language)
   const [tab, setTab] = React.useState<'open' | 'history'>('open')
   const [review, setReview] = React.useState<AgentOrder | null>(null)
   const dialog = React.useRef<HTMLDialogElement>(null)
@@ -65,9 +66,9 @@ export function TradeOrders({ orders, attempts, approvalHash, language, busy, lo
     <div id="orders-panel" role="tabpanel" aria-labelledby={`orders-${tab}-tab`} tabIndex={0}>
       {[...listed].reverse().map(order => { const amounts = orderAmounts(order); return <article className="trade-progress-record trade-order-record" key={order.orderId} aria-label={title(order)}>
         <div className="trade-order-title"><strong>{title(order)}</strong><span className="trade-order-status" data-status={order.status}>{cancelId === order.orderId ? t.cancelling : status(order)}</span></div>
-        {order.trade && <p className="trade-order-amount" title={`${order.inputAmount ?? order.trade.amount} ${order.trade.inputSymbol}`}>{displayQuantity(order.inputAmount ?? order.trade.amount, 8)} {order.trade.inputSymbol}</p>}
+        {order.trade && <p className="trade-order-amount" title={`${order.inputAmount ?? order.trade.amount} ${order.trade.inputSymbol}`}>{displayQuantity(order.inputAmount ?? order.trade.amount, 8, localeFor(language))} {order.trade.inputSymbol}</p>}
         {order.trade && <p className="trade-order-id" title={order.orderId}>{t.id} · {order.orderId.slice(0, 10)}…{order.orderId.slice(-4)}</p>}
-        {amounts && <p className="trade-order-output">{amounts.estimated ? t.expected : t.received} · {amounts.output ? `${displayQuantity(amounts.output, 8)} ${amounts.outputSymbol}` : t.unavailableAmount}</p>}
+        {amounts && <p className="trade-order-output">{amounts.estimated ? t.expected : t.received} · {amounts.output ? `${displayQuantity(amounts.output, 8, localeFor(language))} ${amounts.outputSymbol}` : t.unavailableAmount}</p>}
         {order.status === 'CANCELLED' && order.trade?.source === 'cow-protocol' && <p className="trade-order-note">{t.race}</p>}
         <div className="trade-order-actions">
           {order.canCancel && order.status === 'PENDING_VENDOR' && order.trade?.source === 'cow-protocol' && <button type="button" className="trade-order-cancel" disabled={busy || locked || Boolean(approvalHash)} onClick={event => { cancelTrigger.current = event.currentTarget; setReview(order) }}>{t.cancel}</button>}
@@ -83,8 +84,8 @@ export function TradeOrders({ orders, attempts, approvalHash, language, busy, lo
       <p className="trade-order-note">{t.attention}</p>
       {recoveries.map(attempt => <article className="trade-progress-record trade-order-record" key={attempt.plan.requestId}>
         <div className="trade-order-title"><strong>{attempt.plan.route.side === 'buy' ? t.buy : t.sell} {attempt.plan.route.symbol}</strong><span className="trade-order-status">{t.unknown}</span></div>
-        <p className="trade-order-amount">{displayQuantity(attempt.plan.route.inputAmount, 8)} {attempt.plan.route.inputSymbol}</p>
-        <p className="trade-order-output">{t.expected} · {displayQuantity(attempt.plan.route.outputAmount, 8)} {attempt.plan.route.outputSymbol}</p>
+        <p className="trade-order-amount">{displayQuantity(attempt.plan.route.inputAmount, 8, localeFor(language))} {attempt.plan.route.inputSymbol}</p>
+        <p className="trade-order-output">{t.expected} · {displayQuantity(attempt.plan.route.outputAmount, 8, localeFor(language))} {attempt.plan.route.outputSymbol}</p>
         <button type="button" className="trade-progress-action" disabled={busy || locked || Boolean(approvalHash)} onClick={() => onRecover(attempt)}>{t.resume}</button>
       </article>)}
       {approvalHash && <div className="trade-progress-record"><p>{t.approval}</p><button type="button" className="trade-progress-action" disabled={busy || locked} onClick={() => onRecover()}>{t.retryApproval}</button><a href={`https://bscscan.com/tx/${approvalHash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a></div>}

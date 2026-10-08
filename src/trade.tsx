@@ -1,3 +1,4 @@
+import { signedPercent, localized, localeFor, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, ChartCandlestick, Check, ChevronDown, ExternalLink, Search } from 'lucide-react'
@@ -10,7 +11,6 @@ import './trade.css'
 export type TradeAsset = CatalogAsset
 
 type Side = 'buy' | 'sell'
-type Language = 'en' | 'zh'
 
 const words = {
   en: {
@@ -64,7 +64,7 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   initialSide?: Side | null
   onBusyChange?: (busy: boolean) => void
 }) {
-  const t = words[language]
+  const t = localized(words, language)
   const [selectorOpen, setSelectorOpen] = React.useState(false)
   const [selectorQuery, setSelectorQuery] = React.useState('')
   const matchingAssets = assets.filter(candidate => `${candidate.company} ${candidate.symbol}`.toLowerCase().includes(selectorQuery.trim().toLowerCase()))
@@ -126,12 +126,12 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
   const tokenPrice = market?.symbol === asset.symbol && market.priceUsd !== null ? market.priceUsd
     : rwa?.symbol === asset.symbol ? rwa.tokenPriceUsd : null
   const price = tokenPrice !== null && tokenPrice > 0 && Number.isFinite(tokenPrice)
-    ? new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(tokenPrice)
+    ? new Intl.NumberFormat(localeFor(language), { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(tokenPrice)
     : t.noPrice
   const change = market?.change24hPct != null && Number.isFinite(market.change24hPct)
-    ? `${market.change24hPct >= 0 ? '+' : ''}${market.change24hPct.toFixed(2)}%` : t.noChange
+    ? signedPercent(market.change24hPct, language) : t.noChange
   const sourceLabel = market?.source === 'ondo' ? t.sourceOndo : market?.source === 'geckoterminal' ? t.sourceDex : market?.source === 'binance-web3' ? t.sourceBinance : t.quote
-  const money = (value: number) => new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(value)
+  const money = (value: number) => new Intl.NumberFormat(localeFor(language), { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(value)
   const rwaStatus = rwaState === 'loading' ? t.rwaLoading : rwaState === 'not_configured' ? t.rwaPending : rwaState === 'no_verified_asset' ? t.rwaAssetMissing
     : rwaState === 'provider_auth_error' ? t.marketAuth : rwaState === 'rate_limited' ? t.marketRate : t.rwaUnavailable
   const marketErrorTitle = marketFailure === 'provider_auth_error' ? t.marketAuth : marketFailure === 'rate_limited' ? t.marketRate : t.marketError
@@ -167,19 +167,19 @@ export function TradeWorkspace({ assets, asset, onAssetChange, onInspect, langua
         <div className="trade-tabs"><span className="active"><ChartCandlestick size={17} />{t.chart}</span><span>{t.market}</span></div>
         <div className="trade-timeframes" role="group" aria-label={t.timeframe}>{(['15m', '1h', '4h', '1D'] as const).map(value => <button type="button" className="motion-tab" key={value} aria-pressed={timeframe === value} onClick={() => setTimeframe(value)}>{timeframe === value && <motion.span className="motion-tab-indicator" layoutId="trade-timeframe-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<span>{value}</span></button>)}</div>
         <div className="trade-chart" key={asset.symbol}>
-          <MarketChart data={market?.candles ?? []} symbol={asset.symbol} name={asset.company} status={marketState} showRangeSelector={false} showVolume={market?.source === 'geckoterminal' || market?.source === 'binance-web3'} height={320} emptyTitle={marketState === 'loading' ? t.loading : t.noData} emptyDescription={t.noDataBody} errorTitle={marketErrorTitle} errorDescription={marketErrorBody} retryLabel={t.retry} onRetry={() => setRefresh(value => value + 1)} />
+          <MarketChart locale={localeFor(language)} chartLabel={t.chart} data={market?.candles ?? []} symbol={asset.symbol} name={asset.company} status={marketState} showRangeSelector={false} showVolume={market?.source === 'geckoterminal' || market?.source === 'binance-web3'} height={320} emptyTitle={marketState === 'loading' ? t.loading : t.noData} emptyDescription={t.noDataBody} errorTitle={marketErrorTitle} errorDescription={marketErrorBody} retryLabel={t.retry} onRetry={() => setRefresh(value => value + 1)} />
         </div>
-        <div className="trade-chart-foot"><span>OHLC / {timeframe} / {asset.symbol}</span><span>{sourceLabel}{market?.asOf ? ` · ${t.updated} ${new Date(market.asOf).toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC` : ''}</span></div>
+        <div className="trade-chart-foot"><span>OHLC / {timeframe} / {asset.symbol}</span><span>{sourceLabel}{market?.asOf ? ` · ${t.updated} ${new Date(market.asOf).toLocaleTimeString(localeFor(language), { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC` : ''}</span></div>
       </div>
     </div>
 
     <section className="trade-rwa-card" aria-label={t.rwaSource} aria-live="polite">
-      <div className="trade-rwa-heading"><span>{t.rwaSource}</span><span>{rwa ? `${t.updated} ${new Date(rwa.priceUpdatedAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC` : rwaStatus}</span></div>
+      <div className="trade-rwa-heading"><span>{t.rwaSource}</span><span>{rwa ? `${t.updated} ${new Date(rwa.priceUpdatedAt).toLocaleString(localeFor(language), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC` : rwaStatus}</span></div>
       {rwa && <>
         <div className="trade-rwa-values">
           <div><small>{t.rwaPrice}</small><strong>{money(rwa.tokenPriceUsd)}</strong></div>
           <div><small>{t.rwaReference}</small><strong>{rwa.referencePerShareUsd !== null ? money(rwa.referencePerShareUsd) : t.rwaUnavailable}</strong></div>
-          <div><small>{t.rwaSession}</small><strong>{rwa.underlyingMarket ? rwa.underlyingMarket.session : t.rwaNoSession}</strong>{rwa.underlyingMarket?.nextOpenAt && <small>{t.rwaNextOpen}: {new Date(rwa.underlyingMarket.nextOpenAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC</small>}</div>
+          <div><small>{t.rwaSession}</small><strong>{rwa.underlyingMarket ? rwa.underlyingMarket.session : t.rwaNoSession}</strong>{rwa.underlyingMarket?.nextOpenAt && <small>{t.rwaNextOpen}: {new Date(rwa.underlyingMarket.nextOpenAt).toLocaleString(localeFor(language), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC</small>}</div>
         </div>
         <p>{t.rwaNote}</p>
       </>}

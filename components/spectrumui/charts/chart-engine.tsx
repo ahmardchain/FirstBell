@@ -128,9 +128,9 @@ export const BTC_MARKET = generateCandles({
   startedAt: SERIES_START,
 });
 
-export function formatMoney(value: number, compact = false) {
+export function formatMoney(value: number, compact = false, locale = 'en-US') {
   const digits = compact ? 2 : value >= 1000 ? 2 : value >= 1 ? 2 : 4;
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: 'USD',
     notation: compact ? 'compact' : 'standard',
@@ -139,8 +139,8 @@ export function formatMoney(value: number, compact = false) {
   }).format(value);
 }
 
-export function formatSignedPct(value: number) {
-  return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(2)}%`;
+export function formatSignedPct(value: number, locale = 'en-US') {
+  return `${value > 0 ? '+' : value < 0 ? '−' : ''}${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(value))}%`;
 }
 
 export const DATE_SHORT = new Intl.DateTimeFormat('en-US', {
@@ -155,9 +155,9 @@ export const DATE_FULL = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
 });
 
-export function formatAxisPrice(value: number) {
-  if (Math.abs(value) >= 10_000) return formatMoney(value, true);
-  return formatMoney(value, false);
+export function formatAxisPrice(value: number, locale = 'en-US') {
+  if (Math.abs(value) >= 10_000) return formatMoney(value, true, locale);
+  return formatMoney(value, false, locale);
 }
 
 export function niceTicks(lo: number, hi: number, target = 5): number[] {

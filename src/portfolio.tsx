@@ -1,3 +1,4 @@
+import { signedPercent, localized, text, localeFor, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
@@ -16,12 +17,11 @@ import { WithdrawalPage } from './withdrawal'
 import { PortfolioPosition } from './portfolio-position'
 import { PortfolioActivity } from './portfolio-activity'
 import { useCashActivity, usePortfolioRecords, usePurchaseBasis, type CashActivityController } from './portfolio-data'
-import type { PurchaseBasis } from '../lib/portfolio-performance'
+import { positionsPerformance, type PurchaseBasis } from '../lib/portfolio-performance'
 import type { AgentOrder } from '../lib/agent-trading'
 import type { WithdrawalRecord } from '../lib/withdrawal-history'
 import './portfolio.css'
 
-type Language = 'en' | 'zh'
 type Props = { assets: Asset[]; language: Language; onInspect: (asset: Asset) => void; onSell: (asset: Asset) => void }
 type Account = {
   configured: boolean; ready: boolean; authenticated: boolean; email?: string; address?: string;
@@ -106,12 +106,14 @@ export function PortfolioWorkspace(props: Props) {
   if (PRIVY_APP_ID) return <ConnectedPortfolio {...props} />
   return <PortfolioView {...props} account={{ configured: false, ready: true, authenticated: false, walletReady: false, balances: null, loading: false, error: false, login: () => {}, logout: async () => {} }} />
 }
-const money = (value: number, maximumFractionDigits = 2) => `US$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits })}`
+const money = (value: number, maximumFractionDigits: number, language: Language) => ['en', 'zh'].includes(language)
+  ? `US$${value.toLocaleString(localeFor(language), { minimumFractionDigits: 2, maximumFractionDigits })}`
+  : new Intl.NumberFormat(localeFor(language), { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits }).format(value)
 
 // A presentational view allows explicit local QA fixtures without bypassing Privy.
 export function PortfolioView({ assets, language, onInspect, onSell, account }: Props & { account: Account }) {
   const reduceMotion = useReducedMotion()
-  const t = copy[language]
+  const t = localized(copy, language)
   const [section, setSection] = React.useState<'positions' | 'activity'>(() => new URLSearchParams(window.location.search).has('deposit') ? 'activity' : 'positions')
   const [search, setSearch] = React.useState('')
   const [hidden, setHidden] = React.useState(false)
@@ -196,6 +198,8 @@ export function PortfolioView({ assets, language, onInspect, onSell, account }: 
 
   const positionValue = holdings.every(token => markets[token.symbol]?.priceUsd != null)
     ? holdings.reduce((sum, token) => sum + Number(token.quantity) * markets[token.symbol]?.priceUsd!, 0) : null
+  const performance = positionsPerformance(holdings.map(token => ({ symbol: token.symbol, quantity: token.quantity, price: markets[token.symbol]?.priceUsd ?? null })), account.orders ?? [], account.purchaseBasis)
+  const gain = performance ? `${performance.gain >= 0 ? '+' : '−'}${money(Math.abs(performance.gain), performance.gain !== 0 && Math.abs(performance.gain) < .01 ? 4 : 2, language)} (${signedPercent(performance.gainPct, language)})` : null
   const placeholder = account.error ? t.error : !account.address ? t.preparing : t.loading
   const cash = account.balances ? Number(account.balances.usdt) : null
   const smallPosition = holdings.some(token => markets[token.symbol]?.priceUsd != null && Number(token.quantity) * markets[token.symbol].priceUsd! < 10)
@@ -204,10 +208,10 @@ export function PortfolioView({ assets, language, onInspect, onSell, account }: 
   const total = cash !== null && positionValue !== null ? cash + positionValue : null
   const valuationUnavailable = account.balances && (holdings.some(token => markets[token.symbol]?.priceUsd === null)
     || (total !== null && !Number.isFinite(total)))
-  const balance = account.balances && total !== null && Number.isFinite(total) ? money(total, Math.max(positionDecimals, cashDecimals))
+  const balance = account.balances && total !== null && Number.isFinite(total) ? money(total, Math.max(positionDecimals, cashDecimals), language)
     : valuationUnavailable ? t.unavailable : placeholder
-  const cashBalance = cash !== null && Number.isFinite(cash) ? money(cash, cashDecimals) : placeholder
-  const value = account.balances && positionValue != null && Number.isFinite(positionValue) ? money(positionValue, positionDecimals)
+  const cashBalance = cash !== null && Number.isFinite(cash) ? money(cash, cashDecimals, language) : placeholder
+  const value = account.balances && positionValue != null && Number.isFinite(positionValue) ? money(positionValue, positionDecimals, language)
     : account.balances && holdings.some(token => markets[token.symbol]?.priceUsd === null) ? t.unavailable : placeholder
   const saveName = () => {
     const next = name.trim().slice(0, 40) || defaultName
@@ -252,7 +256,12 @@ export function PortfolioView({ assets, language, onInspect, onSell, account }: 
         <div className="portfolio-balance-row"><h1 title={t.totalInfo} aria-live="polite">{hidden ? '••••••' : balance}</h1><button type="button" aria-label={hidden ? t.show : t.hide} onClick={() => setHidden(current => !current)}>{hidden ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
         <div className="portfolio-breakdown">
           <div className="portfolio-position-value"><span>{t.cash}</span><strong aria-live="polite">{hidden ? '••••••' : cashBalance}</strong></div>
-          <div className="portfolio-position-value"><span>{t.positions}</span><strong aria-live="polite">{hidden ? '••••••' : value}</strong></div>
+          <div className="portfolio-position-value"><span>{t.positions}</span><strong aria-live="polite">{hidden ? '••••••' : value}</strong>
+            {holdings.length > 0 && <div className="portfolio-total-return" aria-label={text(language, 'Your gain / loss', '持仓盈亏')} aria-live="polite">
+              <b data-direction={!hidden && performance ? performance.gain >= 0 ? 'up' : 'down' : undefined}>{hidden ? '••••••' : gain ?? text(language, 'Gain / loss unavailable', '盈亏暂不可用')}</b>
+              <small>{text(language, 'Since purchase', '买入以来')}</small>
+            </div>}
+          </div>
         </div>
         <div className="portfolio-action-row"><button type="button" disabled={!account.address || !account.walletReady} onClick={() => navigateView('deposit')}>{t.deposit}</button><button type="button" disabled={!account.address || !account.walletReady || !account.withdrawals} onClick={() => navigateView('withdraw')}>{t.withdraw}</button></div>
         <div className="portfolio-tabs" role="tablist" aria-label={t.title}>{(['positions', 'activity'] as const).map(id => <button type="button" role="tab" id={`portfolio-tab-${id}`} aria-controls="portfolio-results" key={id} aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => { setSection(id); setSearch('') }}>{t[id]}</button>)}</div>
