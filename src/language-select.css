@@ -1,0 +1,5 @@
+.language-picker { position:relative; }
+.language-picker>button { min-height:44px; min-width:44px; }
+.language-picker-menu { position:absolute; top:calc(100% + 6px); right:0; z-index:70; min-width:176px; padding:5px; border:1px solid var(--line); border-radius:16px; background:var(--background); box-shadow:0 16px 35px rgba(0,0,0,.18); }
+.language-picker-menu button { display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; min-height:44px; padding:10px 12px; border:0; border-radius:11px; background:transparent; color:var(--foreground); text-align:left; font-size:13px; }
+.language-picker-menu button:hover,.language-picker-menu button:focus-visible { background:var(--hover); }

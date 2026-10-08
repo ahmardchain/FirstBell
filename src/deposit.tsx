@@ -1,3 +1,4 @@
+import { localized, text, localeFor, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { ArrowLeft, ArrowUpRight, Check, Copy, CreditCard, Landmark, LoaderCircle, QrCode, RefreshCw } from 'lucide-react'
 import { checkoutAsset, depositProvider, isDepositTerminal, sessionAsset, type DepositSession } from '../lib/funding'
@@ -5,7 +6,6 @@ import type { DepositController } from './deposits-api'
 import { displayQuantity } from './wallet-balances'
 import './deposit.css'
 
-type Language = 'en' | 'zh'
 const copy = {
   en: {
     setup: 'Onramper is being connected. Please try again later.',
@@ -38,8 +38,8 @@ const copy = {
 }
 
 export function depositErrorMessage(reason: string | null | undefined, language: Language) {
-  const t = copy[language]
-  if (reason === 'demo_not_configured') return language === 'zh' ? '演示需要 Onramper 测试密钥。' : 'The demo needs an Onramper test key.'
+  const t = localized(copy, language)
+  if (reason === 'demo_not_configured') return text(language, 'The demo needs an Onramper test key.', '演示需要 Onramper 测试密钥。')
   if (['not_configured', 'invalid_configuration', 'account_not_configured', 'sandbox_asset_unavailable', 'asset_unavailable'].includes(reason ?? '')) return t.setup
   if (['identity_token_unavailable', 'wallet_verification_not_configured'].includes(reason ?? '')) return t.identity
   if (reason === 'wallet_verification_unavailable') return t.verificationUnavailable
@@ -53,7 +53,7 @@ export function depositErrorMessage(reason: string | null | undefined, language:
 }
 
 const statusMessage = (session: DepositSession, language: Language) => {
-  const t = copy[language]
+  const t = localized(copy, language)
   return ({ awaiting_payment: t.waiting, action_required: t.waiting, processing: t.processing,
     confirming: t.confirming, completed: t.completed, failed: t.failed, expired: t.expired,
     test_completed: t.testCompleted })[session.status]
@@ -62,19 +62,19 @@ const statusMessage = (session: DepositSession, language: Language) => {
 export function DepositPage({ address, language, onBack, onCard, busy = false, error, demo = false }: {
   address: string; language: Language; onBack: () => void; onCard: () => void; busy?: boolean; error?: string | null; demo?: boolean
 }) {
-  const t = language === 'zh' ? {
-    title: '充值', back: '返回', manual: '手动转入', exchange: '从交易所充值', card: '添加资金',
-    last: '上次使用', network: 'BNB 智能链', cardHint: 'Onramper', receive: '接收 USDT',
-    address: '钱包地址', copy: '复制地址', copied: '已复制', copyError: '无法复制，请选中地址后复制。',
-    note: '请使用 BNB 智能链（BEP20）转入 USDT。', exchangeNote: '在交易所选择提现，选择 USDT、BNB 智能链（BEP20）并使用下方地址。',
-    qr: '钱包地址二维码', qrError: '二维码暂不可用，请复制下方地址。',
-  } : {
+  const t = localized({ en: {
     title: 'Deposit', back: 'Back', manual: 'Transfer Manually', exchange: 'Deposit from Exchange', card: 'Add Money',
     last: 'Last Used', network: 'BNB Smart Chain', cardHint: 'Onramper', receive: 'Receive USDT',
     address: 'Wallet address', copy: 'Copy address', copied: 'Copied', copyError: 'Could not copy. Select the address to copy it.',
     note: 'Send USDT using BNB Smart Chain (BEP20).', exchangeNote: 'Choose Withdraw in your exchange, then select USDT and BNB Smart Chain (BEP20) and use this address.',
     qr: 'Wallet address QR code', qrError: 'QR unavailable. Copy the address below.',
-  }
+  }, zh: {
+    title: '充值', back: '返回', manual: '手动转入', exchange: '从交易所充值', card: '添加资金',
+    last: '上次使用', network: 'BNB 智能链', cardHint: 'Onramper', receive: '接收 USDT',
+    address: '钱包地址', copy: '复制地址', copied: '已复制', copyError: '无法复制，请选中地址后复制。',
+    note: '请使用 BNB 智能链（BEP20）转入 USDT。', exchangeNote: '在交易所选择提现，选择 USDT、BNB 智能链（BEP20）并使用下方地址。',
+    qr: '钱包地址二维码', qrError: '二维码暂不可用，请复制下方地址。',
+  } }, language)
   const [method, setMethod] = React.useState<'methods' | 'manual' | 'exchange'>('methods')
   const [lastUsed, setLastUsed] = React.useState(() => { try { return localStorage.getItem(`firstbell-deposit-method:${address}`) } catch { return null } })
   const [qr, setQr] = React.useState('')
@@ -115,10 +115,10 @@ export function DepositPage({ address, language, onBack, onCard, busy = false, e
       {([
         { id: 'manual', title: t.manual, icon: QrCode, badges: 'crypto', hint: t.network },
         { id: 'exchange', title: t.exchange, icon: Landmark, badges: 'exchange', hint: t.network },
-        { id: 'card', title: t.card, icon: CreditCard, badges: 'card', hint: demo ? `${t.cardHint} · ${language === 'zh' ? '演示' : 'Demo'}` : t.cardHint },
+        { id: 'card', title: t.card, icon: CreditCard, badges: 'card', hint: demo ? `${t.cardHint} · ${text(language, 'Demo', '演示')}` : t.cardHint },
       ] as const).map(item => <button type="button" className="funding-method" key={item.id} disabled={item.id === 'card' && busy} aria-busy={item.id === 'card' && busy} onClick={() => choose(item.id)}>
         <span className="funding-method-icon">{item.id === 'card' && busy ? <LoaderCircle className="deposit-spinner" size={22} /> : <item.icon size={22} strokeWidth={1.8} />}</span>
-        <span className="funding-method-content"><span className="funding-method-title">{item.id === 'card' && busy ? language === 'zh' ? '正在打开 Onramper…' : 'Opening Onramper…' : item.title}</span><span className="funding-method-meta">{badges(item.badges)}<span>{item.hint}</span></span></span>
+        <span className="funding-method-content"><span className="funding-method-title">{item.id === 'card' && busy ? text(language, 'Opening Onramper…', '正在打开 Onramper…') : item.title}</span><span className="funding-method-meta">{badges(item.badges)}<span>{item.hint}</span></span></span>
         {lastUsed === item.id && <span className="funding-last-used">{t.last}</span>}
       </button>)}
       {error && <p className="deposit-error" role="alert">{depositErrorMessage(error, language)}</p>}
@@ -135,7 +135,7 @@ export function DepositPage({ address, language, onBack, onCard, busy = false, e
 }
 
 export function DepositHistory({ controller, language, onOpen, search = '', hideEmpty = false, sessions: suppliedSessions, hidden = false }: { controller: DepositController; language: Language; onOpen: (id: string) => void; search?: string; hideEmpty?: boolean; sessions?: DepositSession[]; hidden?: boolean }) {
-  const t = copy[language]
+  const t = localized(copy, language)
   const sessions = (suppliedSessions ?? controller.sessions).filter(session => `${depositProvider(session) === 'onramper' ? 'Onramper' : 'MoonPay'} ${session.amount} ${session.fiatCurrency} ${t.statuses[session.status]}`.toLowerCase().includes(search.trim().toLowerCase()))
   return <div className="deposit-history">
     {controller.loading ? <div className="portfolio-content-empty" role="status">{t.loading}</div> : sessions.length ? <div className="deposit-history-rows">{sessions.map(session => {
@@ -143,7 +143,7 @@ export function DepositHistory({ controller, language, onOpen, search = '', hide
       const asset = sessionAsset(session)
       const compatible = controller.config?.mode === session.mode && depositProvider(session) === (controller.config.provider ?? 'moonpay') && checkoutAsset(controller.config.mode, controller.config.provider).currencyCode === asset.currencyCode
       return <React.Fragment key={session.id}>
-        <button type="button" aria-expanded={selected} aria-controls={`deposit-${session.id}`} onClick={() => onOpen(session.id)}><CreditCard size={20} /><span><strong>{language === 'zh' ? '充值' : 'Deposit'} · {depositProvider(session) === 'onramper' ? 'Onramper' : 'MoonPay'}</strong><small>{hidden ? '••••••' : session.mode === 'live' && session.receivedAmount ? `${displayQuantity(session.receivedAmount, 8)} ${asset.symbol}` : session.amount ? `${session.amount} ${session.fiatCurrency.toUpperCase()}` : '—'} · {new Date(session.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en', { month: 'short', day: 'numeric' })}</small></span><span className="deposit-history-status">{t.statuses[session.status]}</span><ArrowUpRight size={15} /></button>
+        <button type="button" aria-expanded={selected} aria-controls={`deposit-${session.id}`} onClick={() => onOpen(session.id)}><CreditCard size={20} /><span><strong>{text(language, 'Deposit', '充值')} · {depositProvider(session) === 'onramper' ? 'Onramper' : 'MoonPay'}</strong><small>{hidden ? '••••••' : session.mode === 'live' && session.receivedAmount ? `${displayQuantity(session.receivedAmount, 8, localeFor(language))} ${asset.symbol}` : session.amount ? `${session.amount} ${session.fiatCurrency.toUpperCase()}` : '—'} · {new Date(session.createdAt).toLocaleDateString(localeFor(language), { month: 'short', day: 'numeric' })}</small></span><span className="deposit-history-status">{t.statuses[session.status]}</span><ArrowUpRight size={15} /></button>
         {selected && <div className="deposit-activity-details" id={`deposit-${session.id}`}>
           <p role="status">{statusMessage(session, language)}</p>
           {controller.error && <p className="deposit-error" role="alert">{depositErrorMessage(controller.error, language)}</p>}
@@ -154,6 +154,6 @@ export function DepositHistory({ controller, language, onOpen, search = '', hide
           {session.transactionHash && !(session.provider === 'onramper' && session.mode === 'sandbox') && <a className="deposit-receipt" href={`${asset.explorer}/tx/${session.transactionHash}`} target="_blank" rel="noreferrer">{t.receipt}<ArrowUpRight size={15} /></a>}
         </div>}
       </React.Fragment>
-    })}</div> : hideEmpty && !controller.error ? null : <div className="portfolio-content-empty" role="status">{controller.error ? depositErrorMessage(controller.error, language) : language === 'zh' ? '暂无活动' : 'No activity yet'}</div>}
+    })}</div> : hideEmpty && !controller.error ? null : <div className="portfolio-content-empty" role="status">{controller.error ? depositErrorMessage(controller.error, language) : text(language, 'No activity yet', '暂无活动')}</div>}
   </div>
 }

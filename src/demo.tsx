@@ -1,6 +1,8 @@
+import { LanguageSelect } from './language-select'
+import { localized, text, localeFor, savedLanguage, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowRight, ArrowUpRight, ChevronDown, ExternalLink, Globe2, Menu, Moon, Search, Sun, X } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, ExternalLink, Menu, Moon, Search, Sun, X } from 'lucide-react'
 import { FloatingIconsHero, type FloatingIconsHeroProps } from '@/components/ui/floating-icons-hero-section'
 import LogoLoop from '@/components/ui/logo-loop'
 import ScrollFloat from '@/components/ui/scroll-float'
@@ -41,7 +43,6 @@ const icons: FloatingIconsHeroProps['icons'] = heroAssets.map((asset, index) => 
 // Keep the five-stock landing preview compact; the app contains the full catalog.
 const assets = manifest.assets.filter(asset => Object.hasOwn(markBySymbol, asset.symbol.toLowerCase())).map(asset => ({ ...asset, company: asset.name.split(' (Ondo')[0] }))
 type Asset = (typeof assets)[number]
-type Language = 'en' | 'zh'
 type Theme = 'dark' | 'light'
 
 const content = {
@@ -113,14 +114,13 @@ function SectionMarker({ children }: { children: React.ReactNode }) {
 
 export default function FirstBellLanding() {
   const reduceMotion = useReducedMotion()
-  const [language, setLanguage] = React.useState<Language>(() => localStorage.getItem('firstbell-language') === 'zh' ? 'zh' : 'en')
+  const [language, setLanguage] = React.useState<Language>(() => savedLanguage())
   const [theme, setTheme] = React.useState<Theme>(() => localStorage.getItem('firstbell-theme') === 'light' ? 'light' : 'dark')
   const [menuOpen, setMenuOpen] = React.useState(false)
-  const [languageOpen, setLanguageOpen] = React.useState(false)
   const [active, setActive] = React.useState('top')
   const [query, setQuery] = React.useState('')
   const [selected, setSelected] = React.useState<Asset>(assets[0])
-  const t = content[language]
+  const t = localized(content, language)
   const filtered = assets.filter(asset => `${asset.company} ${asset.symbol}`.toLowerCase().includes(query.trim().toLowerCase()))
   const current = filtered.find(asset => asset.symbol === selected.symbol) ?? filtered[0]
   const nav = [{ id: 'top', text: t.navigation[0] }, { id: 'app', text: t.navigation[1] }, { id: 'how-it-works', text: t.navigation[2] }]
@@ -130,7 +130,7 @@ export default function FirstBellLanding() {
     ariaLabel: `${asset.company} ${asset.symbol} on BscScan`,
   }))
 
-  React.useEffect(() => { document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'; localStorage.setItem('firstbell-language', language) }, [language])
+  React.useEffect(() => { document.documentElement.lang = localeFor(language); localStorage.setItem('firstbell-language', language) }, [language])
   React.useEffect(() => { document.documentElement.dataset.theme = theme; document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#ffffff' : '#080808'); localStorage.setItem('firstbell-theme', theme) }, [theme])
   React.useEffect(() => {
     const observer = new IntersectionObserver(entries => {
@@ -143,14 +143,11 @@ export default function FirstBellLanding() {
   return <>
     <header className="site-nav">
       <a className="brand" href="#top" aria-label="FirstBell home" onClick={() => setMenuOpen(false)}><img src="/assets/firstbell-mark.svg" width="27" height="27" alt="" />FirstBell</a>
-      <nav aria-label="Main navigation" className={`nav-links ${menuOpen ? 'nav-open' : ''}`}>
+      <nav aria-label={text(language, "Main navigation")} className={`nav-links ${menuOpen ? 'nav-open' : ''}`}>
         {nav.map(item => <a key={item.id} href={item.id === 'app' ? '/app/' : `#${item.id}`} className={active === item.id ? 'active' : ''} onClick={() => setMenuOpen(false)}>{item.text}</a>)}
       </nav>
       <div className="nav-actions">
-        <div className="language-control">
-          <button className="nav-tool" type="button" aria-label={t.language} aria-expanded={languageOpen} onClick={() => setLanguageOpen(open => !open)}><Globe2 size={16} /><span>{language === 'en' ? 'EN' : '中文'}</span><ChevronDown size={12} /></button>
-          <AnimatePresence>{languageOpen && <motion.div className="language-menu" initial={reduceMotion ? false : { opacity: 0, scale: .97, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .99, y: -4 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}><button type="button" aria-pressed={language === 'en'} onClick={() => { setLanguage('en'); setLanguageOpen(false) }}>English {language === 'en' ? '✓' : ''}</button><button type="button" aria-pressed={language === 'zh'} onClick={() => { setLanguage('zh'); setLanguageOpen(false) }}>中文 {language === 'zh' ? '✓' : ''}</button></motion.div>}</AnimatePresence>
-        </div>
+        <LanguageSelect language={language} onChange={setLanguage} className="nav-tool" />
         <button className="nav-tool theme-button" type="button" aria-label={t.theme} onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}><span className="motion-icon-swap" data-state={theme === 'dark' ? 'a' : 'b'}><Sun size={17} /><Moon size={17} /></span></button>
         <a className="nav-app" href="/app/" onClick={() => setMenuOpen(false)}>{t.navigation[1]} <ArrowUpRight size={16} /></a>
         <button className="nav-tool menu-button" type="button" aria-label={t.menu} aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}><span className="motion-icon-swap" data-state={menuOpen ? 'b' : 'a'}><Menu size={20} /><X size={20} /></span></button>

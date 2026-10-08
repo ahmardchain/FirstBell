@@ -70,7 +70,7 @@ const StockCard = React.forwardRef<HTMLDivElement, StockCardProps>(
               {changeLabel && <span className="stock-card-change-label">{changeLabel}</span>}
               {!loading && hasChange ? <>
                 {isPositiveChange ? <ArrowUpRight className="h-4 w-4" aria-hidden="true" /> : <ArrowDownRight className="h-4 w-4" aria-hidden="true" />}
-                <span>{isPositiveChange ? '+' : '−'}{Math.abs(change!).toFixed(2)}%</span>
+                <span>{isPositiveChange ? '+' : '−'}{new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(change!))}%</span>
               </> : <span>{loading ? '—' : changeUnavailableLabel}</span>}
             </div>
           </div>

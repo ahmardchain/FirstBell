@@ -1,3 +1,4 @@
+import { amountForInput, localized, text, localeFor, formatText, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { getIdentityToken, useIdentityToken, usePrivy, useSendTransaction, useSignTypedData, useWallets } from '@privy-io/react-auth'
 import { Check, ExternalLink, LoaderCircle, Wallet } from 'lucide-react'
@@ -23,11 +24,11 @@ const copy = {
     prompt: 'Buy, sell, or check your balance…', send: 'Send message', reset: 'New conversation', note: 'Simple commands use a fixed parser. Trades use live Binance quotes and your Privy wallet.',
     examples: ['Buy $10 of Nvidia', 'Sell half my Tesla', 'Show my balance'], login: 'Log In', walletLoading: 'Preparing wallet', connected: 'Wallet connected',
     signIn: 'Log in with Google or email to use your wallet. Then send your command again.', loading: 'Checking wallet and trading route…',
-    minimumOrder: (value: string | null) => value ? `The provider requires a trade worth at least $${value}. Choose an amount that meets it and send your command again.` : 'This trade is below the provider’s minimum value. Choose a larger amount and send your command again.',
+    minimumOrder: 'The provider requires a trade worth at least ${value}. Choose an amount that meets it and send your command again.', minimumOrderUnknown: 'This trade is below the provider’s minimum value. Choose a larger amount and send your command again.',
     select: 'Name one token or company, such as Nvidia, Apple, or TSLAon.', amount: 'For a buy, enter USDT to spend: “Buy Nvidia with 10 USDT.” For a sell, enter token quantity: “Sell 0.1 TSLAon,” “Sell half my Tesla,” or “Sell all my Tesla.”',
     ambiguous: 'Please request one trade with one asset and amount. Dollar-based sells and multiple assets need separate commands.', unsupported: 'I can buy or sell one listed token, check your balance or holdings, and look up issuer records. Try “Buy $10 of Nvidia.” Scheduled strategies and transfers are not supported.',
     preparing: 'I’ll check the amount and wallet, then show a trade for you to review.', cancel: 'Trade review cancelled. No order was submitted.', noOrder: 'No order to check yet.',
-    balance: (usdt: string, bnb: string) => `You have ${displayQuantity(usdt)} USDT to spend and ${displayQuantity(bnb, 8)} BNB for network fees.`, empty: 'No listed stock tokens were found in this wallet.',
+    balance: 'You have {usdt} USDT to spend and {bnb} BNB for network fees.', empty: 'No listed stock tokens were found in this wallet.',
     quoteOnly: 'Quote only · no order placed', review: 'Review trade', spend: 'You spend', receive: 'Quoted receive', minimum: 'Minimum receive', fee: 'Included order fee', feeEstimate: 'Included fee estimate', network: 'Network', vendor: 'Route', destination: 'Your wallet', expires: 'Order expires',
     approve: 'Approve this amount', resetAllowance: 'Reset token permission', approvalNote: 'A token permission is needed before trading. You confirm this in your wallet; it does not place an order.', gas: 'Estimated network fee',
     confirm: 'Confirm trade', cancelAction: 'Cancel', refresh: 'Refresh quote', expired: 'The order expired. Get a fresh quote to review.',
@@ -47,10 +48,10 @@ const copy = {
     title: '用自己的话交易', subtitle: '你的钱包，由你确认。', greeting: '你想交易什么？', help: '试试“用 10 USDT 买入 NVDAon”或“卖出一半特斯拉”。每笔交易由你审核后签名。',
     prompt: '买入、卖出或查看余额…', send: '发送消息', reset: '新对话', note: '简单指令由固定解析器识别。交易使用 Binance 实时报价和你的 Privy 钱包。', examples: ['用 10 USDT 买入 NVDAon', '卖出一半特斯拉', '查看余额'],
     login: '登录', walletLoading: '正在准备钱包', connected: '钱包已连接', signIn: '请用 Google 或邮箱登录后重新发送指令。', loading: '正在检查钱包和交易路线…',
-    minimumOrder: (value: string | null) => value ? `服务商要求交易价值至少为 ${value} 美元。请选择符合要求的金额并重新发送指令。` : '此交易低于服务商的最低交易价值。请增加金额并重新发送指令。',
+    minimumOrder: '服务商要求交易价值至少为 {value} 美元。请选择符合要求的金额并重新发送指令。', minimumOrderUnknown: '此交易低于服务商的最低交易价值。请增加金额并重新发送指令。',
     select: '请指定一个代币或公司，例如 NVDAon、苹果或 TSLAon。', amount: '买入请指定 USDT 支付金额；卖出请指定代币数量、一半或全部持仓。', ambiguous: '每次请只指定一项资产和一个金额。', unsupported: '支持单项代币买卖、余额及持仓查询和发行方资料。暂不支持定期策略或转账。',
     preparing: '正在检查钱包和金额，随后由你审核交易。', cancel: '已取消交易审核，尚未提交订单。', noOrder: '尚无订单可查询。',
-    balance: (usdt: string, bnb: string) => `可用金额为 ${displayQuantity(usdt)} USDT，网络费用余额为 ${displayQuantity(bnb, 8)} BNB。`, empty: '此钱包暂无目录内的股票代币。',
+    balance: '可用金额为 {usdt} USDT，网络费用余额为 {bnb} BNB。', empty: '此钱包暂无目录内的股票代币。',
     quoteOnly: '仅报价，未下单', review: '审核交易', spend: '支付', receive: '报价接收数量', minimum: '最低接收数量', fee: '已含订单费用', feeEstimate: '费用估算 · 已包含', network: '网络', vendor: '路线', destination: '你的钱包', expires: '订单到期时间',
     approve: '授权此金额', resetAllowance: '重置代币授权', approvalNote: '交易前需要代币授权。此步骤由钱包确认，并不会下单。', gas: '预计网络费', confirm: '确认交易', cancelAction: '取消', refresh: '刷新报价', expired: '订单已过期，请获取新报价。',
     walletConfirm: '请在钱包中确认…', approvalPending: '等待代币授权确认…', approvalDone: '代币授权已确认。请获取新报价并审核，然后签署订单。', submitted: '订单已提交，正在检查结算…', checking: '正在查询订单…', pending: '订单仍在处理中，请稍后查询。', filled: '交易已在 BNB 智能链上确认。', failed: '订单未成交，未记录交易成功。', check: '查询订单状态', tx: '查看交易', recovery: '查询本次提交', uncertain: '无法确认提交结果。开始新交易前请查询同一次提交。', busy: '请先完成或取消当前交易。', records: '查看代币列表',
@@ -58,8 +59,8 @@ const copy = {
   },
 }
 
-export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
-  const t = copy[language]
+export function AgentWorkspace({ language }: { language: Language }) {
+  const t = localized(copy, language)
   const { authenticated, login, getAccessToken } = usePrivy()
   const { wallets, ready } = useWallets()
   const { identityToken } = useIdentityToken()
@@ -85,7 +86,7 @@ export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
   const say = (text: string, source = false) => setMessages(list => [...list, { id: list.length + 1, role: 'guide', text, source }])
   const errorText = (error: unknown) => {
     const reason = error instanceof Error ? error.message : ''
-    if (reason === 'minimum_order_not_met') return t.minimumOrder(error instanceof TradeRequestError ? error.minimumUsd : null)
+    if (reason === 'minimum_order_not_met') return (error instanceof TradeRequestError && error.minimumUsd ? formatText(t.minimumOrder, { value: amountForInput(error.minimumUsd, language) }) : t.minimumOrderUnknown)
     if (/reject|cancel|4001/i.test(reason)) return t.errors.wallet_rejected
     return t.errors[reason as keyof typeof t.errors] ?? t.errors.provider_error
   }
@@ -139,7 +140,7 @@ export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
       assertWallet(address)
       if (next.quoteOnly) {
         const route = await session(value => getTradingRoute(asset.symbol, next.side, amount!, address, value.accessToken, value.identityToken, signal), signal)
-        if (version === operation.current) { say(`${route.inputAmount} ${route.inputSymbol} → ${displayQuantity(route.outputAmount)} ${route.outputSymbol}. ${t.quoteOnly}`); setIntent(null); setNotice('') }
+        if (version === operation.current) { say(`${route.inputAmount} ${route.inputSymbol} → ${displayQuantity(route.outputAmount, 6, localeFor(language))} ${route.outputSymbol}. ${t.quoteOnly}`); setIntent(null); setNotice('') }
       } else {
         const prepared = await session(value => prepareTrade({ symbol: asset.symbol, side: next.side, amount: amount!, walletAddress: address }, value, signal), signal)
         if (version === operation.current) { setPlan(prepared); setIntent({ ...next, amount, fraction: null }); setNotice('') }
@@ -220,7 +221,7 @@ export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
   const answer = async (prompt: string) => {
     if (busyRef.current) return
     setMessages(list => [...list, { id: list.length + 1, role: 'user', text: prompt }])
-    const parsed = parseAgentIntent(prompt)
+    const parsed = parseAgentIntent(prompt, language)
     if (parsed.kind === 'status') { if (order) await checkOrder(); else say(t.noOrder); return }
     if (parsed.kind === 'cancel') { if (pending) say(t.pending); else { setPlan(null); setIntent(null); setNotice(''); say(t.cancel) }; return }
     if (parsed.kind === 'help') { say(t[parsed.reason === 'asset' ? 'select' : parsed.reason]); return }
@@ -235,7 +236,7 @@ export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
       const balances = await readWalletBalances(address, parsed.kind === 'holdings' ? assetCatalog : [])
       if (version !== operation.current) return
       const holdings = balances.tokens.filter(position => position.raw > 0n)
-      say(parsed.kind === 'balance' ? t.balance(balances.usdt, balances.bnb) : holdings.length ? holdings.map(position => `${position.symbol}: ${displayQuantity(position.quantity)}`).join('\n') : t.empty)
+      say(parsed.kind === 'balance' ? formatText(t.balance, { usdt: displayQuantity(balances.usdt, 6, localeFor(language)), bnb: displayQuantity(balances.bnb, 8, localeFor(language)) }) : holdings.length ? holdings.map(position => `${position.symbol}: ${displayQuantity(position.quantity, 6, localeFor(language))}`).join('\n') : t.empty)
     } catch { if (version === operation.current) say(t.errors.balance_unavailable) }
     finally { if (version === operation.current) { setPhase('idle'); busyRef.current = false } }
   }
@@ -243,8 +244,8 @@ export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
   const clearReview = () => { setPlan(null); setIntent(null); setNotice(''); say(t.cancel) }
   const tradeCard = <>
     {plan && selected && <section className="agent-trade-review" aria-label={t.review}>
-      <div className="agent-review-heading"><img src={assetLogo(selected)} alt="" onError={tokenLogoError} /><div><span>{t.review}</span><strong>{plan.route.side === 'buy' ? (language === 'en' ? 'Buy' : '买入') : (language === 'en' ? 'Sell' : '卖出')} {selected.company}</strong><small>{selected.symbol} · Ondo</small></div></div>
-      <dl><div><dt>{t.spend}</dt><dd>{plan.route.inputAmount} {plan.route.inputSymbol}</dd></div><div><dt>{t.receive}</dt><dd>{displayQuantity(plan.route.outputAmount)} {plan.route.outputSymbol}</dd></div><div><dt>{t.minimum}</dt><dd>{displayQuantity(formatUnits(BigInt(plan.minimumReceive), plan.outputDecimals))} {plan.route.outputSymbol}</dd></div><div><dt>{plan.estimatedFeeAmount === undefined ? t.fee : t.feeEstimate}</dt><dd>{displayQuantity(formatUnits(BigInt(plan.estimatedFeeAmount ?? plan.feeAmount), plan.inputDecimals))} {plan.route.inputSymbol}</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain · 56</dd></div><div><dt>{t.vendor}</dt><dd>Binance Web3 / CowSwap</dd></div><div><dt>{t.destination}</dt><dd title={plan.route.walletAddress}>{plan.route.walletAddress.slice(0, 7)}…{plan.route.walletAddress.slice(-5)}</dd></div><div><dt>{t.expires}</dt><dd>{new Date(plan.expiresAt).toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en-US')}</dd></div>{plan.approval && <div><dt>{t.gas}</dt><dd>≈ {plan.approval.gasFeeBnb} BNB</dd></div>}</dl>
+      <div className="agent-review-heading"><img src={assetLogo(selected)} alt="" onError={tokenLogoError} /><div><span>{t.review}</span><strong>{plan.route.side === 'buy' ? (text(language, 'Buy', '买入')) : (text(language, 'Sell', '卖出'))} {selected.company}</strong><small>{selected.symbol} · Ondo</small></div></div>
+      <dl><div><dt>{t.spend}</dt><dd>{amountForInput(plan.route.inputAmount, language)} {plan.route.inputSymbol}</dd></div><div><dt>{t.receive}</dt><dd>{displayQuantity(plan.route.outputAmount, 6, localeFor(language))} {plan.route.outputSymbol}</dd></div><div><dt>{t.minimum}</dt><dd>{displayQuantity(formatUnits(BigInt(plan.minimumReceive), plan.outputDecimals), 6, localeFor(language))} {plan.route.outputSymbol}</dd></div><div><dt>{plan.estimatedFeeAmount === undefined ? t.fee : t.feeEstimate}</dt><dd>{displayQuantity(formatUnits(BigInt(plan.estimatedFeeAmount ?? plan.feeAmount), plan.inputDecimals), 6, localeFor(language))} {plan.route.inputSymbol}</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain · 56</dd></div><div><dt>{t.vendor}</dt><dd>Binance Web3 / CowSwap</dd></div><div><dt>{t.destination}</dt><dd title={plan.route.walletAddress}>{plan.route.walletAddress.slice(0, 7)}…{plan.route.walletAddress.slice(-5)}</dd></div><div><dt>{t.expires}</dt><dd>{new Date(plan.expiresAt).toLocaleTimeString(localeFor(language))}</dd></div>{plan.approval && <div><dt>{t.gas}</dt><dd>≈ {plan.approval.gasFeeBnb} BNB</dd></div>}</dl>
       {plan.approval && <p>{t.approvalNote}</p>}{expired && <p role="status">{t.expired}</p>}
       <div className="agent-review-actions"><button type="button" disabled={busy || pending} onClick={clearReview}>{t.cancelAction}</button><button type="button" disabled={busy || pending} className="agent-primary" onClick={() => expired && intent ? void prepare(intent) : void confirm()}>{busy ? <LoaderCircle size={16} className="agent-spinner" /> : null}{expired ? t.refresh : plan.approval ? (plan.approval.reset ? t.resetAllowance : t.approve) : t.confirm}</button></div>
     </section>}
@@ -255,7 +256,7 @@ export function AgentWorkspace({ language }: { language: 'en' | 'zh' }) {
   </>
   return <section className="agent-workspace" aria-label={t.title}><AIChatCard title={t.title} subtitle={t.subtitle} greeting={t.greeting}
     prompt={t.help} prompts={t.examples} placeholder={t.prompt} sendLabel={t.send} resetLabel={t.reset} messages={messages}
-    note={t.note} sourceHref={manifest.sourceTokenList} sourceLabel={t.records} agentLabel="FIRSTBELL" composerCaption={`BNB SMART CHAIN / ${assetCatalog.length} TOKENS`}
+    note={t.note} sourceHref={manifest.sourceTokenList} sourceLabel={t.records} agentLabel="FIRSTBELL" headingLabel={'FIRSTBELL / ' + text(language, 'Agent', '助手').toUpperCase()} composerCaption={`BNB SMART CHAIN / ${assetCatalog.length} TOKENS`}
     icon={<img src="/assets/firstbell-mark.svg" alt="" />} busy={busy} resetDisabled={pending} afterMessages={messages.length || order || notice || plan ? tradeCard : undefined}
     status={<div className="agent-wallet-status"><Wallet size={14} />{address ? <span title={address}>{t.connected} · {address.slice(0, 6)}…{address.slice(-4)}</span> : authenticated ? <span>{t.walletLoading}</span> : <button type="button" onClick={login}>{t.login}</button>}</div>}
     onSend={prompt => void answer(prompt)} onReset={() => { if (busy || pending) return; operation.current += 1; controller.current?.abort(); setMessages([]); setPlan(null); setIntent(null); setNotice('') }} /></section>

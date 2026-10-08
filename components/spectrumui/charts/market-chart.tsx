@@ -15,11 +15,9 @@ import {
   MORPH_SAMPLES,
   RollingNumber,
   RangeSelector,
-  DATE_FULL,
-  DATE_SHORT,
-  formatAxisPrice,
-  formatMoney,
-  formatSignedPct,
+  formatAxisPrice as engineAxisPrice,
+  formatMoney as engineMoney,
+  formatSignedPct as enginePercent,
   marketVarsClassName,
   monotonePath,
   mulberry32,
@@ -34,12 +32,13 @@ import {
 
 const NO_TICKS: Candle[] = [];
 
-const PAD = { top: 12, right: 60, bottom: 22, left: 12 };
 const VOLUME_SHARE = 0.2;
 const VOLUME_GAP = 12;
 
 export interface MarketChartProps {
   className?: string;
+  locale?: string;
+  chartLabel?: string;
   data?: Candle[];
   symbol?: string;
   name?: string;
@@ -63,6 +62,8 @@ export interface MarketChartProps {
 
 export function MarketChart({
   className,
+  locale = 'en-US',
+  chartLabel = 'price chart',
   data = [],
   symbol = 'SOL',
   name = 'Solana',
@@ -83,6 +84,12 @@ export function MarketChart({
   errorDescription,
   retryLabel,
 }: MarketChartProps) {
+  const PAD = { top: 12, right: locale === 'en-US' ? 60 : 84, bottom: 22, left: 12 };
+  const formatAxisPrice = (value: number) => engineAxisPrice(value, locale);
+  const DATE_SHORT = React.useMemo(() => new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', timeZone: 'UTC' }), [locale]);
+  const DATE_FULL = React.useMemo(() => new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }), [locale]);
+  const formatMoney = (value: number, compact = false) => engineMoney(value, compact, locale);
+  const formatSignedPct = (value: number) => enginePercent(value, locale);
   const reduce = usePrefersReducedMotion();
   const [wrapRef, width] = useElementWidth<HTMLDivElement>();
   const [rangeLabel, setRangeLabel] = React.useState(
@@ -368,7 +375,7 @@ export function MarketChart({
                 <span className="text-neutral-500 dark:text-neutral-400">
                   V{' '}
                   <span className="text-neutral-950 dark:text-white">
-                    {formatMoney(active.volume, true).replace('$', '')}
+                    {new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 2 }).format(active.volume)}
                   </span>
                 </span>
               </>
@@ -403,7 +410,7 @@ export function MarketChart({
             viewBox={`0 0 ${w} ${h}`}
             className="block w-full touch-pan-y select-none overflow-visible"
             role="img"
-            aria-label={`${symbol} ${name} price chart, ${rangeLabel} range. ${formatMoney(
+            aria-label={`${symbol} ${name} ${chartLabel}, ${rangeLabel}. ${formatMoney(
               last?.close ?? 0,
             )}, ${formatSignedPct(delta)}.`}
             tabIndex={0}

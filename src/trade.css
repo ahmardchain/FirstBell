@@ -244,3 +244,9 @@
   .trade-rwa-values>div:last-child { grid-column:1 / -1; }
   .trade-rwa-values strong { font-size:16px; }
 }
+
+@media(max-width:540px) {
+  .trade-heading-row { flex-wrap:wrap; row-gap:14px; }
+  .trade-header-right { flex-basis:100%; align-items:flex-start; padding-top:0; }
+  .trade-price-pair { gap:24px; flex-wrap:wrap; }
+}

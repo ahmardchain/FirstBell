@@ -1,3 +1,4 @@
+import { localized, text, localeFor, type Language } from '../lib/i18n'
 import { ArrowDownLeft, ArrowRightLeft, ArrowUpRight, RefreshCw } from 'lucide-react'
 import type { AgentOrder } from '../lib/agent-trading'
 import { orderAmounts, type CashTransfer } from '../lib/portfolio-performance'
@@ -9,19 +10,18 @@ import { displayQuantity } from './wallet-balances'
 
 export function PortfolioActivity({ orders, withdrawals, cash, deposits, language, search, hidden, orderError, onDeposit, onWithdraw }: {
   orders: AgentOrder[]; withdrawals: WithdrawalRecord[]; cash?: CashActivityController; deposits?: DepositController;
-  language: 'en' | 'zh'; search: string; hidden: boolean; orderError?: boolean; onDeposit: (id: string) => void; onWithdraw: () => void
+  language: Language; search: string; hidden: boolean; orderError?: boolean; onDeposit: (id: string) => void; onWithdraw: () => void
 }) {
-  const zh = language === 'zh', query = search.trim().toLowerCase()
-  const t = zh ? { deposit: '充值', withdrawal: '提现', buy: '买入', sell: '卖出', trade: '交易', filled: '已成交', pending: '等待确认', settling: '结算中',
-    cancelled: '已取消', failed: '失败', expired: '已过期', unknown: '正在核实', confirmed: '已确认', notSent: '未发送',
-    received: '收到', expected: '预计收到', receipt: '查看交易', date: '时间未记录', empty: '暂无活动',
-    unavailable: '部分活动暂不可用，已保存的记录仍在显示。', retry: '重试', more: '加载更多', checking: '查询中…', note: '链上转账来自最近六个月的记录；订单和提现保存在此设备。' }
-    : { deposit: 'Deposit', withdrawal: 'Withdrawal', buy: 'Buy', sell: 'Sell', trade: 'Trade', filled: 'Filled', pending: 'Pending', settling: 'Settling',
+  const query = search.trim().toLowerCase()
+  const t = localized({ en: { deposit: 'Deposit', withdrawal: 'Withdrawal', buy: 'Buy', sell: 'Sell', trade: 'Trade', filled: 'Filled', pending: 'Pending', settling: 'Settling',
       cancelled: 'Cancelled', failed: 'Failed', expired: 'Expired', unknown: 'Checking outcome', confirmed: 'Confirmed', notSent: 'Not sent',
       received: 'Received', expected: 'Estimated receive', receipt: 'View transaction', date: 'Time not recorded', empty: 'No activity yet',
-      unavailable: 'Some activity is unavailable. Saved records are still shown.', retry: 'Retry', more: 'Load more', checking: 'Checking…', note: 'On-chain transfers cover the last 6 months; orders and withdrawals are saved on this device.' }
-  const date = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : t.date
-  const quantity = (value: string, symbol = 'USDT') => hidden ? '••••••' : `${displayQuantity(value, 8)} ${symbol}`
+      unavailable: 'Some activity is unavailable. Saved records are still shown.', retry: 'Retry', more: 'Load more', checking: 'Checking…', note: 'On-chain transfers cover the last 6 months; orders and withdrawals are saved on this device.' }, zh: { deposit: '充值', withdrawal: '提现', buy: '买入', sell: '卖出', trade: '交易', filled: '已成交', pending: '等待确认', settling: '结算中',
+    cancelled: '已取消', failed: '失败', expired: '已过期', unknown: '正在核实', confirmed: '已确认', notSent: '未发送',
+    received: '收到', expected: '预计收到', receipt: '查看交易', date: '时间未记录', empty: '暂无活动',
+    unavailable: '部分活动暂不可用，已保存的记录仍在显示。', retry: '重试', more: '加载更多', checking: '查询中…', note: '链上转账来自最近六个月的记录；订单和提现保存在此设备。' } }, language)
+  const date = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(localeFor(language), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : t.date
+  const quantity = (value: string, symbol = 'USDT') => hidden ? '••••••' : `${displayQuantity(value, 8, localeFor(language))} ${symbol}`
   const orderStatus = (status: AgentOrder['status']) => status === 'FILLED' ? t.filled : status === 'CONFIRMING' ? t.settling : status === 'CANCELLED' ? t.cancelled
     : status === 'FAILED' ? t.failed : status === 'EXPIRED' ? t.expired : t.pending
   const withdrawalStatus = (status: WithdrawalRecord['status']) => status === 'completed' ? t.confirmed : status === 'failed' ? t.failed
@@ -72,12 +72,12 @@ export function PortfolioActivity({ orders, withdrawals, cash, deposits, languag
         <div className="portfolio-activity-main"><strong>{title}</strong><span title={hidden ? undefined : amount}>{amount}</span><small>{detail}</small></div>
         <div className="portfolio-activity-meta"><span>{status}</span><time dateTime={entry.at}>{date(entry.at)}</time></div>
         <div className="portfolio-activity-actions">
-          {entry.type === 'withdrawal' && ['unknown', 'pending', 'confirming'].includes(entry.withdrawal.status) && <button type="button" onClick={onWithdraw}>{zh ? '查询提现' : 'Check withdrawal'}</button>}
+          {entry.type === 'withdrawal' && ['unknown', 'pending', 'confirming'].includes(entry.withdrawal.status) && <button type="button" onClick={onWithdraw}>{text(language, 'Check withdrawal', '查询提现')}</button>}
           {hash && <a href={`https://bscscan.com/tx/${hash}`} target="_blank" rel="noreferrer">{t.receipt}<ArrowUpRight size={13} /></a>}
         </div>
       </article>
     })}
-    {!entries.length && <div className="portfolio-content-empty" role="status">{cash?.loading || deposits?.loading ? zh ? '加载中…' : 'Loading…' : hasError ? t.unavailable : t.empty}</div>}
+    {!entries.length && <div className="portfolio-content-empty" role="status">{cash?.loading || deposits?.loading ? text(language, 'Loading…', '加载中…') : hasError ? t.unavailable : t.empty}</div>}
     {cash?.cursor && <button className="portfolio-activity-more" type="button" disabled={cash.loading} onClick={() => void cash.more()}>{cash.loading ? t.checking : t.more}</button>}
     {entries.length > 0 && <p className="portfolio-activity-note">{t.note}</p>}
   </div>

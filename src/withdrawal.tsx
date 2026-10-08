@@ -1,3 +1,4 @@
+import { amountForInput, amountFromInput, localeFor, localized, text, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { ArrowLeft, ArrowUpRight, Check, LoaderCircle } from 'lucide-react'
 import { parseUnits } from 'viem'
@@ -54,9 +55,9 @@ const copy = {
 }
 
 export function WithdrawalPage({ address, balance, language, controller, onBack }: {
-  address: string; balance: string | null; language: 'en' | 'zh'; controller: WithdrawalController; onBack: () => void
+  address: string; balance: string | null; language: Language; controller: WithdrawalController; onBack: () => void
 }) {
-  const t = copy[language], { phase, plan, result, error, busy, locked, expired } = controller
+  const t = localized(copy, language), { phase, plan, result, error, busy, locked, expired } = controller
   const [amount, setAmount] = React.useState(''), [recipient, setRecipient] = React.useState('')
   const titleRef = React.useRef<HTMLHeadingElement>(null)
   React.useEffect(() => { titleRef.current?.focus() }, [phase])
@@ -76,9 +77,9 @@ export function WithdrawalPage({ address, balance, language, controller, onBack 
     <div className="withdrawal-content">
       <div className="withdrawal-asset"><img src="/assets/funding/usdt.svg" alt="" /><span><strong>USDT</strong><small>BNB Smart Chain · BEP20</small></span></div>
       {editing ? <form onSubmit={event => { event.preventDefault(); if (valid && !busy) void controller.review(recipient, amount) }}>
-        <label className="withdrawal-field"><span>{t.amount}</span><div className="withdrawal-amount"><input aria-label={t.amount} type="text" inputMode="decimal" autoComplete="off" value={amount} disabled={busy} onChange={event => setAmount(event.target.value)} placeholder="0.00" /><span>USDT</span><button type="button" disabled={busy || balance === null || balance === '0'} onClick={() => setAmount(balance ?? '')}>{t.max}</button></div></label>
-        <p className="withdrawal-available">{t.available}: {balance === null ? '…' : displayQuantity(balance, 8)} USDT</p>
-        <label className="withdrawal-field"><span>{t.recipient}</span><input className="withdrawal-address-input" aria-describedby="withdrawal-address-hint" placeholder="0x…" value={recipient} disabled={busy} autoComplete="off" autoCapitalize="off" spellCheck={false} onChange={event => setRecipient(event.target.value)} /></label>
+        <label className="withdrawal-field"><span>{t.amount}</span><div className="withdrawal-amount"><input aria-label={t.amount} type="text" inputMode="decimal" autoComplete="off" value={amountForInput(amount, language)} disabled={busy} onChange={event => setAmount(amountFromInput(event.target.value, language))} placeholder={amountForInput("0.00", language)} /><span>USDT</span><button type="button" disabled={busy || balance === null || balance === '0'} onClick={() => setAmount(balance ?? '')}>{t.max}</button></div></label>
+        <p className="withdrawal-available">{t.available}: {balance === null ? '…' : displayQuantity(balance, 8, localeFor(language))} USDT</p>
+        <label className="withdrawal-field"><span>{t.recipient}</span><input className="withdrawal-address-input" aria-describedby="withdrawal-address-hint" placeholder={text(language, "0x…")} value={recipient} disabled={busy} autoComplete="off" autoCapitalize="off" spellCheck={false} onChange={event => setRecipient(event.target.value)} /></label>
         <p id="withdrawal-address-hint" className="withdrawal-note">{t.addressHint}</p>
         {tooMuch && <p className="deposit-error" role="alert">{t.errors.insufficient_balance}</p>}
         {error && <p className="deposit-error" role="alert">{message}</p>}
@@ -90,7 +91,7 @@ export function WithdrawalPage({ address, balance, language, controller, onBack 
           <h2>{phase === 'completed' ? t.completed : phase === 'failed' ? t.failed : phase === 'uncertain' ? t.unknown : phase === 'signing' ? t.signing : t.processing}</h2>
           <p>{phase === 'completed' ? t.completedNote : phase === 'failed' ? t.failedNote : phase === 'uncertain' ? t.unknownNote : t.processingNote}</p>
         </div>}
-        {plan && <dl className="withdrawal-review"><div><dt>{t.amount}</dt><dd>{plan.amount} USDT</dd></div><div><dt>{t.recipient}</dt><dd className="withdrawal-destination">{plan.recipient}</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain (BEP20)</dd></div><div><dt>{t.fee}</dt><dd>{plan.sponsored ? t.sponsored : `${plan.networkFeeBnb} BNB · ${t.estimated}`}</dd></div></dl>}
+        {plan && <dl className="withdrawal-review"><div><dt>{t.amount}</dt><dd>{amountForInput(plan.amount, language)} USDT</dd></div><div><dt>{t.recipient}</dt><dd className="withdrawal-destination">{plan.recipient}</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain (BEP20)</dd></div><div><dt>{t.fee}</dt><dd>{plan.sponsored ? t.sponsored : `${amountForInput(plan.networkFeeBnb, language)} BNB · ${t.estimated}`}</dd></div></dl>}
         {error && <p className="deposit-error" role="alert">{message}</p>}
         {reviewing && <>
           {expired && <p className="deposit-error" role="alert">{t.expires}</p>}

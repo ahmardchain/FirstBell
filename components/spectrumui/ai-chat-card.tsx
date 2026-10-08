@@ -37,6 +37,7 @@ export interface AIChatCardProps {
   resetDisabled?: boolean
   composerCaption?: string
   agentLabel?: string
+  headingLabel?: string
 }
 
 export function AIChatCard({
@@ -44,6 +45,7 @@ export function AIChatCard({
   sourceHref, sourceLabel, resetLabel, sendLabel, messages,
   icon, autoType = true, onSend, onReset, className, afterMessages, status, busy = false, resetDisabled = false,
   composerCaption = 'BNB SMART CHAIN', agentLabel = 'FIRSTBELL / SOURCE',
+  headingLabel = 'FIRSTBELL / AGENT',
 }: AIChatCardProps) {
   const rootRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -80,7 +82,7 @@ export function AIChatCard({
 
   return <div ref={rootRef} className={cn('ai-chat-card', className)}>
     <header className="ai-chat-header">
-      <div><span className="ai-chat-index">FIRSTBELL / AGENT</span><h1>{title}</h1><p>{subtitle}</p>{status}</div>
+      <div><span className="ai-chat-index">{headingLabel}</span><h1>{title}</h1><p>{subtitle}</p>{status}</div>
       <motion.button type="button" className="ai-chat-reset" aria-label={resetLabel} title={resetLabel}
         whileTap={reduce ? undefined : { scale: .93 }} disabled={busy || resetDisabled}
         onClick={() => { setSpins(count => count + 1); setUserActive(false); setUserMessage(''); onReset() }}>

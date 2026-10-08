@@ -1,7 +1,9 @@
+import { LanguageSelect } from './language-select'
+import { localized, text, localeFor, savedLanguage, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { usePrivy } from '@privy-io/react-auth'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowRight, ArrowUpRight, Bookmark, ChevronDown, ExternalLink, Globe2, House, Menu, Moon, Search, Sparkles, Sun, X, ChartNoAxesCombined, ChartPie } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Bookmark, ExternalLink, House, Menu, Moon, Search, Sparkles, Sun, X, ChartNoAxesCombined, ChartPie } from 'lucide-react'
 import manifest from '@/asset-sources.json'
 import { assetCatalog as assets, assetLogo, tokenLogoError, type CatalogAsset as Asset } from '../lib/asset-catalog'
 import { AgentWorkspace } from './agent'
@@ -13,7 +15,6 @@ import { getTokenPrices, type TokenPrice } from './market-api'
 import './app.css'
 import './agent.css'
 
-type Language = 'en' | 'zh'
 type Theme = 'dark' | 'light'
 type Tab = 'home' | 'trade' | 'agent' | 'portfolio'
 const pageSize = 24
@@ -39,13 +40,6 @@ const copy = {
     agentTitle: 'Asset guide', agentIntro: 'Source records for the Ondo token catalog.',
     agentGreeting: 'What would you like to verify?', agentHelp: 'Ask about an issuer, contract, or network. Include a company or token symbol.',
     agentPrompt: 'Ask about an asset…', agentSend: 'Send question', agentReset: 'Start a new conversation',
-    quick: ['Who issues NVDAon?', 'What is the TSLAon contract?', 'Which network is MSFTon on?'],
-    answerIssuer: (a: Asset) => `${a.symbol} is listed as an Ondo tokenized asset. Verify the issuer and product terms at the source before relying on this listing.`,
-    answerContract: (a: Asset) => `The BNB Smart Chain contract listed for ${a.symbol} is ${a.address}. Open BscScan to inspect it directly.`,
-    answerNetwork: (a: Asset) => `${a.symbol} is listed on BNB Smart Chain (chain ID 56).`,
-    answerSelect: 'Include a company or token symbol such as NVDAon, TSLAon, or AAPLon so I can look up its record.',
-    answerOther: 'I can check this asset’s issuer, contract address, or network. Ask one of those questions.',
-    agentNote: 'This guide uses fixed source records. It is not a live AI model or investment advice.',
     emptyBody: 'Bookmark an asset on Home to add it here.',
     footer: 'Research the token, not just the ticker.', docs: 'Documentation', github: 'GitHub', x: 'BNB Chain on X', site: 'Website',
   },
@@ -64,13 +58,6 @@ const copy = {
     agentTitle: '资产指南', agentIntro: 'Ondo 代币目录的公开来源记录。',
     agentGreeting: '你想核实什么？', agentHelp: '可以询问发行方、合约或网络，并注明公司或代币代码。',
     agentPrompt: '询问一项资产…', agentSend: '发送问题', agentReset: '开始新对话',
-    quick: ['NVDAon 由谁发行？', 'TSLAon 的合约地址是什么？', 'MSFTon 在哪条链上？'],
-    answerIssuer: (a: Asset) => `${a.symbol} 被列为 Ondo 代币化资产。使用前请通过来源核实发行方及产品条款。`,
-    answerContract: (a: Asset) => `${a.symbol} 在 BNB 智能链上列出的合约地址是 ${a.address}。请打开 BscScan 直接核实。`,
-    answerNetwork: (a: Asset) => `${a.symbol} 列在 BNB 智能链上（链 ID 56）。`,
-    answerSelect: '请注明公司或代币代码，例如 NVDAon、TSLAon 或 AAPLon，以便我查询对应记录。',
-    answerOther: '我可以核实这项资产的发行方、合约地址或网络。请问其中一个问题。',
-    agentNote: '本指南基于固定的公开记录，不是实时 AI 模型或投资建议。',
     emptyBody: '在首页收藏一项资产，即可在这里看到。',
     footer: '研究代币，不止看股票代码。', docs: '项目文档', github: 'GitHub', x: 'BNB Chain 的 X', site: '网站',
   },
@@ -83,7 +70,7 @@ function AssetMark({ asset, className = '' }: { asset: Asset; className?: string
 export default function FirstBellApp() {
   const { ready, authenticated, user, getAccessToken } = usePrivy()
   const reduceMotion = useReducedMotion()
-  const [language, setLanguage] = React.useState<Language>(() => localStorage.getItem('firstbell-language') === 'zh' ? 'zh' : 'en')
+  const [language, setLanguage] = React.useState<Language>(() => savedLanguage())
   const [theme, setTheme] = React.useState<Theme>(() => localStorage.getItem('firstbell-theme') === 'dark' ? 'dark' : 'light')
   const [tab, setTab] = React.useState<Tab>(() => {
     const requested = new URLSearchParams(window.location.search).get('tab')
@@ -107,13 +94,13 @@ export default function FirstBellApp() {
   const [homeMarkets, setHomeMarkets] = React.useState<Record<string, TokenPrice | null>>({})
   const [mobileMenu, setMobileMenu] = React.useState(false)
   const dialogRef = React.useRef<HTMLElement>(null)
-  const t = copy[language]
+  const t = localized(copy, language)
   const visible = React.useMemo(() => assets.filter(a => (filter === 'all' || saved.includes(a.symbol))
     && `${a.company} ${a.symbol}`.toLowerCase().includes(query.trim().toLowerCase())), [filter, saved, query])
   const currentPage = Math.min(page, Math.max(0, Math.ceil(visible.length / pageSize) - 1))
   const shown = React.useMemo(() => visible.slice(currentPage * pageSize, (currentPage + 1) * pageSize), [visible, currentPage])
 
-  React.useEffect(() => { document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'; localStorage.setItem('firstbell-language', language) }, [language])
+  React.useEffect(() => { document.documentElement.lang = localeFor(language); localStorage.setItem('firstbell-language', language) }, [language])
   React.useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('firstbell-theme', theme); document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#ffffff' : '#080808') }, [theme])
   React.useEffect(() => { localStorage.setItem('firstbell-saved', JSON.stringify(saved)) }, [saved])
   React.useEffect(() => {
@@ -187,7 +174,7 @@ export default function FirstBellApp() {
     logoSrc={assetLogo(asset)} logoClassName={`brand-mark brand-mark--${asset.mark}`}
     ticker={asset.symbol} name={asset.company} price={homeMarkets[asset.symbol]?.priceUsd ?? null}
     change={homeMarkets[asset.symbol]?.change24hPct ?? null} loading={homeMarkets[asset.symbol] === undefined}
-    locale={language === 'zh' ? 'zh-CN' : 'en-US'} buyLabel={t.buy} inspectLabel={t.open}
+    locale={localeFor(language)} buyLabel={t.buy} inspectLabel={t.open}
     loadingLabel={t.loadingPrice} unavailableLabel={t.unavailablePrice} changeUnavailableLabel={t.noChange}
     onInspect={() => setSelected(asset)}
     onBuy={() => { setWorkingAsset(asset); setTradeEntry('buy'); switchTab('trade') }}
@@ -199,12 +186,12 @@ export default function FirstBellApp() {
   return <div className="app-shell" data-tab={tab}>
     <header className="app-header">
       <a href="/" className="app-brand" aria-label={t.back}><img src="/assets/firstbell-mark.svg" alt="" />FirstBell</a>
-      <nav className="app-desktop-nav" aria-label="App navigation">{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-desktop-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={16} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
+      <nav className="app-desktop-nav" aria-label={text(language, "App navigation")}>{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-desktop-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={16} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
       <div className="app-header-actions">
-        <button type="button" className="app-header-tool app-language" aria-label={t.language} onClick={() => setLanguage(value => value === 'en' ? 'zh' : 'en')}><Globe2 size={17} />{language === 'en' ? 'EN' : '中文'}<ChevronDown size={12} /></button>
+        <LanguageSelect language={language} onChange={setLanguage} className="app-header-tool app-language" />
         <button type="button" className="app-header-tool" aria-label={t.theme} onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}><span className="motion-icon-swap" data-state={theme === 'dark' ? 'a' : 'b'}><Sun size={18} /><Moon size={18} /></span></button>
         <a href="/" className="app-website">{t.site}<ArrowUpRight size={16} /></a>
-        <button type="button" className="app-header-tool app-mobile-menu" aria-label="Open menu" aria-expanded={mobileMenu} onClick={() => setMobileMenu(value => !value)}><span className="motion-icon-swap" data-state={mobileMenu ? 'b' : 'a'}><Menu size={20} /><X size={20} /></span></button>
+        <button type="button" className="app-header-tool app-mobile-menu" aria-label={text(language, "Open menu")} aria-expanded={mobileMenu} onClick={() => setMobileMenu(value => !value)}><span className="motion-icon-swap" data-state={mobileMenu ? 'b' : 'a'}><Menu size={20} /><X size={20} /></span></button>
       </div>
     </header>
     <AnimatePresence>{mobileMenu && <motion.div className="app-mobile-popover" initial={reduceMotion ? false : { opacity: 0, scale: .97, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .99, y: -4 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}><a href="/">{t.back}<ArrowUpRight size={16} /></a><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={16} /></a></motion.div>}</AnimatePresence>
@@ -212,7 +199,7 @@ export default function FirstBellApp() {
       <AnimatePresence mode="wait" initial={false}><motion.div key={tab} className="app-view" initial={reduceMotion ? false : { opacity: 0, x: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 1 } : { opacity: 0, x: -8, filter: 'blur(3px)' }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
       {tab === 'home' && <>
         <section className="app-browser" aria-labelledby="browse-title"><div className="app-section-heading"><div><h1 id="browse-title">{t.browse}<span className="count">{assets.length}</span></h1><p>{t.browseBody}</p></div></div>
-          <div className="app-browser-controls"><div className="app-filter" role="group" aria-label="Asset filter"><button type="button" className={filter === 'all' ? 'active' : ''} aria-pressed={filter === 'all'} onClick={() => { setFilter('all'); setPage(0) }}>{t.all}</button><button type="button" className={filter === 'saved' ? 'active' : ''} aria-pressed={filter === 'saved'} onClick={() => { setFilter('saved'); setPage(0) }}>{t.saved}{saved.length > 0 && <sup>{saved.length}</sup>}</button></div><label className="app-search"><Search size={18} /><input type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(0) }} placeholder={t.search} aria-label={t.search} /></label></div>
+          <div className="app-browser-controls"><div className="app-filter" role="group" aria-label={text(language, "Asset filter")}><button type="button" className={filter === 'all' ? 'active' : ''} aria-pressed={filter === 'all'} onClick={() => { setFilter('all'); setPage(0) }}>{t.all}</button><button type="button" className={filter === 'saved' ? 'active' : ''} aria-pressed={filter === 'saved'} onClick={() => { setFilter('saved'); setPage(0) }}>{t.saved}{saved.length > 0 && <sup>{saved.length}</sup>}</button></div><label className="app-search"><Search size={18} /><input type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(0) }} placeholder={t.search} aria-label={t.search} /></label></div>
           <div className="app-result-count app-stock-heading"><span>{String(visible.length).padStart(2, '0')} {t.result}</span><span>{t.priceCaption}</span></div>
           {visible.length ? <><div className="app-stock-list">{shown.map(assetCard)}</div>{visible.length > pageSize && <nav className="app-token-pages" aria-label={t.pages}><button type="button" disabled={currentPage === 0} onClick={() => { setPage(currentPage - 1); window.scrollTo({ top: 0, behavior: 'instant' }) }}>{t.previous}</button><span aria-live="polite">{currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, visible.length)} / {visible.length}</span><button type="button" disabled={(currentPage + 1) * pageSize >= visible.length} onClick={() => { setPage(currentPage + 1); window.scrollTo({ top: 0, behavior: 'instant' }) }}>{t.next}<ArrowRight size={16} /></button></nav>}</> : <div className="app-empty"><Search size={26} strokeWidth={1.2} /><h3>{t.noResults}</h3><p>{filter === 'saved' && saved.length === 0 ? t.emptyBody : t.emptySearch}</p><button type="button" onClick={() => { setFilter('all'); setQuery(''); setPage(0) }}>{t.clear}<ArrowRight size={16} /></button></div>}
         </section>
@@ -224,7 +211,7 @@ export default function FirstBellApp() {
       {agentOpened && <div hidden={tab !== 'agent'}><AgentWorkspace language={language} /></div>}
     </main>
     <footer className="app-footer"><div><a href="/" className="app-brand"><img src="/assets/firstbell-mark.svg" alt="" />FirstBell</a><p>{t.footer}</p></div><div><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={14} /></a><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github}<ArrowUpRight size={14} /></a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x}<ArrowUpRight size={14} /></a></div><small>© 2026 FIRSTBELL / BNB SMART CHAIN</small></footer>
-    <nav className="app-bottom-nav" aria-label="App navigation">{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-bottom-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={22} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
-    <AnimatePresence>{selected && <div className="asset-dialog-layer"><motion.button type="button" className="asset-dialog-backdrop" aria-label="Close asset file" onClick={() => setSelected(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} /><motion.aside ref={dialogRef} className="asset-dialog" role="dialog" aria-modal="true" aria-labelledby="asset-dialog-title" initial={reduceMotion ? false : { x: 100, opacity: 0, filter: 'blur(2px)' }} animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 0 } : { x: 100, opacity: 0, filter: 'blur(2px)' }} transition={{ duration: reduceMotion ? 0 : .4, ease: [.22, 1, .36, 1] }}><div className="dialog-top"><span className="app-label">{t.detailKicker} / {selected.symbol}</span><button type="button" aria-label="Close asset file" onClick={() => setSelected(null)}><X size={21} /></button></div><div className={`dialog-mark asset-art--${selected.mark}`}><AssetMark asset={selected} /></div><div className="dialog-body"><div className="dialog-title"><div><h2 id="asset-dialog-title">{selected.company}</h2><p>{selected.symbol} / BNB SMART CHAIN</p></div><button type="button" aria-label={saved.includes(selected.symbol) ? t.unsave : t.save} aria-pressed={saved.includes(selected.symbol)} onClick={() => toggleSaved(selected.symbol)}><Bookmark size={20} fill={saved.includes(selected.symbol) ? 'currentColor' : 'none'} /></button></div><p className="dialog-intro">{t.detailIntro}</p><dl><div><dt>{t.symbol}</dt><dd>{selected.symbol}</dd></div><div><dt>{t.issuer}</dt><dd>Ondo Global Markets</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain / 56</dd></div><div><dt>{t.contract}</dt><dd className="contract-value" title={selected.address}>{selected.address}</dd></div></dl><p className="dialog-caution">{t.caution}</p><a href={scan(selected)} target="_blank" rel="noreferrer" className="dialog-primary">{t.exploreContract}<ExternalLink size={17} /></a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer" className="dialog-secondary">{t.tokenList}<ArrowUpRight size={17} /></a></div></motion.aside></div>}</AnimatePresence>
+    <nav className="app-bottom-nav" aria-label={text(language, "App navigation")}>{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-bottom-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={22} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
+    <AnimatePresence>{selected && <div className="asset-dialog-layer"><motion.button type="button" className="asset-dialog-backdrop" aria-label={text(language, "Close asset file")} onClick={() => setSelected(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} /><motion.aside ref={dialogRef} className="asset-dialog" role="dialog" aria-modal="true" aria-labelledby="asset-dialog-title" initial={reduceMotion ? false : { x: 100, opacity: 0, filter: 'blur(2px)' }} animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 0 } : { x: 100, opacity: 0, filter: 'blur(2px)' }} transition={{ duration: reduceMotion ? 0 : .4, ease: [.22, 1, .36, 1] }}><div className="dialog-top"><span className="app-label">{t.detailKicker} / {selected.symbol}</span><button type="button" aria-label={text(language, "Close asset file")} onClick={() => setSelected(null)}><X size={21} /></button></div><div className={`dialog-mark asset-art--${selected.mark}`}><AssetMark asset={selected} /></div><div className="dialog-body"><div className="dialog-title"><div><h2 id="asset-dialog-title">{selected.company}</h2><p>{selected.symbol} / BNB SMART CHAIN</p></div><button type="button" aria-label={saved.includes(selected.symbol) ? t.unsave : t.save} aria-pressed={saved.includes(selected.symbol)} onClick={() => toggleSaved(selected.symbol)}><Bookmark size={20} fill={saved.includes(selected.symbol) ? 'currentColor' : 'none'} /></button></div><p className="dialog-intro">{t.detailIntro}</p><dl><div><dt>{t.symbol}</dt><dd>{selected.symbol}</dd></div><div><dt>{t.issuer}</dt><dd>Ondo Global Markets</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain / 56</dd></div><div><dt>{t.contract}</dt><dd className="contract-value" title={selected.address}>{selected.address}</dd></div></dl><p className="dialog-caution">{t.caution}</p><a href={scan(selected)} target="_blank" rel="noreferrer" className="dialog-primary">{t.exploreContract}<ExternalLink size={17} /></a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer" className="dialog-secondary">{t.tokenList}<ArrowUpRight size={17} /></a></div></motion.aside></div>}</AnimatePresence>
   </div>
 }

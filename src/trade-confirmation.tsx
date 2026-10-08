@@ -1,3 +1,4 @@
+import { amountForInput, amountFromInput, localized, text, localeFor, formatText, type Language } from '../lib/i18n'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
@@ -33,7 +34,7 @@ const words = {
     uncertain: 'Order outcome is still unconfirmed.', recover: 'Resume previous trade', previous: 'Previous trades', waiting: 'Token permission is still unconfirmed. Checking the same transaction before another trade.', separate: 'An earlier order is still pending. Confirm places a separate trade; it does not replace or cancel that order.', expiredOrder: 'Order expired.', cancelledOrder: 'Order cancelled.', expiredRecovery: 'This order has expired. Its outcome is still unverified; it will not be submitted again.', unavailableOrder: 'This saved order could not be verified. Its outcome is still unknown.', tx: 'View transaction', disconnected: 'Not connected',
     available: 'Available', balanceLoading: 'Loading balance…', balanceUnavailable: 'Balance unavailable', balanceLogin: 'Log in to see your balance', balanceRefresh: 'Refresh available balance',
     buy: 'Buy', sell: 'Sell', confirmBuy: 'Confirm buy', confirmSell: 'Confirm sell', closeReview: 'Close confirmation', total: 'You spend', tradeComplete: 'Trade complete',
-    minimumOrder: (value: string | null) => value ? `The provider requires a trade worth at least $${value}. Choose an amount that meets it.` : 'This amount is below the provider’s minimum trade value. Choose a larger amount.',
+    minimumOrder: 'The provider requires a trade worth at least ${value}. Choose an amount that meets it.', minimumOrderUnknown: 'This amount is below the provider’s minimum trade value. Choose a larger amount.',
     cancellationErrors: { cancellation_unknown: 'Cancellation is unconfirmed. Keep checking this order; it may still fill.', cancellation_unavailable: 'Cancellation is unavailable on this route.', rejected: 'Cancellation was not signed. The order remains active.' },
     sponsorshipErrors: { sponsorship_not_configured: 'Network fee coverage is not available yet. No transaction was sent.', sponsorship_rejected: 'Network fee coverage was declined. No transaction was sent.', sponsorship_unavailable: 'Network fee coverage is temporarily unavailable. Retry.', invalid_sponsored_transaction: 'The signed permission does not match this order. Nothing was sent.', approval_nonce_changed: 'Wallet activity changed. Refresh the permission for this order.', approval_submission_unknown: 'Token permission is still unconfirmed. Check this same transaction.', approval_timeout: 'Token permission is taking longer than expected. Check this same transaction.' },
     errors: { ...routeFailureMessages.en, insufficient_balance: 'Not enough of the spending token in your wallet.', insufficient_gas: 'Add a little BNB for the network fee.', unauthorized: 'Sign in again and retry.', session_unavailable: 'Your session could not be loaded. Retry.', session_refresh_failed: 'Sign in again to refresh your session.', session_timeout: 'Your sign-in session took too long. Retry.', wallet_not_verified: 'Your wallet could not be verified. Sign in again.', wallet_verification_unavailable: 'Wallet verification is temporarily unavailable.', wallet_verification_not_configured: 'Wallet verification needs to be enabled.', account_not_configured: 'Account verification needs to be configured.', not_configured: 'Trading needs to be configured.', wallet_loading: 'Your wallet is still being prepared.', wallet_changed: 'Your wallet changed. Review a new quote.', wallet_rejected: 'Wallet confirmation cancelled. No order submitted.', quote_timeout: 'The quote took too long. Retry.', chain_unavailable: 'BSC routes are unavailable right now.', market_closed: 'Trading is unavailable while this market is closed.', rate_limited: 'Wait a minute before getting another quote.', order_fee_changed: 'The provider changed its fee format. Get a fresh quote and confirm again.', stale_quote: 'Quote expired. Get a fresh quote.', invalid_amount: 'Check the amount and its decimal places.', invalid_trade_request: 'Enter a valid amount.', unsupported_order_schema: 'This route cannot be safely signed yet.', invalid_order_payload: 'The order does not match your trade. Get a new quote.', invalid_order_signature: 'The wallet signature does not match this order.', simulation_failed: 'Token approval could not be verified. Nothing was sent.', approval_required: 'Token approval is required. Get a fresh quote.', approval_failed: 'Token approval failed. Get a fresh quote.', settlement_not_verified: 'Settlement could not be verified. Check the order again.', provider_auth_error: 'Trading provider access needs to be checked.', provider_error: 'The trading provider could not complete this request. Retry.' },
@@ -48,7 +49,7 @@ const words = {
     uncertain: '订单结果尚未确认。', recover: '恢复上一笔交易', previous: '之前的交易', waiting: '代币授权尚未确认。正在查询同一笔交易，确认后可进行下一笔交易。', separate: '之前的订单仍未完成。确认会下一个独立订单，不会替换或取消之前的订单。', expiredOrder: '订单已过期。', cancelledOrder: '订单已取消。', expiredRecovery: '此订单已过期，结果尚未核实。不会再次提交此订单。', unavailableOrder: '无法核实保存的订单，结果仍未知。', tx: '查看交易', disconnected: '未连接',
     available: '可用余额', balanceLoading: '正在加载余额…', balanceUnavailable: '余额暂不可用', balanceLogin: '登录以查看余额', balanceRefresh: '刷新可用余额',
     buy: '买入', sell: '卖出', confirmBuy: '确认买入', confirmSell: '确认卖出', closeReview: '关闭确认', total: '支付数量', tradeComplete: '交易完成',
-    minimumOrder: (value: string | null) => value ? `服务商要求交易价值至少为 ${value} 美元。请选择符合要求的金额。` : '此金额低于服务商的最低交易价值，请增加金额。',
+    minimumOrder: '服务商要求交易价值至少为 {value} 美元。请选择符合要求的金额。', minimumOrderUnknown: '此金额低于服务商的最低交易价值，请增加金额。',
     cancellationErrors: { cancellation_unknown: '取消结果尚未确认。请继续查询，此订单仍可能成交。', cancellation_unavailable: '此路线暂不支持取消。', rejected: '未签署取消请求，订单仍有效。' },
     sponsorshipErrors: { sponsorship_not_configured: '网络费代付尚不可用，未发送交易。', sponsorship_rejected: '网络费代付被拒绝，未发送交易。', sponsorship_unavailable: '网络费代付暂不可用，请重试。', invalid_sponsored_transaction: '授权签名与订单不符，未发送交易。', approval_nonce_changed: '钱包活动已改变，请刷新此订单的授权。', approval_submission_unknown: '代币授权尚未确认，请查询同一笔交易。', approval_timeout: '代币授权确认较慢，请查询同一笔交易。' },
     errors: { ...routeFailureMessages.zh, insufficient_balance: '钱包中的支付代币不足。', insufficient_gas: '请添加少量 BNB 支付网络费用。', unauthorized: '请重新登录后重试。', session_unavailable: '无法加载登录状态，请重试。', session_refresh_failed: '请重新登录以刷新状态。', session_timeout: '登录状态加载超时，请重试。', wallet_not_verified: '无法验证钱包，请重新登录。', wallet_verification_unavailable: '钱包验证暂不可用。', wallet_verification_not_configured: '需要启用钱包验证。', account_not_configured: '需要配置账户验证。', not_configured: '需要配置交易服务。', wallet_loading: '正在准备钱包，请稍后。', wallet_changed: '钱包已改变，请审核新报价。', wallet_rejected: '已取消钱包确认，尚未下单。', quote_timeout: '报价请求超时，请重试。', chain_unavailable: 'BSC 路线暂不可用。', market_closed: '此市场关闭期间暂不可交易。', rate_limited: '请等待一分钟后重新获取报价。', order_fee_changed: '服务商的费用格式已改变。请获取新报价并重新确认。', stale_quote: '报价已过期，请获取新报价。', invalid_amount: '请检查金额及小数位数。', invalid_trade_request: '请输入有效金额。', unsupported_order_schema: '此路线尚不支持安全签名。', invalid_order_payload: '订单与交易不符，请获取新报价。', invalid_order_signature: '钱包签名与订单不符。', simulation_failed: '无法核实代币授权，尚未发送交易。', approval_required: '需要代币授权，请获取新报价。', approval_failed: '代币授权失败，请获取新报价。', settlement_not_verified: '无法核实结算，请重新查询订单。', provider_auth_error: '需要检查交易服务访问配置。', provider_error: '交易服务未能完成此请求，请重试。' },
@@ -59,10 +60,10 @@ export type TradeSheetLock = { close: boolean; edit: boolean }
 type ApprovalAttempt = { plan: AgentTradePlan; raw?: Hex; hash: Hex }
 
 export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmountChange, language, onCancel, onLockChange }: {
-  symbol: string; tokenAddress: string; side: 'buy' | 'sell'; amount: string; onAmountChange: (value: string) => void; language: 'en' | 'zh';
+  symbol: string; tokenAddress: string; side: 'buy' | 'sell'; amount: string; onAmountChange: (value: string) => void; language: Language;
   onCancel: () => void; onLockChange: (lock: TradeSheetLock) => void
 }) {
-  const t = words[language]
+  const t = localized(words, language)
   const { authenticated, login, getAccessToken } = usePrivy()
   const { wallets, ready } = useWallets()
   const { identityToken } = useIdentityToken()
@@ -116,7 +117,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
   const errorText = (failure: unknown) => {
     const reason = failure instanceof Error ? failure.message : ''
     if (reason === 'order_not_found' || reason === 'invalid_order_ticket') return t.unavailableOrder
-    if (reason === 'minimum_order_not_met') return t.minimumOrder(failure instanceof TradeRequestError ? failure.minimumUsd : null)
+    if (reason === 'minimum_order_not_met') return (failure instanceof TradeRequestError && failure.minimumUsd ? formatText(t.minimumOrder, { value: amountForInput(failure.minimumUsd, language) }) : t.minimumOrderUnknown)
     if (reason in t.cancellationErrors) return t.cancellationErrors[reason as keyof typeof t.cancellationErrors]
     if (reason in t.sponsorshipErrors) return t.sponsorshipErrors[reason as keyof typeof t.sponsorshipErrors]
     if (/reject|cancel|4001/i.test(reason)) return t.errors.wallet_rejected
@@ -433,7 +434,7 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     try {
       const typedData = cowCancellationTypedData(order.orderId, owner)
       await wallet.switchChain(56); assertWallet(owner)
-      const { signature } = await signTypedData(typedData, { address: owner, uiOptions: { showWalletUIs: false, title: language === 'zh' ? '取消订单' : 'Cancel order' } })
+      const { signature } = await signTypedData(typedData, { address: owner, uiOptions: { showWalletUIs: false, title: text(language, 'Cancel order', '取消订单') } })
       signed = true; assertWallet(owner)
       const checked = await session(value => { assertWallet(owner); return cancelTradeOrder(order, owner, signature, value) })
       persist(checked, owner)
@@ -469,13 +470,13 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
     <form className="trade-execution" onSubmit={event => { event.preventDefault(); tradeAction() }}>
       <div className="trade-entry-amount">
         <label className="trade-amount-label" htmlFor="trade-amount">{side === 'buy' ? t.spend : t.quantity}</label>
-        <div className="trade-amount-field"><input ref={inputRef} id="trade-amount" type="text" inputMode="decimal" autoComplete="off" value={amount} disabled={inputLocked} onChange={event => onAmountChange(event.target.value)} placeholder="0.00" aria-invalid={Boolean(amount) && !validAmount} aria-describedby="trade-status" /><span>{side === 'buy' ? 'USDT' : symbol}</span></div>
+        <div className="trade-amount-field"><input ref={inputRef} id="trade-amount" type="text" inputMode="decimal" autoComplete="off" value={amountForInput(amount, language)} disabled={inputLocked} onChange={event => onAmountChange(amountFromInput(event.target.value, language))} placeholder={amountForInput("0.00", language)} aria-invalid={Boolean(amount) && !validAmount} aria-describedby="trade-status" /><span>{side === 'buy' ? 'USDT' : symbol}</span></div>
       </div>
-      <div className="trade-balance-row"><span>{t.available}</span><strong title={available.balance?.quantity}>{!authenticated ? t.balanceLogin : !address ? t.walletLoading : available.error ? t.balanceUnavailable : available.balance ? `${displayQuantity(available.balance.quantity, 8)} ${available.balance.symbol}` : t.balanceLoading}</strong>{address && <button type="button" aria-label={t.balanceRefresh} disabled={available.loading} onClick={available.refresh}>{available.loading ? <LoaderCircle size={14} className="trade-spinner" /> : <RefreshCw size={14} />}</button>}</div>
-      <div className="trade-sheet-row"><span>{t.receive}</span><strong>{plan && !expired ? `${displayQuantity(plan.route.outputAmount)} ${plan.route.outputSymbol}` : '—'}</strong></div>
+      <div className="trade-balance-row"><span>{t.available}</span><strong title={available.balance?.quantity}>{!authenticated ? t.balanceLogin : !address ? t.walletLoading : available.error ? t.balanceUnavailable : available.balance ? `${displayQuantity(available.balance.quantity, 8, localeFor(language))} ${available.balance.symbol}` : t.balanceLoading}</strong>{address && <button type="button" aria-label={t.balanceRefresh} disabled={available.loading} onClick={available.refresh}>{available.loading ? <LoaderCircle size={14} className="trade-spinner" /> : <RefreshCw size={14} />}</button>}</div>
+      <div className="trade-sheet-row"><span>{t.receive}</span><strong>{plan && !expired ? `${displayQuantity(plan.route.outputAmount, 6, localeFor(language))} ${plan.route.outputSymbol}` : '—'}</strong></div>
       {plan && <>
-        <div className="trade-sheet-row"><span>{plan.estimatedFeeAmount === undefined ? t.fee : t.feeEstimate}</span><strong>{displayQuantity(formatUnits(BigInt(plan.estimatedFeeAmount ?? plan.feeAmount), plan.inputDecimals))} {plan.route.inputSymbol}</strong></div>
-        <div className="trade-sheet-row"><span>{t.gas}</span><strong>{plan.approval?.sponsorship ? t.sponsored : plan.approval ? `≈ ${plan.approval.gasFeeBnb} BNB` : t.included}</strong></div>
+        <div className="trade-sheet-row"><span>{plan.estimatedFeeAmount === undefined ? t.fee : t.feeEstimate}</span><strong>{displayQuantity(formatUnits(BigInt(plan.estimatedFeeAmount ?? plan.feeAmount), plan.inputDecimals), 6, localeFor(language))} {plan.route.inputSymbol}</strong></div>
+        <div className="trade-sheet-row"><span>{t.gas}</span><strong>{plan.approval?.sponsorship ? t.sponsored : plan.approval ? `≈ ${amountForInput(plan.approval.gasFeeBnb, language)} BNB` : t.included}</strong></div>
       </>}
       <div id="trade-status" className="trade-sheet-status" role="status" aria-live="polite"><span>{loading && <LoaderCircle size={15} className="trade-spinner" />}{status}</span></div>
       {amount && !validAmount && !inputLocked && <p className="trade-sheet-error" role="alert">{t.errors.invalid_amount}</p>}
@@ -489,12 +490,12 @@ export function TradeConfirmation({ symbol, tokenAddress, side, amount, onAmount
       <motion.button type="button" className="trade-sheet-scrim" aria-label={t.closeReview} tabIndex={-1} onClick={closeConfirmation} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
       <motion.section ref={dialogRef} className="trade-confirm-popup" role="dialog" aria-modal="true" aria-labelledby="trade-confirm-heading" aria-describedby="trade-confirm-note" initial={reduceMotion ? false : { y: 12, opacity: 0, scale: .98 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
         <div className="trade-sheet-header"><h2 id="trade-confirm-heading">{side === 'buy' ? t.confirmBuy : t.confirmSell} · {symbol}</h2><button type="button" aria-label={t.closeReview} onClick={closeConfirmation}><X size={20} /></button></div>
-        <div className="trade-sheet-row"><span>{t.total}</span><strong>{amount} {plan.route.inputSymbol}</strong></div>
-        <div className="trade-sheet-row"><span>{t.receive}</span><strong>{displayQuantity(plan.route.outputAmount)} {plan.route.outputSymbol}</strong></div>
-        <div className="trade-sheet-row"><span>{t.minimum}</span><strong>{displayQuantity(formatUnits(BigInt(plan.minimumReceive), plan.outputDecimals))} {plan.route.outputSymbol}</strong></div>
-        <div className="trade-sheet-row"><span>{plan.estimatedFeeAmount === undefined ? t.fee : t.feeEstimate}</span><strong>{displayQuantity(formatUnits(BigInt(plan.estimatedFeeAmount ?? plan.feeAmount), plan.inputDecimals))} {plan.route.inputSymbol}</strong></div>
-        <div className="trade-sheet-row"><span>{t.gas}</span><strong>{plan.approval?.sponsorship ? t.sponsored : plan.approval ? `≈ ${plan.approval.gasFeeBnb} BNB` : t.included}</strong></div>
-        <div className="trade-sheet-row"><span>{t.expiry}</span><strong>{new Date(plan.expiresAt).toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en-US')}</strong></div>
+        <div className="trade-sheet-row"><span>{t.total}</span><strong>{amountForInput(amount, language)} {plan.route.inputSymbol}</strong></div>
+        <div className="trade-sheet-row"><span>{t.receive}</span><strong>{displayQuantity(plan.route.outputAmount, 6, localeFor(language))} {plan.route.outputSymbol}</strong></div>
+        <div className="trade-sheet-row"><span>{t.minimum}</span><strong>{displayQuantity(formatUnits(BigInt(plan.minimumReceive), plan.outputDecimals), 6, localeFor(language))} {plan.route.outputSymbol}</strong></div>
+        <div className="trade-sheet-row"><span>{plan.estimatedFeeAmount === undefined ? t.fee : t.feeEstimate}</span><strong>{displayQuantity(formatUnits(BigInt(plan.estimatedFeeAmount ?? plan.feeAmount), plan.inputDecimals), 6, localeFor(language))} {plan.route.inputSymbol}</strong></div>
+        <div className="trade-sheet-row"><span>{t.gas}</span><strong>{plan.approval?.sponsorship ? t.sponsored : plan.approval ? `≈ ${amountForInput(plan.approval.gasFeeBnb, language)} BNB` : t.included}</strong></div>
+        <div className="trade-sheet-row"><span>{t.expiry}</span><strong>{new Date(plan.expiresAt).toLocaleTimeString(localeFor(language))}</strong></div>
         <div className="trade-sheet-row"><span>{t.wallet}</span><strong title={address}>{address ? `${address.slice(0, 7)}…${address.slice(-5)}` : t.disconnected}</strong></div>
         {plan.approval && <p className="trade-approval-note">{plan.approval.reset ? t.resetNote : t.approvalNote}</p>}
         <p id="trade-confirm-note" className="trade-confirm-note" role="status">{expired ? t.expired : approvalPending ? t.waiting : hasPreviousPending ? t.separate : t.ready}</p>

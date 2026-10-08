@@ -109,3 +109,11 @@
   .portfolio-activity-actions { grid-column:2; }
 }
 @media(prefers-reduced-motion:reduce) { .portfolio-action-row>button,.portfolio-tabs>button,.portfolio-logout,.portfolio-position-sell { transition:none; } }
+
+.portfolio-total-return { display:flex; flex-direction:column; gap:4px; margin-top:1px; }
+.portfolio-total-return b { font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.5; overflow-wrap:anywhere; }
+.portfolio-total-return small { color:var(--muted); font-size:12px; }
+.portfolio-total-return [data-direction=up] { color:#047857; }
+.portfolio-total-return [data-direction=down] { color:#be123c; }
+[data-theme=dark] .portfolio-total-return [data-direction=up] { color:#34d399; }
+[data-theme=dark] .portfolio-total-return [data-direction=down] { color:#fb7185; }

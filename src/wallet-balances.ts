@@ -54,9 +54,10 @@ export async function readWalletBalances(walletAddress: string, tokens: { symbol
   return { bnb: formatUnits(native, 18), usdt: formatUnits(values[0], BSC_USDT.decimals), tokens: positions, checkedAt: new Date() }
 }
 
-export function displayQuantity(value: string, places = 6) {
+export function displayQuantity(value: string, places = 6, locale = 'en-US') {
+  const separator = /^(es|fr|pt)(-|$)/.test(locale) ? ',' : '.'
   const [whole, fraction = ''] = value.split('.')
-  if (whole === '0' && fraction.slice(0, places).replace(/0/g, '') === '' && /[1-9]/.test(fraction.slice(places))) return `<0.${'0'.repeat(places - 1)}1`
+  if (whole === '0' && fraction.slice(0, places).replace(/0/g, '') === '' && /[1-9]/.test(fraction.slice(places))) return `<0${separator}${'0'.repeat(places - 1)}1`
   const trimmed = fraction.slice(0, places).replace(/0+$/, '')
-  return `${whole}${trimmed ? `.${trimmed}` : ''}`
+  return `${whole}${trimmed ? `${separator}${trimmed}` : ''}`
 }
