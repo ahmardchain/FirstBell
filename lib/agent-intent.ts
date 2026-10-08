@@ -2,7 +2,7 @@ import { assetCatalog, type CatalogAsset } from './asset-catalog.ts'
 import type { Language } from './i18n.ts'
 
 export type TradeIntent = { kind: 'trade'; symbol: string; side: 'buy' | 'sell'; amount: string | null; fraction: 'all' | 'half' | null; quoteOnly: boolean }
-export type AgentIntent = TradeIntent | { kind: 'balance' | 'holdings' | 'cancel' | 'status' } | { kind: 'record'; symbol: string; field: 'issuer' | 'contract' | 'network' } | { kind: 'help'; reason: 'asset' | 'amount' | 'ambiguous' | 'unsupported' }
+export type AgentIntent = TradeIntent | { kind: 'balance' | 'holdings' | 'cancel' | 'status' } | { kind: 'research'; symbol: string; field: 'research' | 'audit' | 'market' | 'compare' } | { kind: 'record'; symbol: string; field: 'issuer' | 'contract' | 'network' } | { kind: 'help'; reason: 'asset' | 'amount' | 'ambiguous' | 'unsupported' }
 
 const escapes = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const contains = (text: string, value: string) => new RegExp(`(^|[^a-z0-9])${escapes(value)}([^a-z0-9]|$)`, 'i').test(text)
@@ -63,6 +63,11 @@ export function parseAgentIntent(prompt: string, language: Language = 'en'): Age
     return { kind: 'trade', symbol: asset.symbol, side: buying ? 'buy' : 'sell', amount, fraction, quoteOnly: /quote only|just (a )?quote|preview only|solo cotizacion|seulement (une )?cotation|cotation (seule|uniquement)|somente cotacao|apenas cotacao|仅报价|只报价/.test(text) }
   }
   if (candidates.length !== 1) return { kind: 'help', reason: candidates.length ? 'ambiguous' : 'asset' }
+  const research = /\b(audit|safe|safety|security|risk|riesgo|seguridad|seguro|securite|risque|sur|seguranca|risco)\b|安全|审计|风险/.test(text) ? 'audit'
+    : /\b(tradable|halt|halted|paused|market|mercado|marche|negociavel|operar)\b|交易状态|开市|停牌/.test(text) ? 'market'
+    : /\b(compare|premium|discount|reference|compara|comparar|comparer|ecart|premio|referencia|prime)\b|比较|溢价|参考价/.test(text) ? 'compare'
+    : /\b(research|price|about|pe|fundamentals|investiga|investigar|precio|recherche|prix|pesquisar|pesquise|preco)\b|研究|价格|市盈率/.test(text) ? 'research' : null
+  if (research) return { kind: 'research', symbol: candidates[0].symbol, field: research }
   const field = /issuer|issue|ondo|emisor|emetteur|emissor|发行|谁/.test(text) ? 'issuer' : /contract|contrat|address|adresse|endereco|合约|地址/.test(text) ? 'contract' : /network|chain|bsc|\b(red|reseau|rede)\b|网络|链/.test(text) ? 'network' : null
   return field ? { kind: 'record', symbol: candidates[0].symbol, field } : { kind: 'help', reason: 'unsupported' }
 }

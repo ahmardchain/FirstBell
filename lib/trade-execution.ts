@@ -10,6 +10,7 @@ export type SignedTradeAttempt = { plan: AgentTradePlan; signature: string }
 export const rejectedTradeReason = (reason: unknown): reason is string => typeof reason === 'string' && [
   'order_fee_changed', 'stale_quote', 'insufficient_balance', 'approval_required', 'invalid_order_signature', 'invalid_order_payload',
   'minimum_order_not_met', 'liquidity_unavailable', 'token_unavailable',
+  'skill_checks_unavailable', 'skill_security_blocked', 'skill_asset_unavailable', 'skill_checks_changed',
 ].includes(reason)
 type ExecutionPorts = {
   assertWallet: (owner: string) => void

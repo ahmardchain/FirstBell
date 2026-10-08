@@ -11,6 +11,7 @@ export interface AIChatMessage {
   role: 'user' | 'guide'
   text: string
   source?: boolean
+  attachment?: React.ReactNode
 }
 
 export interface AIChatCardProps {
@@ -101,6 +102,7 @@ export function AIChatCard({
         {messages.map(message => <motion.div key={message.id} className={`ai-chat-message ${message.role}`}
           initial={reduce ? false : { opacity: 0, y: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: reduce ? 0 : .25, ease: [.22, 1, .36, 1] }}>
           <span>{message.role === 'user' ? 'YOU' : agentLabel}</span><p>{message.text}</p>
+          {message.attachment}
           {message.role === 'guide' && message.source !== false && <a href={sourceHref} target="_blank" rel="noreferrer">{sourceLabel}</a>}
         </motion.div>)}
         {afterMessages}

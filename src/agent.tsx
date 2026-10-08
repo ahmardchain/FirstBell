@@ -11,7 +11,9 @@ import { terminalOrder, validateAgentTradePlan, type AgentOrder, type AgentTrade
 import { withWalletSession, type WalletSession } from '../lib/wallet-session'
 import { abortable, PREPARE_TIMEOUT_MS, QUOTE_TIMEOUT_MS } from '../lib/quote-timeout'
 import { routeFailureMessages, TradeRequestError } from '../lib/trade-error'
-import { checkTrade, prepareTrade, recoverTrade, submitTrade } from './agent-api'
+import { checkTrade, prepareTrade, recoverTrade, submitTrade, researchStockWithSkills } from './agent-api'
+import { walletSkillsCopy } from '../lib/wallet-skills-copy'
+import { WalletSkillReport } from './wallet-skill-report'
 import { displayQuantity, readWalletBalances } from './wallet-balances'
 import { clearSignedTrade, readSignedTrades, readWalletOrders, storeSignedTrade, storeTradeReceipt } from '../lib/trade-storage'
 import { getTradingRoute } from './market-api'
@@ -76,6 +78,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
   const [phase, setPhase] = React.useState<'idle' | 'loading' | 'wallet' | 'approval' | 'submitted' | 'uncertain'>('idle')
   const [notice, setNotice] = React.useState('')
   const [expired, setExpired] = React.useState(false)
+  const skillsText = walletSkillsCopy[language]
   const live = React.useRef({ address, identityToken, active: true })
   live.current = { address, identityToken, active: true }
   const busyRef = React.useRef(false)
@@ -87,6 +90,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
   const say = (text: string, source = false) => setMessages(list => [...list, { id: list.length + 1, role: 'guide', text, source }])
   const errorText = (error: unknown) => {
     const reason = error instanceof Error ? error.message : ''
+    if (reason in skillsText.errors) return skillsText.errors[reason as keyof typeof skillsText.errors]
     if (reason === 'minimum_order_not_met') return (error instanceof TradeRequestError && error.minimumUsd ? formatText(t.minimumOrder, { value: amountForInput(error.minimumUsd, language) }) : t.minimumOrderUnknown)
     if (/reject|cancel|4001/i.test(reason)) return t.errors.wallet_rejected
     return t.errors[reason as keyof typeof t.errors] ?? t.errors.provider_error
@@ -143,10 +147,11 @@ export function AgentWorkspace({ language }: { language: Language }) {
       if (!amount) throw new Error('invalid_amount')
       assertWallet(address)
       if (next.quoteOnly) {
+        const report = await researchStockWithSkills(asset.symbol, signal)
         const route = await session(value => getTradingRoute(asset.symbol, next.side, amount!, address, value.accessToken, value.identityToken, signal), signal)
-        if (version === operation.current) { say(`${route.inputAmount} ${route.inputSymbol} → ${displayQuantity(route.outputAmount, 6, localeFor(language))} ${route.outputSymbol}. ${t.quoteOnly}`); setIntent(null); setNotice('') }
+        if (version === operation.current) { setMessages(list => [...list, { id: list.length + 1, role: 'guide', text: `${route.inputAmount} ${route.inputSymbol} → ${displayQuantity(route.outputAmount, 6, localeFor(language))} ${route.outputSymbol}. ${t.quoteOnly}`, source: false, attachment: <WalletSkillReport report={report} language={language} /> }]); setIntent(null); setNotice('') }
       } else {
-        const prepared = await session(value => prepareTrade({ symbol: asset.symbol, side: next.side, amount: amount!, walletAddress: address }, value, signal), signal)
+        const prepared = await session(value => prepareTrade({ symbol: asset.symbol, side: next.side, amount: amount!, walletAddress: address, walletSkills: true }, value, signal), signal)
         if (version === operation.current) { setPlan(prepared); setIntent({ ...next, amount, fraction: null }); setNotice('') }
       }
     } catch (error) { if (version === operation.current) setNotice(errorText(deadline.aborted && !abort.signal.aborted ? new Error('quote_timeout') : error)) }
@@ -245,6 +250,17 @@ export function AgentWorkspace({ language }: { language: Language }) {
     if (parsed.kind === 'status') { if (order) await checkOrder(); else say(t.noOrder); return }
     if (parsed.kind === 'cancel') { if (pending) say(t.pending); else { setPlan(null); setIntent(null); setNotice(''); say(t.cancel) }; return }
     if (parsed.kind === 'help') { say(t[parsed.reason === 'asset' ? 'select' : parsed.reason]); return }
+    if (parsed.kind === 'research') {
+      busyRef.current = true; setPhase('loading'); setNotice('')
+      const version = operation.current
+      controller.current?.abort(); const abort = new AbortController(); controller.current = abort
+      try {
+        const report = await researchStockWithSkills(parsed.symbol, abort.signal)
+        if (version === operation.current) setMessages(list => [...list, { id: list.length + 1, role: 'guide', text: `${skillsText[parsed.field]} · ${skillsText.noTrade}`, source: false, attachment: <WalletSkillReport report={report} language={language} /> }])
+      } catch (error) { if (version === operation.current && !abort.signal.aborted) say(errorText(error)) }
+      finally { if (version === operation.current) { busyRef.current = false; setPhase('idle') } }
+      return
+    }
     if (parsed.kind === 'record') {
       const asset = assetCatalog.find(item => item.symbol === parsed.symbol)!
       say(parsed.field === 'contract' ? `${asset.symbol}: ${asset.address}` : parsed.field === 'network' ? `${asset.symbol}: BNB Smart Chain / 56` : `${asset.symbol}: Ondo Global Markets`, true); return
@@ -267,6 +283,7 @@ export function AgentWorkspace({ language }: { language: Language }) {
       <div className="agent-review-heading"><img src={assetLogo(selected)} alt="" onError={tokenLogoError} /><div><span>{t.review}</span><strong>{plan.route.side === 'buy' ? (text(language, 'Buy', '买入')) : (text(language, 'Sell', '卖出'))} {selected.company}</strong><small>{selected.symbol} · Ondo</small></div></div>
       <dl><div><dt>{t.spend}</dt><dd>{amountForInput(plan.route.inputAmount, language)} {plan.route.inputSymbol}</dd></div><div><dt>{t.receive}</dt><dd>{displayQuantity(plan.route.outputAmount, 6, localeFor(language))} {plan.route.outputSymbol}</dd></div><div><dt>{t.minimum}</dt><dd>{displayQuantity(formatUnits(BigInt(plan.minimumReceive), plan.outputDecimals), 6, localeFor(language))} {plan.route.outputSymbol}</dd></div><div><dt>{plan.estimatedFeeAmount === undefined ? t.fee : t.feeEstimate}</dt><dd>{displayQuantity(formatUnits(BigInt(plan.estimatedFeeAmount ?? plan.feeAmount), plan.inputDecimals), 6, localeFor(language))} {plan.route.inputSymbol}</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain · 56</dd></div><div><dt>{t.vendor}</dt><dd>Binance Web3 / CowSwap</dd></div><div><dt>{t.destination}</dt><dd title={plan.route.walletAddress}>{plan.route.walletAddress.slice(0, 7)}…{plan.route.walletAddress.slice(-5)}</dd></div><div><dt>{t.expires}</dt><dd>{new Date(plan.expiresAt).toLocaleTimeString(localeFor(language))}</dd></div>{plan.approval && <div><dt>{t.gas}</dt><dd>≈ {plan.approval.gasFeeBnb} BNB</dd></div>}</dl>
       {plan.approval && <p>{t.approvalNote}</p>}{expired && <p role="status">{t.expired}</p>}
+      {plan.walletSkills && <WalletSkillReport report={plan.walletSkills} language={language} compact />}
       <div className="agent-review-actions"><button type="button" disabled={busy || pending} onClick={clearReview}>{t.cancelAction}</button><button type="button" disabled={busy || pending} className="agent-primary" onClick={() => expired && intent ? void prepare(intent) : void confirm()}>{busy ? <LoaderCircle size={16} className="agent-spinner" /> : null}{expired ? t.refresh : plan.approval ? (plan.approval.reset ? t.resetAllowance : t.approve) : t.confirm}</button></div>
     </section>}
     {notice && <p className="agent-notice" role="status">{busy ? <LoaderCircle size={16} className="agent-spinner" /> : order?.status === 'FILLED' ? <Check size={16} /> : null}{notice}</p>}
@@ -275,8 +292,8 @@ export function AgentWorkspace({ language }: { language: Language }) {
     {order && <div className="agent-order-status"><span>{order.orderId}</span><button type="button" disabled={busy} onClick={() => void checkOrder()}>{t.check}</button>{order.txHash && <a href={`https://bscscan.com/tx/${order.txHash}`} target="_blank" rel="noreferrer">{t.tx}<ExternalLink size={14} /></a>}</div>}
   </>
   return <section className="agent-workspace" aria-label={t.title}><AIChatCard title={t.title} subtitle={t.subtitle} greeting={t.greeting}
-    prompt={t.help} prompts={t.examples} placeholder={t.prompt} sendLabel={t.send} resetLabel={t.reset} messages={messages}
-    note={t.note} sourceHref={manifest.sourceTokenList} sourceLabel={t.records} agentLabel="FIRSTBELL" headingLabel={'FIRSTBELL / ' + text(language, 'Agent', '助手').toUpperCase()} composerCaption={`BNB SMART CHAIN / ${assetCatalog.length} TOKENS`}
+    prompt={skillsText.help} prompts={skillsText.examples} placeholder={t.prompt} sendLabel={t.send} resetLabel={t.reset} messages={messages}
+    note={skillsText.note} sourceHref={manifest.sourceTokenList} sourceLabel={t.records} agentLabel="FIRSTBELL" headingLabel={'FIRSTBELL / ' + text(language, 'Agent', '助手').toUpperCase()} composerCaption={`BNB SMART CHAIN / ${assetCatalog.length} TOKENS`}
     icon={<img src="/assets/firstbell-mark.svg" alt="" />} busy={busy} resetDisabled={pending} afterMessages={messages.length || order || notice || plan ? tradeCard : undefined}
     status={<div className="agent-wallet-status"><Wallet size={14} />{address ? <span title={address}>{t.connected} · {address.slice(0, 6)}…{address.slice(-4)}</span> : authenticated ? <span>{t.walletLoading}</span> : <button type="button" onClick={login}>{t.login}</button>}</div>}
     onSend={prompt => void answer(prompt)} onReset={() => { if (busy || pending) return; operation.current += 1; controller.current?.abort(); setMessages([]); setPlan(null); setIntent(null); setNotice('') }} /></section>

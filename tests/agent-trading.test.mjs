@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
-import { SignJWT } from 'jose'
+import { exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import { after, beforeEach, test } from 'node:test'
 import { privateKeyToAccount } from 'viem/accounts'
 import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, erc20Abi, hashTypedData } from 'viem'
@@ -11,6 +11,7 @@ import { handleApiRequest } from '../worker/router.ts'
 import { clearTradingMetadataCache } from '../worker/binance-trading.ts'
 import { BSC_USDT } from '../lib/funding.ts'
 import { tokenAddresses } from '../lib/asset-catalog.ts'
+import { handleAccountRequest } from '../worker/account-store.ts'
 
 const originalFetch = globalThis.fetch
 after(() => { globalThis.fetch = originalFetch })
@@ -262,4 +263,63 @@ test('unauthenticated, oversized and cross-origin requests fail before reaching 
   assert.equal(cross.status, 403)
   const big = await handleAgentTrade(new Request('https://firstbell.test/api/trade/prepare', { method: 'POST', headers: { Origin: 'https://firstbell.test', 'Content-Type': 'application/json' }, body: 'a'.repeat(24_001) }), env, 'did:privy:fixture123')
   assert.equal(big.status, 413); assert.equal(calls.length, 0)
+})
+
+async function skillTradeFixture() {
+  mock()
+  const providerFetch = globalThis.fetch, state = { risk: 1, buyTax: '0', open: true, skillCalls: 0 }
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input)
+    if (!url.pathname.includes('/bapi/defi/')) return providerFetch(input, init)
+    state.skillCalls++
+    assert.equal(init.headers['X-OC-APIKEY'], undefined)
+    const data = url.pathname.endsWith('/audit')
+      ? { requestId: JSON.parse(init.body).requestId, hasResult: true, isSupported: true, riskLevel: state.risk, riskLevelEnum: state.risk <= 1 ? 'LOW' : 'HIGH', extraInfo: { buyTax: state.buyTax, sellTax: '0', isVerified: true }, riskItems: [] }
+      : url.pathname.endsWith('detail/list/ai') ? [{ symbol: 'NVDAon', ticker: 'NVDA', chainId: '56', type: 1, contractAddress: tokenAddresses.NVDAon, multiplier: '1' }]
+      : url.pathname.includes('status/ai') ? { openState: state.open, reasonCode: state.open ? 'TRADING' : 'ASSET_PAUSED' }
+      : url.pathname.includes('dynamic/ai') ? { symbol: 'NVDAon', tokenInfo: { price: '200', sharesMultiplier: '1' }, stockInfo: { price: '200' } }
+      : { symbol: 'NVDAon' }
+    return Response.json({ code: '000000', success: true, data })
+  }
+  const pair = await generateKeyPair('ES256'), user = 'did:privy:skills-trade', app = 'fixture-skills-trade'
+  const identity = await new SignJWT({ linked_accounts: JSON.stringify([{ type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: wallet }]) })
+    .setProtectedHeader({ alg: 'ES256' }).setSubject(user).setIssuer('privy.io').setAudience(app).setExpirationTime('1h').sign(pair.privateKey)
+  const values = new Map(), storage = { get: async key => structuredClone(values.get(key)), put: async (key, value) => { values.set(key, structuredClone(value)) } }
+  const env = { PRIVY_APP_ID: app, PRIVY_VERIFICATION_KEY: await exportSPKI(pair.publicKey), BINANCE_WEB3_API_KEY: credentials.apiKey, BINANCE_WEB3_SECRET_KEY: credentials.secretKey,
+    ACCOUNTS: { idFromName: id => id, get: () => ({ fetch: req => handleAccountRequest(req, {}, storage) }) } }
+  const headers = { Origin: 'https://firstbell.test', 'Content-Type': 'application/json', 'privy-id-token': identity }
+  const call = (path, body) => handleAgentTrade(new Request(`https://firstbell.test/api/trade/${path}`, { method: 'POST', headers, body: JSON.stringify({ walletAddress: wallet, ...body }) }), env, user)
+  return { state, call, user }
+}
+test('Wallet Skills are checked before quoting, sealed into the owned plan, and rechecked before one dispatch', async () => {
+  const f = await skillTradeFixture()
+  const response = await f.call('prepare', { symbol: 'NVDAon', side: 'buy', amount: '5', walletSkills: true })
+  assert.equal(response.status, 200)
+  const { plan } = await response.json()
+  assert.equal(plan.walletSkills.stock.address, tokenAddresses.NVDAon); assert.equal(plan.walletSkills.audit.level, 1)
+  assert.deepEqual((await openTradeTicket(plan.planToken, f.user, credentials.secretKey, 'plan')).plan.walletSkills, plan.walletSkills)
+  assert.equal(f.state.skillCalls, 5); assert.equal(calls.some(c => c.path.endsWith('/order/submit')), false)
+  const signature = await signer.signTypedData(plan.typedData)
+  const submitted = await f.call('submit', { planToken: plan.planToken, signature })
+  assert.equal(submitted.status, 200); assert.equal((await submitted.json()).order.status, 'PENDING_VENDOR')
+  assert.equal(f.state.skillCalls, 10); assert.equal(calls.filter(c => c.path.endsWith('/order/submit')).length, 1)
+  await f.call('recover', { planToken: plan.planToken, signature })
+  assert.equal(f.state.skillCalls, 10); assert.equal(calls.filter(c => c.path.endsWith('/order/submit')).length, 1)
+})
+test('blocked research reaches no quote; a changed audit after review becomes a durable failed order without dispatch', async () => {
+  const f = await skillTradeFixture(); f.state.risk = 5
+  const blocked = await f.call('prepare', { symbol: 'NVDAon', side: 'buy', amount: '5', walletSkills: true })
+  assert.equal((await blocked.json()).error, 'skill_security_blocked'); assert.equal(calls.length, 0)
+  f.state.risk = 1
+  const { plan } = await (await f.call('prepare', { symbol: 'NVDAon', side: 'buy', amount: '5', walletSkills: true })).json()
+  const signature = await signer.signTypedData(plan.typedData)
+  f.state.buyTax = '8'
+  const failed = await f.call('submit', { planToken: plan.planToken, signature })
+  assert.equal(failed.status, 200)
+  const { order } = await failed.json()
+  assert.equal(order.status, 'FAILED'); assert.equal(order.failureReason, 'skill_checks_changed')
+  const skillCalls = f.state.skillCalls
+  assert.equal((await (await f.call('submit', { planToken: plan.planToken, signature })).json()).order.status, 'FAILED')
+  assert.equal((await (await f.call('status', { receiptToken: order.receiptToken })).json()).order.status, 'FAILED')
+  assert.equal(f.state.skillCalls, skillCalls); assert.equal(calls.some(c => c.path.endsWith('/order/submit')), false)
 })

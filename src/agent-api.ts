@@ -6,6 +6,15 @@ import { keccak256, type Hex } from 'viem'
 import type { PaymentToken } from '../lib/trade-assets.ts'
 import { cowCancellationTypedData } from '../lib/order-cancellation.ts'
 import { tokenAddresses } from '../lib/asset-catalog.ts'
+import { validateSkillReport, type SkillReport } from '../lib/binance-wallet-skills.ts'
+
+export async function researchStockWithSkills(symbol: string, signal?: AbortSignal): Promise<SkillReport> {
+  const timeout = AbortSignal.timeout(20_000)
+  const response = await fetch(`/api/agent/research?symbol=${encodeURIComponent(symbol)}`, { cache: 'no-store', signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
+  const result = await response.json() as { report?: unknown; error?: string }
+  if (!response.ok) throw new Error(result.error ?? 'skill_provider_unavailable')
+  return validateSkillReport(result.report, symbol, tokenAddresses[symbol])
+}
 
 async function post(path: 'prepare' | 'submit' | 'status' | 'recover' | 'cancel' | 'approval/submit' | 'approval/refresh', body: Record<string, unknown>, session: WalletSession, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const timeout = AbortSignal.timeout(path === 'prepare' ? PREPARE_TIMEOUT_MS : 30_000)
@@ -25,9 +34,11 @@ async function post(path: 'prepare' | 'submit' | 'status' | 'recover' | 'cancel'
   }
 }
 
-export async function prepareTrade(input: { symbol: string; side: 'buy' | 'sell'; amount: string; walletAddress: string; paymentToken?: PaymentToken; sponsorApproval?: boolean }, session: WalletSession, signal?: AbortSignal): Promise<AgentTradePlan> {
+export async function prepareTrade(input: { symbol: string; side: 'buy' | 'sell'; amount: string; walletAddress: string; paymentToken?: PaymentToken; sponsorApproval?: boolean; walletSkills?: boolean }, session: WalletSession, signal?: AbortSignal): Promise<AgentTradePlan> {
   const result = await post('prepare', input, session, signal)
-  return validateAgentTradePlan(result.plan, input)
+  const plan = validateAgentTradePlan(result.plan, input)
+  if (input.walletSkills && !plan.walletSkills) throw new Error('invalid_order_payload')
+  return plan
 }
 
 export async function relayApproval(plan: AgentTradePlan, rawTransaction: Hex, session: WalletSession, retry = false): Promise<Hex> {
