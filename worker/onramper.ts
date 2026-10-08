@@ -6,6 +6,10 @@ import type { AccountNamespace } from './env.ts'
 import { confirmedTransfer, FundingError, type FundingEnv } from './moonpay.ts'
 
 type Credentials = { apiKey: string; privateKey: CryptoKey; webhookSecret: string; cryptoId: string; mode: FundingMode }
+class OnramperConfigurationError extends FundingError {
+  readonly invalid: string[]
+  constructor(invalid: string[]) { super('invalid_configuration'); this.invalid = invalid }
+}
 const encoder = new TextEncoder()
 const client = createPublicClient({ chain: bsc, transport: http('https://bsc-dataseed.bnbchain.org', { timeout: 8_000, retryCount: 0 }) })
 const validId = (value: string) => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value)
@@ -33,9 +37,14 @@ function missingConfiguration(env: FundingEnv): string[] {
 
 export async function getOnramperSetup(env: FundingEnv) {
   let reason: string | null = null
+  let invalid: string[] = []
   try { await getOnramperCredentials(env) }
-  catch (error) { reason = error instanceof FundingError ? error.reason : 'invalid_configuration' }
-  return { mode: getOnramperMode(env), configured: reason === null, missing: missingConfiguration(env), reason }
+  catch (error) {
+    reason = error instanceof FundingError ? error.reason : 'invalid_configuration'
+    if (error instanceof OnramperConfigurationError) invalid = error.invalid
+  }
+  return { mode: getOnramperMode(env), configured: reason === null, missing: missingConfiguration(env), reason,
+    ...(invalid.length ? { invalid } : {}) }
 }
 
 // Onramper IDs are account catalog values, not MoonPay currency codes. Require
@@ -45,13 +54,18 @@ export async function getOnramperCredentials(env: FundingEnv): Promise<Credentia
   const webhookSecret = env.ONRAMPER_WEBHOOK_SECRET?.trim(), cryptoId = env.ONRAMPER_BSC_USDT_ID?.trim()
   if (!apiKey || !pem || !webhookSecret || !cryptoId || missingConfiguration(env).length) throw new FundingError('not_configured')
   const mode = getOnramperMode(env)
-  if (!mode || !apiKey.startsWith(mode === 'live' ? 'pk_prod_' : 'pk_test_')
-    || !/^[a-z0-9][a-z0-9_-]{0,127}$/.test(cryptoId) || webhookSecret.length < 16) throw new FundingError('invalid_configuration')
+  const invalid: string[] = []
+  if (!mode) invalid.push('ONRAMPER_ENVIRONMENT')
+  else if (!apiKey.startsWith(mode === 'live' ? 'pk_prod_' : 'pk_test_')) invalid.push('ONRAMPER_API_KEY')
+  if (!/^[a-z0-9][a-z0-9_-]{0,127}$/.test(cryptoId)) invalid.push('ONRAMPER_BSC_USDT_ID')
+  if (webhookSecret.length < 16) invalid.push('ONRAMPER_WEBHOOK_SECRET')
+  let privateKey: CryptoKey | undefined
   try {
-    const privateKey = await importPKCS8(pem, 'EdDSA')
+    privateKey = await importPKCS8(pem, 'EdDSA')
     if (privateKey.algorithm.name !== 'Ed25519') throw new Error()
-    return { apiKey, privateKey, webhookSecret, cryptoId, mode: mode as FundingMode }
-  } catch { throw new FundingError('invalid_configuration') }
+  } catch { invalid.push('ONRAMPER_SIGNING_PRIVATE_KEY') }
+  if (invalid.length) throw new OnramperConfigurationError(invalid)
+  return { apiKey, privateKey: privateKey!, webhookSecret, cryptoId, mode: mode as FundingMode }
 }
 
 async function contextKey(secret: string) {

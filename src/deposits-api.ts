@@ -96,7 +96,8 @@ export function useDeposits(address: string | undefined, getAccessToken: GetAcce
     setBusy(true); setError(null)
     const timeout = AbortSignal.timeout(20_000)
     try {
-      if (config && !config.ready) throw new DepositRequestError(config.reason ?? 'provider_unavailable')
+      // Checkout validates the current server configuration. A cached setup
+      // failure must not block retries after the provider has been configured.
       const result = await withWalletSession({ getAccessToken, getIdentityToken: () => identity.current,
         refreshIdentityToken: getIdentityToken }, ({ accessToken, identityToken: proof }) => {
         if (activeAddress.current !== address) throw new DepositRequestError('unauthorized')

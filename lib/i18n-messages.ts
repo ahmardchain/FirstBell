@@ -992,10 +992,10 @@ export const translations: Record<string, readonly [string, string, string]> = {
     "FIRSTBELL / INDEX DES ACTIFS",
     "FIRSTBELL / ÍNDICE DE ATIVOS"
   ],
-  "Onramper is being connected. Please try again later.": [
-    "Onramper se está conectando. Inténtalo más tarde.",
-    "Connexion d’Onramper en cours. Réessayez plus tard.",
-    "O Onramper está sendo conectado. Tente mais tarde."
+  "Card deposits are unavailable. Please use a wallet or exchange transfer.": [
+    "Los depósitos con tarjeta no están disponibles. Usa una transferencia desde una cartera o un exchange.",
+    "Les dépôts par carte sont indisponibles. Utilisez un transfert depuis un portefeuille ou une plateforme d’échange.",
+    "Os depósitos com cartão estão indisponíveis. Use uma transferência de uma carteira ou corretora."
   ],
   "Onramper could not be opened. Please try again.": [
     "No se pudo abrir Onramper. Inténtalo de nuevo.",
