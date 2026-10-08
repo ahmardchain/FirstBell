@@ -70,7 +70,6 @@ function AssetMark({ asset, className = '' }: { asset: Asset; className?: string
 export default function FirstBellApp() {
   const { ready, authenticated, user, login, getAccessToken } = usePrivy()
   const canUseAgent = ready && authenticated
-  const navigation = NAV.filter(item => item.id !== 'agent' || canUseAgent)
   const reduceMotion = useReducedMotion()
   const [language, setLanguage] = React.useState<Language>(() => savedLanguage())
   const [theme, setTheme] = React.useState<Theme>(() => localStorage.getItem('firstbell-theme') === 'dark' ? 'dark' : 'light')
@@ -155,7 +154,7 @@ export default function FirstBellApp() {
   }, [selected])
 
   const switchTab = (id: Tab) => {
-    if (tradeBusyRef.current || id === 'agent' && !canUseAgent) return
+    if (tradeBusyRef.current) return
     setTab(id); setMobileMenu(false)
     if (id === 'agent') setAgentOpened(true)
     if (id !== 'trade') setTradeEntry(null)
@@ -188,7 +187,7 @@ export default function FirstBellApp() {
   return <div className="app-shell" data-tab={tab}>
     <header className="app-header">
       <a href="/" className="app-brand" aria-label={t.back}><img src="/assets/firstbell-mark.svg" alt="" />FirstBell</a>
-      <nav className="app-desktop-nav" aria-label={text(language, "App navigation")}>{navigation.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-desktop-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={16} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
+      <nav className="app-desktop-nav" aria-label={text(language, "App navigation")}>{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-desktop-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={16} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
       <div className="app-header-actions">
         <LanguageSelect language={language} onChange={setLanguage} className="app-header-tool app-language" />
         <button type="button" className="app-header-tool" aria-label={t.theme} onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}><span className="motion-icon-swap" data-state={theme === 'dark' ? 'a' : 'b'}><Sun size={18} /><Moon size={18} /></span></button>
@@ -218,7 +217,7 @@ export default function FirstBellApp() {
       {agentOpened && canUseAgent && <div hidden={tab !== 'agent'}><AgentWorkspace language={language} /></div>}
     </main>
     <footer className="app-footer"><div><a href="/" className="app-brand"><img src="/assets/firstbell-mark.svg" alt="" />FirstBell</a><p>{t.footer}</p></div><div><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={14} /></a><a href="https://github.com/ahmardchain/FirstBell" target="_blank" rel="noreferrer">{t.github}<ArrowUpRight size={14} /></a><a href="https://x.com/BNBCHAIN" target="_blank" rel="noreferrer">{t.x}<ArrowUpRight size={14} /></a></div><small>© 2026 FIRSTBELL / BNB SMART CHAIN</small></footer>
-    <nav className="app-bottom-nav" style={{ gridTemplateColumns: `repeat(${navigation.length}, minmax(0, 1fr))` }} aria-label={text(language, "App navigation")}>{navigation.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-bottom-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={22} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
+    <nav className="app-bottom-nav" aria-label={text(language, "App navigation")}>{NAV.map(({ id, icon: Icon }) => <button type="button" key={id} disabled={tradeBusy} onClick={() => switchTab(id)} className={`motion-tab ${tab === id ? 'active' : ''}`} aria-current={tab === id ? 'page' : undefined}>{tab === id && <motion.span className="motion-tab-indicator" layoutId="app-bottom-active" transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }} />}<Icon size={22} strokeWidth={1.8} /><span>{t.nav[id]}</span></button>)}</nav>
     <AnimatePresence>{selected && <div className="asset-dialog-layer"><motion.button type="button" className="asset-dialog-backdrop" aria-label={text(language, "Close asset file")} onClick={() => setSelected(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} /><motion.aside ref={dialogRef} className="asset-dialog" role="dialog" aria-modal="true" aria-labelledby="asset-dialog-title" initial={reduceMotion ? false : { x: 100, opacity: 0, filter: 'blur(2px)' }} animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 0 } : { x: 100, opacity: 0, filter: 'blur(2px)' }} transition={{ duration: reduceMotion ? 0 : .4, ease: [.22, 1, .36, 1] }}><div className="dialog-top"><span className="app-label">{t.detailKicker} / {selected.symbol}</span><button type="button" aria-label={text(language, "Close asset file")} onClick={() => setSelected(null)}><X size={21} /></button></div><div className={`dialog-mark asset-art--${selected.mark}`}><AssetMark asset={selected} /></div><div className="dialog-body"><div className="dialog-title"><div><h2 id="asset-dialog-title">{selected.company}</h2><p>{selected.symbol} / BNB SMART CHAIN</p></div><button type="button" aria-label={saved.includes(selected.symbol) ? t.unsave : t.save} aria-pressed={saved.includes(selected.symbol)} onClick={() => toggleSaved(selected.symbol)}><Bookmark size={20} fill={saved.includes(selected.symbol) ? 'currentColor' : 'none'} /></button></div><p className="dialog-intro">{t.detailIntro}</p><dl><div><dt>{t.symbol}</dt><dd>{selected.symbol}</dd></div><div><dt>{t.issuer}</dt><dd>Ondo Global Markets</dd></div><div><dt>{t.network}</dt><dd>BNB Smart Chain / 56</dd></div><div><dt>{t.contract}</dt><dd className="contract-value" title={selected.address}>{selected.address}</dd></div></dl><p className="dialog-caution">{t.caution}</p><a href={scan(selected)} target="_blank" rel="noreferrer" className="dialog-primary">{t.exploreContract}<ExternalLink size={17} /></a><a href={manifest.sourceTokenList} target="_blank" rel="noreferrer" className="dialog-secondary">{t.tokenList}<ArrowUpRight size={17} /></a></div></motion.aside></div>}</AnimatePresence>
   </div>
 }
