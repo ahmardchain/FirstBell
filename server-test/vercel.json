@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "npm --prefix .. run build && node ../scripts/stage-vercel-app.mjs",
+  "buildCommand": "npm --prefix .. run build && env -i PATH=\"$PATH\" CI=true npm --prefix .. test && node ../scripts/stage-vercel-app.mjs",
   "installCommand": "npm --prefix .. ci",
   "outputDirectory": "public",
   "regions": ["fra1"],

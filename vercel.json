@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "npm ci",
-  "buildCommand": "npm run build && node scripts/stage-vercel-diagnostic.mjs",
+  "buildCommand": "npm run build && env -i PATH=\"$PATH\" CI=true npm test && node scripts/stage-vercel-diagnostic.mjs",
   "outputDirectory": "dist",
   "regions": ["fra1"],
   "functions": {

@@ -161,11 +161,12 @@ export async function createOnramperCheckoutUrl(credentials: Credentials, sessio
     wallets: `${credentials.cryptoId}:${session.walletAddress}`, isAddressEditable: 'false',
     defaultPaymentMethod: 'creditcard', redirectAtCheckout: 'true', partnerContext: session.partnerContext,
     successRedirectUrl: redirect, failureRedirectUrl: redirect,
-    ...(credentials.mode === 'sandbox' ? { onlyOnramps: 'banxa', defaultFiat: 'eur', onlyFiats: 'eur,gbp' } : {}),
+    ...(credentials.mode === 'sandbox' ? { onlyOnramps: 'banxa', defaultFiat: 'eur' } : {}),
   }
   const url = new URL(credentials.mode === 'live' ? 'https://buy.onramper.com/' : 'https://buy.onramper.dev/')
   for (const [name, value] of Object.entries(fields)) url.searchParams.set(name, value)
   url.searchParams.set('themeName', theme)
+  url.searchParams.set('enableCountrySelector', 'true')
   if (credentials.signatureVersion === 'v1') {
     // The only V1-sensitive field is our exact asset/wallet pair. Onramper
     // requires its unencoded value, HMAC-SHA256 and a lowercase hex digest.
