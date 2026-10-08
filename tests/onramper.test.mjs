@@ -38,15 +38,14 @@ const webhook = (value, overrides = {}) => {
     headers: { 'Content-Type': 'application/json', 'X-Onramper-Webhook-Signature': createHmac('sha256', env.ONRAMPER_WEBHOOK_SECRET).update(body).digest('hex'), ...overrides } })
 }
 
-test('V2 signature independently verifies and binds wallet, asset, context, card default and redirect', async () => {
+test('V2 signature independently verifies and binds wallet, asset, context and redirect', async () => {
   const url = new URL(await createOnramperCheckoutUrl(credentials, session, 'https://firstbell.example', 'dark'))
   assert.equal(url.origin, 'https://buy.onramper.com')
   assert.equal(url.searchParams.get('wallets'), `${env.ONRAMPER_BSC_USDT_ID}:${wallet}`)
   assert.equal(url.searchParams.get('onlyCryptos'), env.ONRAMPER_BSC_USDT_ID)
   assert.equal(url.searchParams.get('isAddressEditable'), 'false')
-  assert.equal(url.searchParams.get('defaultPaymentMethod'), 'creditcard')
   assert.equal(url.searchParams.get('enableCountrySelector'), 'true')
-  for (const key of ['defaultAmount', 'defaultFiat', 'onlyFiats', 'excludeFiats', 'onlyOnramps', 'country', 'endUserIpHash']) assert.equal(url.searchParams.has(key), false)
+  for (const key of ['defaultAmount', 'defaultFiat', 'defaultPaymentMethod', 'onlyFiats', 'excludeFiats', 'onlyOnramps', 'country', 'endUserIpHash']) assert.equal(url.searchParams.has(key), false)
   const names = url.searchParams.get('sigV2Fields').split(',')
   for (const name of ['apiKey', 'wallets', 'onlyCryptos', 'isAddressEditable', 'partnerContext', 'successRedirectUrl', 'failureRedirectUrl', 'redirectAtCheckout']) assert.ok(names.includes(name))
   const signed = new URLSearchParams(names.map(name => [name, url.searchParams.get(name)])); signed.sort()
@@ -66,16 +65,27 @@ test('V2 signature independently verifies and binds wallet, asset, context, card
   assert.equal(resumed.searchParams.get('partnerContext'), context)
 })
 
-test('sandbox uses its own key and host, simulated Banxa, and never falls back to another network', async () => {
+test('sandbox permits documented test providers and available local payment methods while keeping the exact asset', async () => {
   const sandboxEnv = { ...env, ONRAMPER_ENVIRONMENT: 'sandbox', ONRAMPER_API_KEY: 'pk_test_fixture' }
   const sandbox = { ...session, mode: 'sandbox' }
   const url = new URL(await createOnramperCheckoutUrl(await getOnramperCredentials(sandboxEnv), sandbox, 'https://firstbell.example', 'light'))
   assert.equal(url.origin, 'https://buy.onramper.dev')
-  assert.equal(url.searchParams.get('onlyOnramps'), 'banxa')
-  assert.equal(url.searchParams.get('defaultFiat'), 'eur')
+  const providers = url.searchParams.get('onlyOnramps').split(',')
+  for (const provider of ['banxa', 'transfi', 'onrampmoney']) assert.ok(providers.includes(provider))
+  for (const provider of ['alchemypay', 'fonbnk']) assert.equal(providers.includes(provider), false)
   assert.equal(url.searchParams.get('enableCountrySelector'), 'true')
-  for (const name of ['onlyFiats', 'excludeFiats', 'country']) assert.equal(url.searchParams.has(name), false)
+  for (const name of ['defaultFiat', 'defaultPaymentMethod', 'onlyFiats', 'excludeFiats', 'country']) assert.equal(url.searchParams.has(name), false)
   assert.equal(url.searchParams.get('onlyCryptos'), env.ONRAMPER_BSC_USDT_ID)
+  const names = url.searchParams.get('sigV2Fields').split(',')
+  assert.ok(names.includes('onlyOnramps'))
+  const signed = new URLSearchParams(names.map(name => [name, url.searchParams.get(name)])); signed.sort()
+  const canonical = ['ONRAMPER-SIG-V2', url.searchParams.get('sigV2Timestamp'), url.searchParams.get('sigV2Nonce'), 'GET', '/', signed.toString(), '',
+    createHash('sha256').update('').digest('hex')]
+  const signature = Buffer.from(url.searchParams.get('sigV2').slice(3), 'base64')
+  assert.equal(verify(null, Buffer.from(canonical.join('\n')), pair.publicKey, signature), true)
+  signed.set('onlyOnramps', 'fonbnk'); signed.sort()
+  canonical[5] = signed.toString()
+  assert.equal(verify(null, Buffer.from(canonical.join('\n')), pair.publicKey, signature), false)
   for (const fields of [{ ONRAMPER_ENVIRONMENT: 'sandbox' }, { ONRAMPER_SIGNING_PRIVATE_KEY: 'bad-key' }, { ONRAMPER_BSC_USDT_ID: 'btc,eth' }])
     await assert.rejects(() => getOnramperCredentials({ ...env, ...fields }), /invalid_configuration/)
   await assert.rejects(() => getOnramperCredentials({ ...env, ONRAMPER_WEBHOOK_SECRET: '' }), /not_configured/)
@@ -98,7 +108,7 @@ test('test-key environment inference stays sandbox-only and rejects explicit liv
   assert.equal(credentials.mode, 'sandbox')
   const url = new URL(await createOnramperCheckoutUrl(credentials, { ...session, mode: 'sandbox' }, 'https://firstbell.example', 'light'))
   assert.equal(url.origin, 'https://buy.onramper.dev')
-  assert.equal(url.searchParams.get('onlyOnramps'), 'banxa')
+  assert.ok(url.searchParams.get('onlyOnramps').split(',').includes('onrampmoney'))
   await assert.rejects(() => getOnramperCredentials({ ...inferred, ONRAMPER_ENVIRONMENT: 'live' }), /invalid_configuration/)
   await assert.rejects(() => getOnramperCredentials({ ...inferred, ONRAMPER_ENVIRONMENT: 'unknown' }), /invalid_configuration/)
   await assert.rejects(() => getOnramperCredentials({ ...env, ONRAMPER_ENVIRONMENT: undefined }), /not_configured/)
@@ -196,7 +206,7 @@ test('explicit V1 uses the saved dashboard secret and independently signs the un
     assert.equal(url.searchParams.get('onlyCryptos'), env.ONRAMPER_BSC_USDT_ID)
     assert.equal(url.searchParams.get('isAddressEditable'), 'false')
     assert.equal(url.searchParams.get('enableCountrySelector'), 'true')
-    for (const name of ['onlyFiats', 'excludeFiats', 'country']) assert.equal(url.searchParams.has(name), false)
+    for (const name of ['defaultFiat', 'defaultPaymentMethod', 'onlyFiats', 'excludeFiats', 'country']) assert.equal(url.searchParams.has(name), false)
     assert.equal(url.searchParams.get('partnerContext'), context)
     assert.equal(url.searchParams.get('successRedirectUrl'), `https://firstbell.example/app/?tab=portfolio&deposit=${id}`)
     assert.equal(url.searchParams.get('failureRedirectUrl'), url.searchParams.get('successRedirectUrl'))
@@ -205,7 +215,11 @@ test('explicit V1 uses the saved dashboard secret and independently signs the un
     assert.notEqual(createHmac('sha256', v1Secret).update(plain.replace(wallet, otherWallet)).digest('hex'), expected)
     assert.ok(isCheckoutUrl(url.toString(), checkoutSession))
     for (const secret of [v1Secret, env.ONRAMPER_WEBHOOK_SECRET, privatePem, user]) assert.equal(url.toString().includes(secret), false)
-    if (mode === 'sandbox') assert.equal(url.searchParams.get('onlyOnramps'), 'banxa')
+    if (mode === 'sandbox') {
+      const providers = url.searchParams.get('onlyOnramps').split(',')
+      for (const provider of ['banxa', 'transfi', 'onrampmoney']) assert.ok(providers.includes(provider))
+      for (const provider of ['alchemypay', 'fonbnk']) assert.equal(providers.includes(provider), false)
+    } else assert.equal(url.searchParams.has('onlyOnramps'), false)
     await assert.rejects(createOnramperCheckoutUrl(key, { ...checkoutSession, providerCryptoId: 'another-asset' }, 'https://firstbell.example', 'light'), /invalid_session/)
   }
 })
