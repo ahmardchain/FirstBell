@@ -19,6 +19,7 @@ export function PortfolioPosition({ asset, quantity, market, change7d, orders, b
   const marketPrice = price !== null ? usd(price) : market === undefined ? zh ? '加载中…' : 'Loading…' : unavailable
   return <StockCard className="app-stock-card portfolio-position-card max-w-none" logoSrc={assetLogo(asset)} logoClassName={`brand-mark brand-mark--${asset.mark}`}
     ticker={asset.symbol} name={asset.company} price={hidden ? null : value} change={hidden ? null : performance?.gainPct ?? null}
+    priceMaximumFractionDigits={value !== null && value < 10 ? 4 : 2}
     priceLabel={zh ? '持仓价值' : 'Position value'} changeLabel={zh ? '买入以来' : 'Since purchase'}
     loading={!hidden && market === undefined} locale={zh ? 'zh-CN' : 'en-US'} buyLabel={zh ? '卖出' : 'Sell'} buyDisabled={!canSell}
     inspectLabel={zh ? '查看资产' : 'Open asset file'} unavailableLabel={hidden ? '••••••' : zh ? '估值暂不可用' : 'Value unavailable'}

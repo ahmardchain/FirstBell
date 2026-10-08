@@ -15,6 +15,7 @@ export interface StockCardProps extends Omit<HTMLMotionProps<'div'>, 'children'>
   price: number | null
   change: number | null
   priceLabel?: string
+  priceMaximumFractionDigits?: 2 | 4
   changeLabel?: string
   buyDisabled?: boolean
   children?: React.ReactNode
@@ -32,14 +33,14 @@ export interface StockCardProps extends Omit<HTMLMotionProps<'div'>, 'children'>
 
 const StockCard = React.forwardRef<HTMLDivElement, StockCardProps>(
   ({ className, logoSrc, logoClassName, ticker, name, price, change, onBuy, onInspect,
-    actions, children, priceLabel, changeLabel, buyDisabled, loading = false, locale = 'en-US', buyLabel = 'Buy', inspectLabel = 'Open asset file',
+    actions, children, priceLabel, priceMaximumFractionDigits = 2, changeLabel, buyDisabled, loading = false, locale = 'en-US', buyLabel = 'Buy', inspectLabel = 'Open asset file',
     loadingLabel = 'Loading…', unavailableLabel = 'Price unavailable', changeUnavailableLabel = 'No data', ...props }, ref) => {
     const reduceMotion = useReducedMotion()
     const hasPrice = typeof price === 'number' && Number.isFinite(price) && price > 0
     const hasChange = hasPrice && typeof change === 'number' && Number.isFinite(change)
     const isPositiveChange = hasChange && change >= 0
     const formattedPrice = hasPrice ? new Intl.NumberFormat(locale, {
-      style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
+      style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: priceMaximumFractionDigits,
     }).format(price) : unavailableLabel
     const identity = <>
       <img src={logoSrc} alt={`${name} logo`} width={40} height={40} loading="lazy" onError={tokenLogoError}

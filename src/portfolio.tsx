@@ -106,7 +106,7 @@ export function PortfolioWorkspace(props: Props) {
   if (PRIVY_APP_ID) return <ConnectedPortfolio {...props} />
   return <PortfolioView {...props} account={{ configured: false, ready: true, authenticated: false, walletReady: false, balances: null, loading: false, error: false, login: () => {}, logout: async () => {} }} />
 }
-const money = (value: number) => `US$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const money = (value: number, maximumFractionDigits = 2) => `US$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits })}`
 
 // A presentational view allows explicit local QA fixtures without bypassing Privy.
 export function PortfolioView({ assets, language, onInspect, onSell, account }: Props & { account: Account }) {
@@ -198,13 +198,16 @@ export function PortfolioView({ assets, language, onInspect, onSell, account }: 
     ? holdings.reduce((sum, token) => sum + Number(token.quantity) * markets[token.symbol]?.priceUsd!, 0) : null
   const placeholder = account.error ? t.error : !account.address ? t.preparing : t.loading
   const cash = account.balances ? Number(account.balances.usdt) : null
+  const smallPosition = holdings.some(token => markets[token.symbol]?.priceUsd != null && Number(token.quantity) * markets[token.symbol].priceUsd! < 10)
+  const positionDecimals = smallPosition ? 4 : 2
+  const cashDecimals = cash !== null && cash < 10 ? 4 : 2
   const total = cash !== null && positionValue !== null ? cash + positionValue : null
   const valuationUnavailable = account.balances && (holdings.some(token => markets[token.symbol]?.priceUsd === null)
     || (total !== null && !Number.isFinite(total)))
-  const balance = account.balances && total !== null && Number.isFinite(total) ? money(total)
+  const balance = account.balances && total !== null && Number.isFinite(total) ? money(total, Math.max(positionDecimals, cashDecimals))
     : valuationUnavailable ? t.unavailable : placeholder
-  const cashBalance = cash !== null && Number.isFinite(cash) ? money(cash) : placeholder
-  const value = account.balances && positionValue != null && Number.isFinite(positionValue) ? money(positionValue)
+  const cashBalance = cash !== null && Number.isFinite(cash) ? money(cash, cashDecimals) : placeholder
+  const value = account.balances && positionValue != null && Number.isFinite(positionValue) ? money(positionValue, positionDecimals)
     : account.balances && holdings.some(token => markets[token.symbol]?.priceUsd === null) ? t.unavailable : placeholder
   const saveName = () => {
     const next = name.trim().slice(0, 40) || defaultName
