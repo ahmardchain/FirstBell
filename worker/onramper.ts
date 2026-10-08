@@ -159,9 +159,12 @@ export async function createOnramperCheckoutUrl(credentials: Credentials, sessio
   const fields: Record<string, string> = {
     apiKey: credentials.apiKey, mode: 'buy', defaultCrypto: credentials.cryptoId, onlyCryptos: credentials.cryptoId,
     wallets: `${credentials.cryptoId}:${session.walletAddress}`, isAddressEditable: 'false',
-    defaultPaymentMethod: 'creditcard', redirectAtCheckout: 'true', partnerContext: session.partnerContext,
+    redirectAtCheckout: 'true', partnerContext: session.partnerContext,
     successRedirectUrl: redirect, failureRedirectUrl: redirect,
-    ...(credentials.mode === 'sandbox' ? { onlyOnramps: 'banxa', defaultFiat: 'eur' } : {}),
+    // Documented test flows, including providers that quote USDT BSC. Banxa
+    // alone has no route for some countries. Production-only Alchemy Pay and
+    // Fonbnk stay excluded from sandbox.
+    ...(credentials.mode === 'sandbox' ? { onlyOnramps: 'banxa,sardine,topper,stripe,transfi,btcdirect,coinify,onrampmoney' } : {}),
   }
   const url = new URL(credentials.mode === 'live' ? 'https://buy.onramper.com/' : 'https://buy.onramper.dev/')
   for (const [name, value] of Object.entries(fields)) url.searchParams.set(name, value)
