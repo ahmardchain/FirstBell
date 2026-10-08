@@ -5,7 +5,9 @@ import { BSC_USDT, type DepositSession, type FundingMode } from '../lib/funding.
 import type { AccountNamespace } from './env.ts'
 import { confirmedTransfer, FundingError, type FundingEnv } from './moonpay.ts'
 
-type Credentials = { apiKey: string; privateKey: CryptoKey; webhookSecret: string; cryptoId: string; mode: FundingMode }
+type SigningVersion = 'v1' | 'v2'
+type Credentials = { apiKey: string; webhookSecret: string; cryptoId: string; mode: FundingMode } &
+  ({ signatureVersion: 'v1'; signingKey: CryptoKey } | { signatureVersion: 'v2'; privateKey: CryptoKey })
 type SigningKeyIssue = 'public_key' | 'encrypted_private_key' | 'non_pkcs8_private_key' | 'not_pem' | 'invalid_ed25519_pkcs8'
 class OnramperConfigurationError extends FundingError {
   readonly invalid: string[]
@@ -32,8 +34,24 @@ export function getOnramperMode(env: FundingEnv): FundingMode | null {
   return env.ONRAMPER_API_KEY?.trim().startsWith('pk_test_') ? 'sandbox' : null
 }
 
+function signingVersion(env: FundingEnv): SigningVersion | null {
+  const value = env.ONRAMPER_SIGNING_VERSION?.trim()
+  return !value ? 'v2' : value === 'v1' || value === 'v2' ? value : null
+}
+
+function signingSecretSetting(env: FundingEnv) {
+  // Compatibility for the dashboard secret saved under the old PEM variable.
+  // Only an explicit v1 selection can use it as HMAC; v2 never falls back.
+  const secret = env.ONRAMPER_SIGNING_SECRET?.trim()
+  if (secret) return { name: 'ONRAMPER_SIGNING_SECRET' as const, value: secret }
+  const legacy = env.ONRAMPER_SIGNING_PRIVATE_KEY?.trim()
+  return legacy ? { name: 'ONRAMPER_SIGNING_PRIVATE_KEY' as const, value: legacy }
+    : { name: 'ONRAMPER_SIGNING_SECRET' as const, value: undefined }
+}
+
 function missingConfiguration(env: FundingEnv): string[] {
-  const names = ['ONRAMPER_API_KEY', 'ONRAMPER_SIGNING_PRIVATE_KEY', 'ONRAMPER_WEBHOOK_SECRET', 'ONRAMPER_BSC_USDT_ID'] as const
+  const keyName = signingVersion(env) === 'v1' ? signingSecretSetting(env).name : 'ONRAMPER_SIGNING_PRIVATE_KEY'
+  const names = ['ONRAMPER_API_KEY', keyName, 'ONRAMPER_WEBHOOK_SECRET', 'ONRAMPER_BSC_USDT_ID'] as const
   const missing = names.filter(name => !env[name]?.trim()) as string[]
   if (!env.ONRAMPER_ENVIRONMENT?.trim() && !getOnramperMode(env)) missing.push('ONRAMPER_ENVIRONMENT')
   return missing
@@ -48,7 +66,7 @@ export async function getOnramperSetup(env: FundingEnv) {
     reason = error instanceof FundingError ? error.reason : 'invalid_configuration'
     if (error instanceof OnramperConfigurationError) { invalid = error.invalid; signingKeyIssue = error.signingKeyIssue }
   }
-  return { mode: getOnramperMode(env), configured: reason === null, missing: missingConfiguration(env), reason,
+  return { mode: getOnramperMode(env), signatureVersion: signingVersion(env), configured: reason === null, missing: missingConfiguration(env), reason,
     ...(invalid.length ? { invalid } : {}), ...(signingKeyIssue ? { signingKeyIssue } : {}) }
 }
 
@@ -73,15 +91,29 @@ function signingKeyProblem(pem: string): SigningKeyIssue {
 // Onramper IDs are account catalog values, not MoonPay currency codes. Require
 // the exact USDT / BNB Smart Chain ID confirmed during partner onboarding.
 export async function getOnramperCredentials(env: FundingEnv): Promise<Credentials> {
+  const version = signingVersion(env)
+  if (!version) throw new OnramperConfigurationError(['ONRAMPER_SIGNING_VERSION'])
   const apiKey = env.ONRAMPER_API_KEY?.trim(), pem = signingPem(env.ONRAMPER_SIGNING_PRIVATE_KEY)
   const webhookSecret = env.ONRAMPER_WEBHOOK_SECRET?.trim(), cryptoId = env.ONRAMPER_BSC_USDT_ID?.trim()
-  if (!apiKey || !pem || !webhookSecret || !cryptoId || missingConfiguration(env).length) throw new FundingError('not_configured')
+  if (!apiKey || !webhookSecret || !cryptoId || missingConfiguration(env).length) throw new FundingError('not_configured')
   const mode = getOnramperMode(env)
   const invalid: string[] = []
   if (!mode) invalid.push('ONRAMPER_ENVIRONMENT')
   else if (!apiKey.startsWith(mode === 'live' ? 'pk_prod_' : 'pk_test_')) invalid.push('ONRAMPER_API_KEY')
   if (!/^[a-z0-9][a-z0-9_-]{0,127}$/.test(cryptoId)) invalid.push('ONRAMPER_BSC_USDT_ID')
   if (webhookSecret.length < 16) invalid.push('ONRAMPER_WEBHOOK_SECRET')
+  const shared = { apiKey, webhookSecret, cryptoId, mode: mode as FundingMode }
+  if (version === 'v1') {
+    const setting = signingSecretSetting(env), secret = setting.value!
+    let signingKey: CryptoKey | undefined
+    try {
+      if (secret.length < 16 || secret.length > 4096 || /\s/.test(secret) || secret.includes('-----BEGIN ')
+        || /^pk_(?:test|prod)_/.test(secret)) throw new Error()
+      signingKey = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    } catch { invalid.push(setting.name) }
+    if (invalid.length) throw new OnramperConfigurationError(invalid)
+    return { ...shared, signatureVersion: 'v1', signingKey: signingKey! }
+  }
   let privateKey: CryptoKey | undefined
   let signingKeyIssue: SigningKeyIssue | undefined
   try {
@@ -89,7 +121,7 @@ export async function getOnramperCredentials(env: FundingEnv): Promise<Credentia
     if (privateKey.algorithm.name !== 'Ed25519') throw new Error()
   } catch { invalid.push('ONRAMPER_SIGNING_PRIVATE_KEY'); signingKeyIssue = signingKeyProblem(pem) }
   if (invalid.length) throw new OnramperConfigurationError(invalid, signingKeyIssue)
-  return { apiKey, privateKey: privateKey!, webhookSecret, cryptoId, mode: mode as FundingMode }
+  return { ...shared, signatureVersion: 'v2', privateKey: privateKey! }
 }
 
 async function contextKey(secret: string) {
@@ -131,6 +163,16 @@ export async function createOnramperCheckoutUrl(credentials: Credentials, sessio
     successRedirectUrl: redirect, failureRedirectUrl: redirect,
     ...(credentials.mode === 'sandbox' ? { onlyOnramps: 'banxa', defaultFiat: 'eur', onlyFiats: 'eur,gbp' } : {}),
   }
+  const url = new URL(credentials.mode === 'live' ? 'https://buy.onramper.com/' : 'https://buy.onramper.dev/')
+  for (const [name, value] of Object.entries(fields)) url.searchParams.set(name, value)
+  url.searchParams.set('themeName', theme)
+  if (credentials.signatureVersion === 'v1') {
+    // The only V1-sensitive field is our exact asset/wallet pair. Onramper
+    // requires its unencoded value, HMAC-SHA256 and a lowercase hex digest.
+    const signature = new Uint8Array(await crypto.subtle.sign('HMAC', credentials.signingKey, encoder.encode(`wallets=${fields.wallets}`)))
+    url.searchParams.set('signature', Array.from(signature, byte => byte.toString(16).padStart(2, '0')).join(''))
+    return url.toString()
+  }
   // V2 signs every core field using form encoding. Amount, fiat and provider
   // remain owned by Onramper in live checkout. No mobile IP binding is imposed.
   const canonical = new URLSearchParams(fields); canonical.sort()
@@ -138,9 +180,6 @@ export async function createOnramperCheckoutUrl(credentials: Credentials, sessio
   const content = ['ONRAMPER-SIG-V2', timestamp, nonce, 'GET', '/', canonical.toString(), '',
     'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'].join('\n')
   const signature = await crypto.subtle.sign('Ed25519', credentials.privateKey, encoder.encode(content))
-  const url = new URL(credentials.mode === 'live' ? 'https://buy.onramper.com/' : 'https://buy.onramper.dev/')
-  for (const [name, value] of Object.entries(fields)) url.searchParams.set(name, value)
-  url.searchParams.set('themeName', theme)
   url.searchParams.set('sigV2', `v2:${base64(new Uint8Array(signature))}`)
   url.searchParams.set('sigV2Timestamp', timestamp)
   url.searchParams.set('sigV2Nonce', nonce)

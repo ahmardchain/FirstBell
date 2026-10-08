@@ -6,6 +6,7 @@ import { encodeEventTopics, erc20Abi, pad, toHex } from 'viem'
 import { BSC_USDT, isCheckoutUrl } from '../lib/funding.ts'
 import { handleStoredDeposits } from '../worker/deposits.ts'
 import { handleApiRequest } from '../worker/router.ts'
+import { createVercelHandler } from '../server/vercel.ts'
 import { applyOnramperEvent, checkOnramperDeposit, createOnramperCheckoutUrl, createPartnerContext, getOnramperCredentials, handleOnramperWebhook, readPartnerContext } from '../worker/onramper.ts'
 
 const originalFetch = globalThis.fetch
@@ -105,7 +106,7 @@ test('setup diagnostics distinguish missing and invalid configuration without ex
   const response = await handleApiRequest(request(), partial)
   assert.equal(response.status, 200)
   const text = await response.text(), result = JSON.parse(text)
-  assert.deepEqual(result.cardFunding, { provider: 'onramper', mode: 'sandbox', configured: false,
+  assert.deepEqual(result.cardFunding, { provider: 'onramper', mode: 'sandbox', signatureVersion: 'v2', configured: false,
     missing: ['ONRAMPER_WEBHOOK_SECRET', 'ONRAMPER_BSC_USDT_ID'], reason: 'not_configured' })
   assert.equal(text.includes(partial.ONRAMPER_API_KEY), false)
   assert.equal(text.includes('BEGIN PRIVATE KEY'), false)
@@ -170,6 +171,92 @@ test('key-format diagnostics stay fixed codes and never reveal the rejected key'
     for (const secret of [value, env.ONRAMPER_API_KEY, env.ONRAMPER_WEBHOOK_SECRET]) assert.equal(body.includes(secret), false)
     await assert.rejects(getOnramperCredentials(fields), { reason: 'invalid_configuration', status: 503 })
   }
+})
+
+const v1Secret = 'fixture-v1-dashboard-signing-secret'
+const v1Env = { ...env, ONRAMPER_SIGNING_VERSION: 'v1', ONRAMPER_SIGNING_PRIVATE_KEY: v1Secret }
+
+test('explicit V1 uses the saved dashboard secret and independently signs the unencoded wallet in hex', async () => {
+  for (const mode of ['live', 'sandbox']) {
+    const fields = { ...v1Env, ONRAMPER_ENVIRONMENT: mode, ONRAMPER_API_KEY: mode === 'live' ? 'pk_prod_fixture' : 'pk_test_fixture' }
+    const key = await getOnramperCredentials(fields)
+    assert.equal(key.signatureVersion, 'v1'); assert.equal(key.signingKey.algorithm.name, 'HMAC')
+    const checkoutSession = { ...session, mode }
+    const url = new URL(await createOnramperCheckoutUrl(key, checkoutSession, 'https://firstbell.example', 'dark'))
+    const plain = `wallets=${env.ONRAMPER_BSC_USDT_ID}:${wallet}`
+    const expected = createHmac('sha256', v1Secret).update(plain).digest('hex')
+    assert.equal(url.searchParams.get('signature'), expected)
+    assert.match(expected, /^[a-f0-9]{64}$/)
+    assert.equal(url.origin, mode === 'live' ? 'https://buy.onramper.com' : 'https://buy.onramper.dev')
+    assert.equal(url.searchParams.get('wallets'), `${env.ONRAMPER_BSC_USDT_ID}:${wallet}`)
+    assert.equal(url.searchParams.get('onlyCryptos'), env.ONRAMPER_BSC_USDT_ID)
+    assert.equal(url.searchParams.get('isAddressEditable'), 'false')
+    assert.equal(url.searchParams.get('partnerContext'), context)
+    assert.equal(url.searchParams.get('successRedirectUrl'), `https://firstbell.example/app/?tab=portfolio&deposit=${id}`)
+    assert.equal(url.searchParams.get('failureRedirectUrl'), url.searchParams.get('successRedirectUrl'))
+    for (const name of ['sigV2', 'sigV2Fields', 'sigV2Nonce', 'endUserIpHash', 'defaultAmount']) assert.equal(url.searchParams.has(name), false)
+    assert.notEqual(createHmac('sha256', v1Secret).update(new URLSearchParams({ wallets: `${env.ONRAMPER_BSC_USDT_ID}:${wallet}` }).toString()).digest('hex'), expected)
+    assert.notEqual(createHmac('sha256', v1Secret).update(plain.replace(wallet, otherWallet)).digest('hex'), expected)
+    assert.ok(isCheckoutUrl(url.toString(), checkoutSession))
+    for (const secret of [v1Secret, env.ONRAMPER_WEBHOOK_SECRET, privatePem, user]) assert.equal(url.toString().includes(secret), false)
+    if (mode === 'sandbox') assert.equal(url.searchParams.get('onlyOnramps'), 'banxa')
+    await assert.rejects(createOnramperCheckoutUrl(key, { ...checkoutSession, providerCryptoId: 'another-asset' }, 'https://firstbell.example', 'light'), /invalid_session/)
+  }
+})
+
+test('V1 requires explicit selection; invalid V2 and unknown versions never downgrade', async () => {
+  await assert.rejects(getOnramperCredentials({ ...v1Env, ONRAMPER_SIGNING_VERSION: undefined, ONRAMPER_SIGNING_SECRET: v1Secret }), /invalid_configuration/)
+  const unknown = await (await handleApiRequest(new Request('https://firstbell.example/api/health'), { ...v1Env, ONRAMPER_SIGNING_VERSION: 'auto' })).json()
+  assert.equal(unknown.cardFunding.configured, false)
+  assert.deepEqual(unknown.cardFunding.invalid, ['ONRAMPER_SIGNING_VERSION'])
+  for (const value of ['', 'too-short', privatePem, 'pk_test_fixture_secret', 'invalid secret with spaces']) {
+    const fields = { ...v1Env, ONRAMPER_SIGNING_SECRET: value, ONRAMPER_SIGNING_PRIVATE_KEY: undefined }
+    const response = await handleApiRequest(new Request('https://firstbell.example/api/health'), fields)
+    const body = await response.text(), result = JSON.parse(body)
+    assert.equal(result.cardFunding.configured, false)
+    assert.equal(result.cardFunding.signatureVersion, 'v1')
+    if (value) { assert.deepEqual(result.cardFunding.invalid, ['ONRAMPER_SIGNING_SECRET']); assert.equal(body.includes(value), false) }
+    else assert.ok(result.cardFunding.missing.includes('ONRAMPER_SIGNING_SECRET'))
+  }
+  const v2 = await getOnramperCredentials({ ...env, ONRAMPER_SIGNING_SECRET: v1Secret })
+  assert.equal(v2.signatureVersion, 'v2'); assert.equal(v2.privateKey.algorithm.name, 'Ed25519')
+  const v1 = await getOnramperCredentials({ ...env, ONRAMPER_SIGNING_VERSION: 'v1', ONRAMPER_SIGNING_SECRET: v1Secret })
+  assert.equal(v1.signatureVersion, 'v1')
+})
+
+test('Vercel forwards V1 configuration and health reports readiness without exposing signing secrets', async () => {
+  for (const fields of [v1Env, { ...env, ONRAMPER_SIGNING_VERSION: 'v1', ONRAMPER_SIGNING_SECRET: v1Secret }]) {
+    const response = await createVercelHandler(fields)(new Request('https://firstbell.example/api/health'))
+    const body = await response.text(), result = JSON.parse(body)
+    assert.equal(result.cardFunding.configured, true)
+    assert.equal(result.cardFunding.signatureVersion, 'v1')
+    assert.deepEqual(result.cardFunding.missing, [])
+    for (const secret of [v1Secret, env.ONRAMPER_WEBHOOK_SECRET, env.ONRAMPER_API_KEY, privatePem]) assert.equal(body.includes(secret), false)
+  }
+})
+
+test('V1 authenticated checkout retains wallet ownership, stored context and verified webhook routing', async () => {
+  const privy = await generateKeyPair('ES256'), store = storage()
+  const fields = { ...v1Env, PRIVY_VERIFICATION_KEY: await exportSPKI(privy.publicKey), ACCOUNTS: {
+    idFromName: value => value, get: () => ({ fetch: request => handleStoredDeposits(request, fields, store) }),
+  } }
+  const token = await new SignJWT({ linked_accounts: JSON.stringify([{ type: 'wallet', chain_type: 'ethereum', wallet_client_type: 'privy', address: wallet }]) })
+    .setProtectedHeader({ alg: 'ES256' }).setIssuer('privy.io').setAudience(env.PRIVY_APP_ID).setSubject(user).setIssuedAt().setExpirationTime('1h').sign(privy.privateKey)
+  const checkout = (address, jwt = token, origin = 'https://firstbell.example') => new Request('https://firstbell.example/api/deposits/checkout', { method: 'POST',
+    headers: { Origin: origin, Authorization: `Bearer ${jwt}`, 'privy-id-token': token, 'Content-Type': 'application/json' }, body: JSON.stringify({ walletAddress: address }) })
+  assert.equal((await handleApiRequest(checkout(wallet, 'invalid'), fields)).status, 401)
+  assert.equal((await handleApiRequest(checkout(otherWallet), fields)).status, 403)
+  assert.equal((await handleApiRequest(checkout(wallet, token, 'https://attacker.example'), fields)).status, 403)
+  assert.equal(store.values.has('deposits'), false)
+  const response = await handleApiRequest(checkout(wallet), fields)
+  assert.equal(response.status, 200)
+  const created = await response.json(), url = new URL(created.checkoutUrl)
+  assert.equal(url.searchParams.get('signature'), createHmac('sha256', v1Secret).update(`wallets=${env.ONRAMPER_BSC_USDT_ID}:${wallet}`).digest('hex'))
+  assert.equal((await handleApiRequest(webhook(event({ partnerContext: created.session.partnerContext })), fields)).status, 200)
+  const recorded = store.values.get('deposits')[0]
+  assert.equal(recorded.status, 'processing'); assert.equal(recorded.receivedAmount, null)
+  assert.equal((await handleApiRequest(webhook(event({ partnerContext: created.session.partnerContext, walletAddress: otherWallet })), fields)).status, 409)
+  assert.deepEqual(store.values.get('deposits')[0], recorded)
 })
 
 test('verified provider updates pin order and fiat while rejecting wrong assets, recipients and contexts', () => {
