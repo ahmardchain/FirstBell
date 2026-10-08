@@ -2,6 +2,7 @@ import { decodeFunctionData, erc20Abi, getAddress, hashTypedData, parseUnits, ty
 import { tokenAddresses } from './asset-catalog.ts'
 import { isPaymentToken, tradeCash, type PaymentToken } from './trade-assets.ts'
 import type { TradingRoute } from './trading.ts'
+import { skillTradeBlock, validateSkillReport, type SkillReport } from './binance-wallet-skills.ts'
 
 // CoW Protocol's published deployment and Order schema. Never sign a raw hash,
 // permit, arbitrary vendor schema or an order with unreviewed spend semantics.
@@ -21,6 +22,7 @@ export type AgentTradePlan = {
   approval: null | { chainId: 56; to: Address; data: Hex; value: '0'; amount: string; spender: Address; reset: boolean; gasFeeBnb: string; simulated: true;
     sponsorship?: { provider: 'megafuel'; gas: string; nonce: number } };
   planToken: string;
+  walletSkills?: SkillReport;
 }
 export type AgentOrder = { orderId: string; status: 'PENDING_VENDOR' | 'PENDING_ONCHAIN' | 'CONFIRMING' | 'FILLED' | 'FAILED' | 'EXPIRED' | 'CANCELLED'; txHash: Hex | null; inputAmount: string | null; outputAmount: string | null; receiptToken: string;
   trade?: { symbol: string; side: 'buy' | 'sell'; amount: string; inputSymbol: string; outputSymbol: string; expiresAt: string; source: 'binance-web3' | 'cow-protocol'; quotedOutputAmount?: string; requestId?: string };
@@ -83,6 +85,12 @@ export function validateAgentTradePlan(value: unknown, request: { symbol: string
     || (plan.estimatedFeeAmount !== undefined && (route.source !== 'cow-protocol' || plan.feeAmount !== '0'
       || !integer(plan.estimatedFeeAmount) || BigInt(plan.estimatedFeeAmount) >= BigInt(plan.rawAmount)))) throw new Error('invalid_order_payload')
   const typedData = validateOrderTypedData(plan.typedData, plan)
+  if (plan.walletSkills) {
+    try {
+      validateSkillReport(plan.walletSkills, request.symbol, tokenAddresses[request.symbol])
+      if (skillTradeBlock(plan.walletSkills)) throw new Error('invalid_order_payload')
+    } catch { throw new Error('invalid_order_payload') }
+  }
   if (hashTypedData(typedData) !== plan.typedDataHash || Date.parse(plan.expiresAt) !== Number(typedData.message.validTo) * 1000
     || plan.minimumReceive !== BigInt(typedData.message.buyAmount as string).toString() || plan.feeAmount !== typedData.message.feeAmount) throw new Error('invalid_order_payload')
   if (plan.approval) {

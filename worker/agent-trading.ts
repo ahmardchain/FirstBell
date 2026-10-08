@@ -11,6 +11,8 @@ import { tradeAttempt } from './trade-attempts.ts'
 import { cancelCowOrder, checkCowOrder, cowOrderUid, getCowTrade, submitCowOrder } from './cow-trading.ts'
 import { cowCancellationTypedData } from '../lib/order-cancellation.ts'
 import { rejectedTradeReason } from '../lib/trade-execution.ts'
+import { checkSkillTrade } from './wallet-skills.ts'
+import { WalletSkillError, skillRiskFingerprint } from '../lib/binance-wallet-skills.ts'
 
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -310,7 +312,10 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
       if (typeof body.symbol !== 'string' || !isSymbol(body.symbol) || (body.side !== 'buy' && body.side !== 'sell') || !parseQuantity(body.amount)) throw new RouteError('invalid_trade_request', 400)
       if (body.paymentToken !== undefined && !isPaymentToken(body.paymentToken)) throw new RouteError('invalid_trade_request', 400)
       if (body.sponsorApproval !== undefined && typeof body.sponsorApproval !== 'boolean') throw new RouteError('invalid_trade_request', 400)
+      if (body.walletSkills !== undefined && typeof body.walletSkills !== 'boolean') throw new RouteError('invalid_trade_request', 400)
+      const walletSkills = body.walletSkills === true ? await checkSkillTrade(body.symbol, request.signal) : undefined
       const prepared = await prepareAgentTrade(body.symbol, body.side, body.amount as string, body.walletAddress, credentials, request.signal, { paymentToken: body.paymentToken as PaymentToken | undefined, env: body.sponsorApproval === true ? env : undefined })
+      if (walletSkills) prepared.walletSkills = walletSkills
       const planToken = await sealTradeTicket({ plan: prepared }, userId, credentials.secretKey, 'plan')
       return json({ plan: { ...prepared, planToken } })
     }
@@ -335,7 +340,17 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
       if (!previous.orderId && rejectedTradeReason(previous.failureReason)) submitted = failedOrder(plan, previous.failureReason)
       else try {
         submitted = await submitAgentTrade(plan, body.signature, credentials, { ...previous,
-          beforeDispatch: async () => { await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature as string, 'start') },
+          beforeDispatch: async () => {
+            if (plan.walletSkills && !previous.started) {
+              try {
+                const current = await checkSkillTrade(plan.route.symbol, request.signal)
+                if (skillRiskFingerprint(current) !== skillRiskFingerprint(plan.walletSkills)) throw new WalletSkillError('skill_checks_changed')
+              } catch (error) {
+                throw new RouteError(error instanceof WalletSkillError && error.message !== 'skill_provider_unavailable' ? error.message : 'skill_checks_unavailable', 409)
+              }
+            }
+            await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature as string, 'start')
+          },
         })
       } catch (error) {
         if (previous.orderId || !(error instanceof RouteError) || !rejectedTradeReason(error.reason)) throw error
@@ -364,7 +379,7 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
     return json({ error: 'not_found' }, 404)
   } catch (error) {
     if (error instanceof WalletVerificationError) return json({ error: error.message }, error.status)
-    const reason = error instanceof RouteError ? error.reason : error instanceof Error && ['unsupported_order_schema', 'invalid_order_payload'].includes(error.message) ? error.message : 'provider_error'
+    const reason = error instanceof WalletSkillError ? error.message : error instanceof RouteError ? error.reason : error instanceof Error && ['unsupported_order_schema', 'invalid_order_payload'].includes(error.message) ? error.message : 'provider_error'
     return json({ error: reason, ...(error instanceof RouteError && error.minimumUsd ? { minimumUsd: error.minimumUsd } : {}) }, error instanceof RouteError ? error.status : 503)
   }
 }

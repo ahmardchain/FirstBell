@@ -13,6 +13,8 @@ import { createOnramperDemoUrl } from '../lib/onramper-demo.ts'
 import { handleWithdrawalRequest } from './withdrawals.ts'
 import { handleWalletActivity } from './wallet-activity.ts'
 import { portfolioChanges } from './portfolio-market.ts'
+import { researchStockPublic } from './wallet-skills.ts'
+import { walletSkills, WalletSkillError } from '../lib/binance-wallet-skills.ts'
 
 const maxBodyBytes = 512
 
@@ -56,6 +58,16 @@ async function getUserId(request: Request, env: ApiEnv): Promise<string | null> 
 export async function handleApiRequest(request: Request, env: ApiEnv): Promise<Response> {
   const pathname = new URL(request.url).pathname
   if (!pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
+  if (pathname === '/api/agent/skills' && request.method === 'GET') return json({ source: 'binance-wallet-skills',
+    skills: walletSkills, webExecution: 'privy-confirmed', agenticWalletExecution: 'local-mcp', chainId: 56 })
+  if (pathname === '/api/agent/research') {
+    if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405)
+    const symbol = new URL(request.url).searchParams.get('symbol') ?? ''
+    if (!isSymbol(symbol)) return json({ error: 'skill_unknown_asset' }, 400)
+    // Only public stock/audit data. No wallet, account, session or credentials.
+    try { return json({ report: await researchStockPublic(symbol, request.signal) }) }
+    catch (error) { return json({ error: error instanceof WalletSkillError ? error.message : 'skill_provider_unavailable' }, 503) }
+  }
   if (pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok',
     agentTrading: { configured: Boolean(env.BINANCE_WEB3_API_KEY?.trim() && env.BINANCE_WEB3_SECRET_KEY?.trim()), chainId: 56, executionVendor: 'CowSwap', quoteSources: ['binance-web3', 'cow-protocol'], confirmationRequired: true },
     walletVerification: { serverLookupConfigured: Boolean(env.PRIVY_APP_SECRET?.trim()) },

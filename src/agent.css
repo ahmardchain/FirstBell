@@ -74,3 +74,21 @@
 @keyframes agent-spin { to { transform:rotate(360deg); } }
 @media(max-width:540px) { .agent-trade-review { padding:16px; } .agent-trade-review dl>div { gap:10px; } .agent-review-actions button { padding:0 13px; } }
 @media(prefers-reduced-motion:reduce) { .agent-spinner { animation:none; } }
+
+.agent-skill-report { display:grid; gap:14px; min-width:0; width:100%; margin-top:16px; font-size:12px; }
+.agent-skill-heading { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
+.agent-skill-report a { display:inline-flex; align-items:center; gap:5px; margin:0; font-size:11px; color:var(--foreground); }
+.agent-skill-report dl { display:grid; gap:10px; margin:0; }
+.agent-skill-report dl>div { display:flex; justify-content:space-between; gap:16px; align-items:baseline; }
+.agent-skill-report dt { color:var(--muted); }
+.agent-skill-report dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.agent-skill-report p { margin:0; font-size:11px; color:var(--muted); line-height:1.6; }
+.agent-skill-report small { color:var(--muted); font-size:10px; }
+.agent-skill-report .agent-skill-contract { display:grid; gap:6px; font:10px/1.6 'IBM Plex Mono',monospace; overflow-wrap:anywhere; border:0; }
+.agent-skill-contract span { color:var(--muted); font-family:'Inter Variable',sans-serif; }
+.agent-skill-report ul { display:grid; gap:10px; margin:0; padding-left:16px; }
+.agent-skill-report li span { display:block; margin-top:4px; color:var(--muted); line-height:1.5; }
+.agent-skill-report summary { display:flex; align-items:center; min-height:44px; cursor:pointer; border-top:1px solid var(--line); }
+.agent-skill-report details>div { display:grid; gap:4px; padding:7px 0; overflow-wrap:anywhere; }
+.agent-skill-report.compact { border-top:1px solid var(--line); padding-top:16px; }
+.ai-chat-message:has(.agent-skill-report) { width:100%; max-width:100%; }

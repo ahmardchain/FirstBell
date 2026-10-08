@@ -13,6 +13,9 @@
     "build": "tsc -b && vite build && npm run build:api",
     "build:api": "node scripts/build-vercel-api.mjs",
     "preview": "vite preview",
+    "agent:check": "node agent-runtime/doctor.mjs",
+    "agent:config": "node agent-runtime/print-config.mjs",
+    "agent:binance": "node agent-runtime/server.mjs",
     "deploy:cloudflare": "npm run build && npx --yes wrangler@4.144.0 deploy"
   },
   "dependencies": {
