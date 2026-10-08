@@ -1,33 +1,59 @@
-# FirstBell demo preparation
+# Record the FirstBell demo
 
-## Current readiness
+Aim for **3 minutes 45 seconds**, leaving room below the hackathon's four-minute video limit. Record the product in a desktop browser at 1080p, with readable text, your voice and simple captions. A working product demonstration is more useful than slides. Use the [live app](https://firstbell-server-test.vercel.app/app/) and keep the [submission checklist](submission-checklist.md) beside you.
 
-- Implemented: Google/email login, embedded wallet, BSC on-chain balances, asset research, configured Binance RWA reads, an authenticated read-only Binance trading-route check, and separate MoonPay sandbox/live checkout routes.
-- Still to verify with actual credentials: a successful deployed MoonPay sandbox checkout and genuine Binance Web3 RWA/trading-route calls for this wallet.
-- Still unfinished: executable stock buys/sells. The trade ticket can check a Binance RFQ route for the listed Ondo token; it cannot sign or submit an order. Do not record a route estimate as a completed purchase.
+## Prepare before recording
 
-## Check the trading candidate first
+- Open the landing page, app, real BscScan receipt, GitHub README and Developer Experience field log in separate tabs. Close unrelated tabs and disable notifications.
+- Use your own demo account. Complete sign-in privately; exclude email codes, pairing QR codes, account tokens, card/bank details, KYC documents and secret environment settings from the recording.
+- Check a currently available spot route at an amount you choose. Do not assume every token supports a $1 trade. Rehearse before the final take; quote expiry, liquidity and provider eligibility can change.
+- For a mainnet trade, use real BSC USDT in the exact signed-in wallet. Test card payments do not supply it. If showing the no-extra-BNB experience, verify the wallet starts at exactly 0 BNB and the funded MegaFuel policy accepts the necessary approval. A configured-policy flag alone is insufficient.
+- Capture the genuine settlement hash, Filled state and actual token amount. Preserve the purchase confirmation sequence without cutting out an error or substituting another wallet's receipt. Label shortened confirmation waits and do not claim the edited video proves one-minute execution.
+- If card funding is sandbox, use the normal tracked Onramper funding route and show its test context. Keep it separate from the pre-funded real stock purchase. The `demo=onramper` widget preview does not prove payment, wallet delivery or Activity tracking.
+- Recheck the public Wallet Skills research before filming. If audit availability is missing, show the truthful unavailable state; do not narrate the asset as audited or an Agent order as executable.
 
-Follow [the Binance route-check setup](../README.md#check-an-ondo-trading-route-without-an-ondo-api-key). Configure `BINANCE_WEB3_API_KEY` and `BINANCE_WEB3_SECRET_KEY` as Worker runtime secrets, deploy and sign in. Check a Buy route using the USDT input amount. Record whether a matching BSC route is returned for your exact wallet and token, including vendor, quoted output, time and any error. Check a Sell route separately; a Buy quote alone does not establish sell liquidity. This read-only check does not require pre-funding or an Ondo API key, but provider access and wallet eligibility may still limit results.
+## Shot list and narration
 
-## Prepare card testing
+| Time | Show | Suggested narration |
+| --- | --- | --- |
+| 0:00–0:20 | Landing headline and funding/gas/withdrawal benefits | “FirstBell helps people new to crypto buy their first tokenized stock on BNB Smart Chain. We start with familiar login and local-currency funding.” |
+| 0:20–0:40 | Google/email entry, then the signed-in portfolio | “The account has an embedded wallet, so the user does not need to manage a seed phrase.” |
+| 0:40–1:00 | Deposit → Add Money, Onramper's currency and payment choices | “Users can fund in supported local currencies by card or bank transfer. Coverage depends on the provider and country.” Add the sandbox disclosure below when applicable. |
+| 1:00–1:25 | Stock catalog, issuer/contract and Binance RWA panel | “These are Ondo tokens on chain 56. FirstBell shows Binance market data and the token price alongside its underlying reference and market session.” |
+| 1:25–2:15 | Direct Trade review, wallet confirmation, genuine Filled result and BscScan | “I review the USDT spend, estimated receive, minimum and fee before confirming. The app verifies the settlement before marking it Filled.” Mention sponsored gas only if this exact transaction proves it. |
+| 2:15–2:40 | Portfolio position, gain/loss, Activity and history | “The portfolio follows current value and purchase-based gains or losses. Activity brings deposits, withdrawals and trades together; failed orders stay in history.” |
+| 2:40–3:00 | Withdraw review with USDT, BSC destination and fee | “Users withdraw available USDT to a BSC wallet. Stock positions must be sold first. Every withdrawal has its own review and confirmation.” Review alone is not a completed withdrawal. |
+| 3:00–3:25 | Agent: `Research Apple`, multiplier/reference and audit/status fields | “Wallet Skills resolve the exact token, compare its price per share and check availability. Missing checks stay unavailable.” For the special prize, show personally verified Agentic Wallet footage as described below. |
+| 3:25–3:45 | GitHub integration table, Developer Experience report and final URL | “The repository explains the integrations, verification boundaries and errors encountered. FirstBell's goal is a familiar path from everyday money to on-chain stocks.” |
 
-Follow the [sandbox setup in README](../README.md#activate-sandbox-checkout-for-the-demo). Configure `pk_test_…`, the matching `sk_test_…`, and `MOONPAY_ENVIRONMENT=sandbox` in the Cloudflare Worker. Keep the Privy verification public key and identity-token option enabled. Do not send signing keys in chat or commit them.
+## Disclosures when applicable
 
-Sign in with the identity you will use during recording. Choose **Deposit → Add Money** and verify that it opens MoonPay’s native hosted UI directly. Choose the amount and supported payment currency in MoonPay. Check the provider’s sandbox context and receiving wallet there, complete its test flow, return to FirstBell, and verify **Checkout completed** in Activity. Compare your BSC USDT balance before and after; sandbox checkout must not credit it.
+For a mixed sandbox/mainnet recording:
 
-## Prepare the mainnet trading proof
+> “This card checkout is Onramper sandbox. The real BSC wallet was funded separately for the stock purchase.”
 
-First complete and verify the actual stock execution path. The [hackathon rules](https://www.bnbchain.org/en/hackathons/tokenized-stocks) require BSC mainnet activity with small live amounts, a working integration with at least one Binance Web3 API module, and bStocks, Ondo, or xStocks central to the project.
+For a previously confirmed trade:
 
-Before any live purchase, copy the full receiving address for the signed-in embedded wallet. Confirm the sending network is **BNB Smart Chain / BSC (chain 56)**. Fund that address separately with real USDT on BSC and native BNB for transaction gas. Test checkout's Sepolia ETH cannot pay for BSC purchases or BSC gas. Wait for the actual balances to appear in Portfolio and verify them on BscScan.
+> “This is the actual receipt from my earlier purchase. I am now showing its verified position and history.”
 
-Then simulate and review a small stock trade, approve it in the wallet, and record its genuine BSC transaction hash and resulting token balance. No transaction should be submitted without the user's explicit wallet approval. Document the actual API responses, timing and any errors in the developer-experience field log.
+For withdrawal review without dispatch:
 
-## Recording disclosure
+> “This is the withdrawal review; I have not sent it.”
 
-Use this wording only after both parts have genuinely been completed:
+Never label a sandbox checkout as a real deposit, a quote as a purchase, a configured sponsor as a funded sponsor, or a stock-market percentage as the user's purchase-based return.
 
-> Card checkout uses MoonPay sandbox. This wallet was funded separately for the real BSC mainnet stock purchase.
+## Agentic Wallet special-prize evidence
 
-Show the sandbox indicator while demonstrating checkout. Show the BSC transaction and actual token position during the live trading part. Do not attribute the pre-existing USDT to the test card payment or claim a working live card-to-stock flow. A mainnet trade provides trading evidence; the mixed demo does not establish production card funding, and no organizer exception has been obtained.
+The Agent tab alone does not establish Binance Agentic Wallet execution. The [personal connector](binance-wallet-skills.md) uses a separate Binance wallet. Only show a trade from it after you have personally connected/funded that wallet, confirmed its loopback review and verified the real receipt.
+
+If you have that evidence, replace part of the stock-research segment with the actual MCP tool call, personal confirmation and order-status result. Keep the edited main video under four minutes; link optional additional evidence from your submission only if the form permits it. Do not blur the distinction between the Privy and Binance wallets. BNB Agent Studio is not integrated and should not be claimed.
+
+## Record, export and share
+
+1. Record one clear take using a screen recorder you already have. On Windows, [Xbox Game Bar](https://support.microsoft.com/en-gb/accessibility/windows/use-a-screen-reader-to-record-your-screen-with-xbox-game-bar)'s **Win+Alt+R** can capture the browser; enable your microphone. Do a short trial and play it back first.
+2. Speak slowly and keep the cursor still while explaining values. Your face is optional. Use your own voice where possible; captions help judges follow the flow.
+3. Trim dead time in your editor, preserving the sequence and labelling shortened waits. Export **MP4, 1080p, 30fps**. Keep the final duration at or below four minutes.
+4. Upload to a publicly accessible or unlisted video page. Open the shared link while signed out to check that judges can play it without requesting access.
+5. Put the actual video URL in your submission and README once available. Keep the repo, video and deployed app accessible through judging. Do not insert a placeholder link that appears finished.
+
+Source: [official hackathon brief](https://www.bnbchain.org/en/hackathons/tokenized-stocks?tab=tracks). Video is strongly recommended, optional, and limited to four minutes; live BSC proof and the firsthand Developer Experience report remain separate submission needs.

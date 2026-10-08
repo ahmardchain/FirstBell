@@ -10,7 +10,7 @@ Supported examples:
 - `Show my balance`, `Show my holdings`, or `Check order status`.
 - Issuer, contract and network questions still use the issuer-published catalog.
 
-This is a fixed command parser, not a connected LLM or autonomous strategy runtime. It needs no additional model API key. Conditional/scheduled trades, transfers, multiple assets and ambiguous amounts are rejected. English and Chinese commands are supported. Quotes, balances and fills are never invented for a demo.
+This is a fixed command parser, not a connected LLM or autonomous strategy runtime. It needs no additional model API key. Conditional/scheduled trades, transfers, multiple assets and ambiguous amounts are rejected. English, Chinese, Spanish, French and Portuguese commands are supported. Quotes, balances and fills are never invented for a demo.
 
 ## Execution
 
@@ -60,4 +60,4 @@ Official references:
 - [Privy typed-data signing](https://docs.privy.io/wallets/using-wallets/ethereum/sign-typed-data)
 - [Privy sending transactions](https://docs.privy.io/wallets/using-wallets/ethereum/send-a-transaction)
 
-Binance Agentic Wallet, Wallet Skills and the CLI are not used by this app flow. It integrates Binance REST execution with the existing Privy wallet rather than provisioning a separate wallet.
+The website Agent checks official Wallet Skills stock identity, token status and audits before preparation and again before dispatch. Unavailable or changed checks can prevent a trade; public research success does not imply execution eligibility. This flow uses the Privy wallet, while the separate [personal Binance Agentic Wallet connector](binance-wallet-skills.md) uses the official CLI and its own wallet. Direct Trade is the MegaFuel-sponsored approval path; this Agent approval path can require BNB.

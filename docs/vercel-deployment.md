@@ -2,7 +2,7 @@
 
 The repository supports the full landing page and app on Vercel. Its Node API reuses FirstBell's Binance signing, market validation, Privy authentication and card funding handlers. Upstash Redis replaces Cloudflare Durable Objects for saved stocks, deposit sessions and account rate limits. Browser calls remain on the same origin under `/api/`.
 
-The builder's separate diagnostic accepted both Binance NVDAon requests in `fra1` on 2026-10-02. The migration builds a self-contained API in `api/index.mjs` to avoid missing TypeScript imports in Vercel. Live Redis persistence still needs verification. Diagnostic acceptance does not establish usable live candles, account migration, a static outgoing IP or approval of every API operation.
+The migration builds a self-contained API in `api/index.mjs` to avoid missing TypeScript imports in Vercel. Public Market, RWA and Wallet Skills reads were checked on 2026-10-08; authenticated account persistence, payment and real execution need their own evidence. Neither diagnostic acceptance nor a configured environment establishes a static outgoing IP or approval of every operation.
 
 ## 1. Use the repository root
 
@@ -16,7 +16,7 @@ For a new project connected to `ahmardchain/FirstBell`, use these repository-roo
 | Framework Preset | Vite |
 | Node.js Version | 24.x |
 | Install Command | `npm ci` |
-| Build Command | `npm run build && node scripts/stage-vercel-diagnostic.mjs` |
+| Build Command | Use the checked-in `vercel.json`: build, regression tests, then diagnostic staging |
 | Output Directory | `dist` |
 
 The checked-in Vercel configuration specifies the install/build commands, API routing, both HTML entry points and function region `fra1`. Both project-root layouts retain the diagnostic at `/server-test` and `/api/check`. `npm run build:api` regenerates the committed self-contained API and its copy in the compatibility project; run the build before publishing API changes. The selected region follows the successful diagnostic; it is not a guaranteed source IP or an independently confirmed Binance hosting policy.
@@ -38,10 +38,13 @@ Use **Project → Settings → Environment Variables**. Configure Production, an
 | `MEGAFUEL_API_KEY` | Server-only NodeReal key owning a funded private BSC MegaFuel policy; see [gas sponsorship](gas-sponsorship.md) |
 | `MEGAFUEL_POLICY_UUID` | Matching private policy UUID; never a `VITE_` variable |
 | `PRIVY_VERIFICATION_KEY` | Optional Privy dashboard **verification public key**, in PEM format. Valid keys verify locally; missing, stale or malformed keys use Privy's app-specific published keys. This is not the Privy App Secret. |
+| `PRIVY_APP_SECRET` | Matching server App Secret for authenticated wallet-owner lookup when identity proof is unavailable, and the existing withdrawal verification path |
 | `UPSTASH_REDIS_REST_URL` | REST endpoint of your persistent Upstash Redis database; required for account features |
 | `UPSTASH_REDIS_REST_TOKEN` | Matching read/write REST token; server only |
 | `ONRAMPER_API_KEY` | Matching Onramper `pk_test_…` or `pk_prod_…` publishable key |
-| `ONRAMPER_SIGNING_PRIVATE_KEY` | Ed25519 PKCS8 PEM; register its public key with Onramper |
+| `ONRAMPER_SIGNING_VERSION` | Explicit `v1` for permitted existing HMAC accounts, or `v2`; unset selects V2 |
+| `ONRAMPER_SIGNING_SECRET` | Server dashboard signing secret for the V1 compatibility path |
+| `ONRAMPER_SIGNING_PRIVATE_KEY` | V2 Ed25519 PKCS8 PEM; register its public key with the matching account |
 | `ONRAMPER_WEBHOOK_SECRET` | HMAC secret issued during webhook registration |
 | `ONRAMPER_BSC_USDT_ID` | Exact account-enabled BSC USDT Onramper ID |
 | `ONRAMPER_ENVIRONMENT` | `sandbox` or `live`, matching the API key |
@@ -68,9 +71,9 @@ If there are no account records to preserve, omit `LEGACY_ACCOUNTS_ORIGIN` and i
 
 ## 4. Allow the new app origin
 
-Add your new Vercel deployment origin to the configured Privy app's allowed domains. Keep Google/email login enabled. For checkout and ownership checks, retain Privy's **Return user data in an identity token** setting and sign in again if you change it.
+Add your new Vercel deployment origin to the configured Privy app's allowed domains. Keep Google/email login enabled. Checkout requires owned-wallet verification: retain Privy's **Return user data in an identity token** setting, or supply the matching server `PRIVY_APP_SECRET` for the supported ownership lookup. Sign in again after changing the identity-token setting.
 
-Follow [Onramper activation](onramper-setup.md): register the application domain and V2 public key, confirm the BSC USDT ID, and register `/api/onramper/webhook`. Onramper sandbox is simulated and does not settle on any blockchain. Historical MoonPay test records remain separate. Production card checkout requires provider onboarding. Trading remains a read-only route check; deploying does not implement stock order execution.
+Follow [Onramper activation](onramper-setup.md): register the application domain, configure the account's permitted signing version, confirm the BSC USDT ID, and register `/api/onramper/webhook`. V2 requires public-key registration. Sandbox is simulated and does not settle on any blockchain. Historical MoonPay records remain separate. Production card checkout requires provider onboarding. Reviewed CoW RFQ stock execution is implemented; deployment alone does not prove a successful trade or funded gas sponsorship.
 
 ## 5. Deploy and check the full app
 
@@ -82,13 +85,13 @@ Deploy the latest `main` commit with the root settings above. Use the new projec
 4. Sign in with the same Privy identity. Verify the wallet address, save a stock, reload, and confirm that the saved choice persists. If importing, compare saved stocks and deposit history with the old site.
 5. If configured, run a clearly labelled Onramper sandbox checkout and verify its returned session. Do not treat a mock test, test payment or accepted market request as a real stock purchase.
 
-Record the new deployment URL, exact signed request times, provider codes, response validity, latency and account results in the [Developer Experience Report](developer-experience-report.md). Current code validation used mocked Binance/Redis requests and fixture JWTs; no new live full-app result is claimed.
+Record your firsthand request/response validity, timing, errors and recovery in the [Developer Experience Report](developer-experience-report.md). Public-read checks, fixtures and authenticated end-to-end observations must stay distinct. Complete the live purchase and optional funded-sponsorship evidence in the [submission checklist](submission-checklist.md).
 
 ## Failure recovery
 
 | Result | Check |
 | --- | --- |
-| Diagnostic page still appears | Root Directory is still `server-test`, or an old deployment URL is open |
+| Only the old diagnostic page appears | Check the deployed commit and staging build. Both supported root layouts now serve the full app; `/server-test.html` is the separate diagnostic. |
 | App works but `/api/*` serves HTML | Deploy the root `vercel.json` and verify the API function was built |
 | `account_not_configured` | Configure a valid Privy App ID matching the frontend and redeploy |
 | HTTP 401 on `/api/deposits/config` | The sign-in token was rejected before the card provider. Check private `PRIVY_AUTH` logs, matching frontend/server App IDs and session expiry. A missing or stale PEM can fall back to Privy's published keys; wallet ownership remains required for checkout. |
