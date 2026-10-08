@@ -6,9 +6,13 @@ import type { AccountNamespace } from './env.ts'
 import { confirmedTransfer, FundingError, type FundingEnv } from './moonpay.ts'
 
 type Credentials = { apiKey: string; privateKey: CryptoKey; webhookSecret: string; cryptoId: string; mode: FundingMode }
+type SigningKeyIssue = 'public_key' | 'encrypted_private_key' | 'non_pkcs8_private_key' | 'not_pem' | 'invalid_ed25519_pkcs8'
 class OnramperConfigurationError extends FundingError {
   readonly invalid: string[]
-  constructor(invalid: string[]) { super('invalid_configuration'); this.invalid = invalid }
+  readonly signingKeyIssue?: SigningKeyIssue
+  constructor(invalid: string[], signingKeyIssue?: SigningKeyIssue) {
+    super('invalid_configuration'); this.invalid = invalid; this.signingKeyIssue = signingKeyIssue
+  }
 }
 const encoder = new TextEncoder()
 const client = createPublicClient({ chain: bsc, transport: http('https://bsc-dataseed.bnbchain.org', { timeout: 8_000, retryCount: 0 }) })
@@ -38,19 +42,38 @@ function missingConfiguration(env: FundingEnv): string[] {
 export async function getOnramperSetup(env: FundingEnv) {
   let reason: string | null = null
   let invalid: string[] = []
+  let signingKeyIssue: SigningKeyIssue | undefined
   try { await getOnramperCredentials(env) }
   catch (error) {
     reason = error instanceof FundingError ? error.reason : 'invalid_configuration'
-    if (error instanceof OnramperConfigurationError) invalid = error.invalid
+    if (error instanceof OnramperConfigurationError) { invalid = error.invalid; signingKeyIssue = error.signingKeyIssue }
   }
   return { mode: getOnramperMode(env), configured: reason === null, missing: missingConfiguration(env), reason,
-    ...(invalid.length ? { invalid } : {}) }
+    ...(invalid.length ? { invalid } : {}), ...(signingKeyIssue ? { signingKeyIssue } : {}) }
+}
+
+function signingPem(value: string | undefined): string {
+  let pem = value?.trim() ?? ''
+  // A dashboard value may have been copied from JSON or a quoted .env line.
+  // Remove only paired outer quotes; the imported key must still be Ed25519.
+  if ((pem.startsWith('"') && pem.endsWith('"')) || (pem.startsWith("'") && pem.endsWith("'"))) {
+    try { const parsed: unknown = JSON.parse(pem); pem = typeof parsed === 'string' ? parsed : pem }
+    catch { pem = pem.slice(1, -1) }
+  }
+  return pem.trim().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n')
+}
+
+function signingKeyProblem(pem: string): SigningKeyIssue {
+  if (/^-----BEGIN (?:RSA )?PUBLIC KEY-----/.test(pem) || pem.startsWith('-----BEGIN CERTIFICATE-----')) return 'public_key'
+  if (pem.startsWith('-----BEGIN ENCRYPTED PRIVATE KEY-----')) return 'encrypted_private_key'
+  if (/^-----BEGIN (?:RSA|EC) PRIVATE KEY-----/.test(pem)) return 'non_pkcs8_private_key'
+  return pem.startsWith('-----BEGIN PRIVATE KEY-----') ? 'invalid_ed25519_pkcs8' : 'not_pem'
 }
 
 // Onramper IDs are account catalog values, not MoonPay currency codes. Require
 // the exact USDT / BNB Smart Chain ID confirmed during partner onboarding.
 export async function getOnramperCredentials(env: FundingEnv): Promise<Credentials> {
-  const apiKey = env.ONRAMPER_API_KEY?.trim(), pem = env.ONRAMPER_SIGNING_PRIVATE_KEY?.trim().replace(/\\n/g, '\n')
+  const apiKey = env.ONRAMPER_API_KEY?.trim(), pem = signingPem(env.ONRAMPER_SIGNING_PRIVATE_KEY)
   const webhookSecret = env.ONRAMPER_WEBHOOK_SECRET?.trim(), cryptoId = env.ONRAMPER_BSC_USDT_ID?.trim()
   if (!apiKey || !pem || !webhookSecret || !cryptoId || missingConfiguration(env).length) throw new FundingError('not_configured')
   const mode = getOnramperMode(env)
@@ -60,11 +83,12 @@ export async function getOnramperCredentials(env: FundingEnv): Promise<Credentia
   if (!/^[a-z0-9][a-z0-9_-]{0,127}$/.test(cryptoId)) invalid.push('ONRAMPER_BSC_USDT_ID')
   if (webhookSecret.length < 16) invalid.push('ONRAMPER_WEBHOOK_SECRET')
   let privateKey: CryptoKey | undefined
+  let signingKeyIssue: SigningKeyIssue | undefined
   try {
     privateKey = await importPKCS8(pem, 'EdDSA')
     if (privateKey.algorithm.name !== 'Ed25519') throw new Error()
-  } catch { invalid.push('ONRAMPER_SIGNING_PRIVATE_KEY') }
-  if (invalid.length) throw new OnramperConfigurationError(invalid)
+  } catch { invalid.push('ONRAMPER_SIGNING_PRIVATE_KEY'); signingKeyIssue = signingKeyProblem(pem) }
+  if (invalid.length) throw new OnramperConfigurationError(invalid, signingKeyIssue)
   return { apiKey, privateKey: privateKey!, webhookSecret, cryptoId, mode: mode as FundingMode }
 }
 
