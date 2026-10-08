@@ -36,7 +36,9 @@ Only validated CoW Order EIP-712 signing is enabled. Missing or below-minimum Bi
 
 ## What is verified, and what remains
 
-Public checks on 2026-10-08 returned a ready Binance NVDAon market feed with 100 candles, a ready Binance RWA readout, and Apple stock research through Wallet Skills. The Apple audit was unavailable; Agent execution therefore still requires a usable audit and token-status result. These public reads do not prove an authenticated trade, card payment or funded gas policy.
+Public checks on 2026-10-08 returned a ready Binance NVDAon market feed with 100 candles, a ready Binance RWA readout, and Apple stock research through Wallet Skills. Binance explicitly reports that it does not cover this Apple token's audit. The Agent shows **Not covered**, preserves the stock data and requires an explicit acknowledgement before confirming a reviewed trade with that limitation. Missing/error responses, unavailable trading status and level-5 risk still block execution. These public reads do not prove an authenticated trade, card payment or funded gas policy.
+
+The website Agent's **History** saves conversations and research snapshots on the current device, separately for each signed-in user and wallet. **New Conversation** preserves earlier chats; saved research can be refreshed. The **Wallet orders** tab shows the wallet's existing order records and amounts. Reloading history never restores a trade approval, signature or executable plan.
 
 The code includes reviewed buys/sells, receipt verification, activity recovery, USDT withdrawals and a personal Agentic Wallet connector. Before submission, attach the builder's real BSC transaction evidence, verify the funded 0-BNB sponsor flow if claiming it, and review the firsthand Developer Experience report. A user-reported purchase without a verifiable transaction link is not independent submission proof. Use the [checklist](docs/submission-checklist.md) for the remaining steps.
 

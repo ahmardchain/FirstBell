@@ -10,7 +10,7 @@ Aim for **3 minutes 45 seconds**, leaving room below the hackathon's four-minute
 - For a mainnet trade, use real BSC USDT in the exact signed-in wallet. Test card payments do not supply it. If showing the no-extra-BNB experience, verify the wallet starts at exactly 0 BNB and the funded MegaFuel policy accepts the necessary approval. A configured-policy flag alone is insufficient.
 - Capture the genuine settlement hash, Filled state and actual token amount. Preserve the purchase confirmation sequence without cutting out an error or substituting another wallet's receipt. Label shortened confirmation waits and do not claim the edited video proves one-minute execution.
 - If card funding is sandbox, use the normal tracked Onramper funding route and show its test context. Keep it separate from the pre-funded real stock purchase. The `demo=onramper` widget preview does not prove payment, wallet delivery or Activity tracking.
-- Recheck the public Wallet Skills research before filming. If audit availability is missing, show the truthful unavailable state; do not narrate the asset as audited or an Agent order as executable.
+- Recheck the public Wallet Skills research before filming. An explicitly unsupported audit shows **Not covered** and requires acknowledgement in a fresh trade review. Missing/error checks still block execution. Do not narrate an uncovered token as audited or a research result as an executable order. Briefly show **History**, reload the saved research and refresh it for current data.
 
 ## Shot list and narration
 

@@ -85,8 +85,9 @@ export async function cancelTradeOrder(order: AgentOrder, walletAddress: string,
   if (checked.orderId !== order.orderId || checked.receiptToken !== order.receiptToken) throw new Error('invalid_provider_response')
   return checked
 }
-export async function submitTrade(plan: AgentTradePlan, signature: string, session: WalletSession): Promise<AgentOrder> {
-  const result = await post('submit', { planToken: plan.planToken, signature, walletAddress: plan.route.walletAddress }, session)
+export async function submitTrade(plan: AgentTradePlan, signature: string, session: WalletSession, options: { auditAcknowledged?: boolean } = {}): Promise<AgentOrder> {
+  const result = await post('submit', { planToken: plan.planToken, signature, walletAddress: plan.route.walletAddress,
+    ...(options.auditAcknowledged === true ? { auditAcknowledged: true } : {}) }, session)
   return orderResponse(result.order)
 }
 export async function recoverTrade(plan: AgentTradePlan, signature: string, session: WalletSession, signal?: AbortSignal): Promise<AgentOrder | null> {

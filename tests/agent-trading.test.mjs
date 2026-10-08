@@ -267,14 +267,14 @@ test('unauthenticated, oversized and cross-origin requests fail before reaching 
 
 async function skillTradeFixture() {
   mock()
-  const providerFetch = globalThis.fetch, state = { risk: 1, buyTax: '0', open: true, skillCalls: 0 }
+  const providerFetch = globalThis.fetch, state = { risk: 1, buyTax: '0', open: true, auditSupported: true, auditAvailable: true, skillCalls: 0 }
   globalThis.fetch = async (input, init) => {
     const url = new URL(input)
     if (!url.pathname.includes('/bapi/defi/')) return providerFetch(input, init)
     state.skillCalls++
     assert.equal(init.headers['X-OC-APIKEY'], undefined)
     const data = url.pathname.endsWith('/audit')
-      ? { requestId: JSON.parse(init.body).requestId, hasResult: true, isSupported: true, riskLevel: state.risk, riskLevelEnum: state.risk <= 1 ? 'LOW' : 'HIGH', extraInfo: { buyTax: state.buyTax, sellTax: '0', isVerified: true }, riskItems: [] }
+      ? { requestId: JSON.parse(init.body).requestId, hasResult: state.auditAvailable, isSupported: state.auditSupported, riskLevel: state.risk, riskLevelEnum: state.risk <= 1 ? 'LOW' : 'HIGH', extraInfo: { buyTax: state.buyTax, sellTax: '0', isVerified: true }, riskItems: [] }
       : url.pathname.endsWith('detail/list/ai') ? [{ symbol: 'NVDAon', ticker: 'NVDA', chainId: '56', type: 1, contractAddress: tokenAddresses.NVDAon, multiplier: '1' }]
       : url.pathname.includes('status/ai') ? { openState: state.open, reasonCode: state.open ? 'TRADING' : 'ASSET_PAUSED' }
       : url.pathname.includes('dynamic/ai') ? { symbol: 'NVDAon', tokenInfo: { price: '200', sharesMultiplier: '1' }, stockInfo: { price: '200' } }
@@ -322,4 +322,32 @@ test('blocked research reaches no quote; a changed audit after review becomes a 
   assert.equal((await (await f.call('submit', { planToken: plan.planToken, signature })).json()).order.status, 'FAILED')
   assert.equal((await (await f.call('status', { receiptToken: order.receiptToken })).json()).order.status, 'FAILED')
   assert.equal(f.state.skillCalls, skillCalls); assert.equal(calls.some(c => c.path.endsWith('/order/submit')), false)
+})
+test('unsupported Binance audit requires explicit acknowledgement of the sealed report before any dispatch', async () => {
+  const f = await skillTradeFixture(); f.state.auditSupported = false; f.state.auditAvailable = false
+  const prepared = await f.call('prepare', { symbol: 'NVDAon', side: 'buy', amount: '5', walletSkills: true })
+  assert.equal(prepared.status, 200)
+  const { plan } = await prepared.json()
+  assert.equal(plan.walletSkills.audit.reason, 'unsupported'); assert.equal(plan.walletSkills.audit.level, null)
+  const signature = await signer.signTypedData(plan.typedData)
+  for (const auditAcknowledged of [undefined, false, 'true']) {
+    const refused = await f.call('submit', { planToken: plan.planToken, signature, auditAcknowledged })
+    assert.equal(refused.status, 400); assert.equal((await refused.json()).error, 'skill_audit_acknowledgement_required')
+  }
+  assert.equal(calls.some(c => c.path.endsWith('/order/submit')), false)
+  const result = await f.call('submit', { planToken: plan.planToken, signature, auditAcknowledged: true })
+  assert.equal(result.status, 200); assert.equal((await result.json()).order.status, 'PENDING_VENDOR')
+  assert.equal(calls.filter(c => c.path.endsWith('/order/submit')).length, 1)
+})
+test('an unavailable status or newly available audit after an unsupported review cannot dispatch using old consent', async () => {
+  for (const changed of ['audit', 'market']) {
+    const f = await skillTradeFixture(); f.state.auditSupported = false; f.state.auditAvailable = false
+    const { plan } = await (await f.call('prepare', { symbol: 'NVDAon', side: 'buy', amount: '5', walletSkills: true })).json()
+    const signature = await signer.signTypedData(plan.typedData)
+    if (changed === 'audit') { f.state.auditSupported = true; f.state.auditAvailable = true }
+    else f.state.open = false
+    const result = await f.call('submit', { planToken: plan.planToken, signature, auditAcknowledged: true })
+    assert.equal((await result.json()).order.status, 'FAILED')
+    assert.equal(calls.some(c => c.path.endsWith('/order/submit')), false)
+  }
 })

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { assetCatalog } from '../lib/asset-catalog.ts'
 import { BSC_USDT } from '../lib/funding.ts'
 import { researchStock, checkSkillTrade } from '../worker/wallet-skills.ts'
-import { walletSkills, skillRiskFingerprint, skillTradeBlock } from '../lib/binance-wallet-skills.ts'
+import { walletSkills, skillRiskFingerprint, skillTradeBlock, requiresAuditAcknowledgement } from '../lib/binance-wallet-skills.ts'
 import { runBinanceCli } from './cli.mjs'
 import { createOrderJournal } from './orders.mjs'
 import { verifyBinanceSettlement } from './settlement.mjs'
@@ -16,7 +16,7 @@ const id = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v
 
 // The language model may research and prepare. Only the local browser's
 // confirmation handler receives executeReviewed; it is not an MCP tool.
-export function createBinanceAgent({ runCli = runBinanceCli, research = researchStock, check = checkSkillTrade,
+export function createBinanceAgent({ runCli = runBinanceCli, research = researchStock, check = symbol => checkSkillTrade(symbol, undefined, { allowUnsupportedAudit: true }),
   journal = createOrderJournal(), verifySettlement = verifyBinanceSettlement, now = Date.now } = {}) {
   const reviews = new Map(), signin = new Map(), active = new Set()
   let preflight
@@ -108,7 +108,7 @@ export function createBinanceAgent({ runCli = runBinanceCli, research = research
       const asset = assetCatalog.find(a => a.symbol === symbol)
       if (!asset || !['buy', 'sell'].includes(side) || !quantity(amount)) throw new Error('invalid_trade_request')
       const account = await connected(), report = await research(symbol)
-      const block = skillTradeBlock(report)
+      const block = skillTradeBlock(report, { allowUnsupportedAudit: true })
       if (block) throw new Error(block)
       const fromToken = side === 'buy' ? BSC_USDT.address : asset.address, toToken = side === 'buy' ? asset.address : BSC_USDT.address
       const held = (await balances()).find(b => same(b.address, fromToken))
@@ -124,9 +124,10 @@ export function createBinanceAgent({ runCli = runBinanceCli, research = research
       return { ...plan, instruction: 'Open the local FirstBell review and personally click Confirm trade. This tool has not placed an order. The Binance wallet is separate from your Privy wallet.' }
     },
     getReview: reviewId => reviews.get(reviewId) ?? null,
-    executeReviewed: async reviewId => {
+    executeReviewed: async (reviewId, { auditAcknowledged = false } = {}) => {
       const plan = reviews.get(reviewId)
       if (!plan || plan.expiresAt <= now() || active.has(reviewId)) throw new Error('Review expired or already confirmed. Request a fresh review.')
+      if (requiresAuditAcknowledgement(plan.report) && auditAcknowledged !== true) throw new Error('skill_audit_acknowledgement_required')
       active.add(reviewId); reviews.delete(reviewId)
       let row = { reviewId, wallet: plan.wallet, symbol: plan.symbol, side: plan.side, amount: plan.amount,
         inputSymbol: plan.inputSymbol, outputSymbol: plan.outputSymbol, fromToken: plan.fromToken, toToken: plan.toToken,

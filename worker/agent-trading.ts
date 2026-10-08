@@ -12,7 +12,7 @@ import { cancelCowOrder, checkCowOrder, cowOrderUid, getCowTrade, submitCowOrder
 import { cowCancellationTypedData } from '../lib/order-cancellation.ts'
 import { rejectedTradeReason } from '../lib/trade-execution.ts'
 import { checkSkillTrade } from './wallet-skills.ts'
-import { WalletSkillError, skillRiskFingerprint } from '../lib/binance-wallet-skills.ts'
+import { WalletSkillError, skillRiskFingerprint, requiresAuditAcknowledgement } from '../lib/binance-wallet-skills.ts'
 
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -313,7 +313,7 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
       if (body.paymentToken !== undefined && !isPaymentToken(body.paymentToken)) throw new RouteError('invalid_trade_request', 400)
       if (body.sponsorApproval !== undefined && typeof body.sponsorApproval !== 'boolean') throw new RouteError('invalid_trade_request', 400)
       if (body.walletSkills !== undefined && typeof body.walletSkills !== 'boolean') throw new RouteError('invalid_trade_request', 400)
-      const walletSkills = body.walletSkills === true ? await checkSkillTrade(body.symbol, request.signal) : undefined
+      const walletSkills = body.walletSkills === true ? await checkSkillTrade(body.symbol, request.signal, { allowUnsupportedAudit: true }) : undefined
       const prepared = await prepareAgentTrade(body.symbol, body.side, body.amount as string, body.walletAddress, credentials, request.signal, { paymentToken: body.paymentToken as PaymentToken | undefined, env: body.sponsorApproval === true ? env : undefined })
       if (walletSkills) prepared.walletSkills = walletSkills
       const planToken = await sealTradeTicket({ plan: prepared }, userId, credentials.secretKey, 'plan')
@@ -335,6 +335,7 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
     }
     if (path === '/api/trade/submit') {
       if (!plan || typeof body.signature !== 'string') throw new RouteError('invalid_order_signature', 400)
+      if (requiresAuditAcknowledgement(plan.walletSkills) && body.auditAcknowledged !== true) throw new RouteError('skill_audit_acknowledgement_required', 400)
       const previous = await tradeAttempt(env.ACCOUNTS, userId, plan, body.signature, 'get')
       let submitted: Omit<AgentOrder, 'receiptToken'>
       if (!previous.orderId && rejectedTradeReason(previous.failureReason)) submitted = failedOrder(plan, previous.failureReason)
@@ -343,7 +344,7 @@ export async function handleAgentTrade(request: Request, env: ApiEnv, userId: st
           beforeDispatch: async () => {
             if (plan.walletSkills && !previous.started) {
               try {
-                const current = await checkSkillTrade(plan.route.symbol, request.signal)
+                const current = await checkSkillTrade(plan.route.symbol, request.signal, { allowUnsupportedAudit: true })
                 if (skillRiskFingerprint(current) !== skillRiskFingerprint(plan.walletSkills)) throw new WalletSkillError('skill_checks_changed')
               } catch (error) {
                 throw new RouteError(error instanceof WalletSkillError && error.message !== 'skill_provider_unavailable' ? error.message : 'skill_checks_unavailable', 409)

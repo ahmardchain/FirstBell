@@ -38,7 +38,7 @@ Based on the [official BNB Hack: Tokenized Stocks Edition brief](https://www.bnb
 - [ ] If claiming no extra BNB: initial 0-wei BNB balance, sponsor-approved receipt and final 0 BNB balance for the shown flow. Direct Trade and the Agent approval path differ; see [gas coverage](gas-sponsorship.md).
 - [ ] If claiming live card-to-stock: completed live Onramper payment and matching BSC USDT delivery before the stock purchase. Otherwise disclose sandbox checkout and separate real funding.
 - [ ] Withdrawal: distinguish a review from a personally confirmed, receipt-verified USDT transfer.
-- [ ] Agentic Wallet: distinguish website research, fixture checks and actual personal Binance-wallet execution. Apple research's audit was unavailable in the public check; do not claim a verified audit or force execution past that state.
+- [ ] Agentic Wallet: distinguish website research, fixture checks and actual personal Binance-wallet execution. Apple research's audit is explicitly unsupported; show **Not covered** and the acknowledgement required before a fresh review can be confirmed. Do not claim a verified audit, bypass missing/error checks or present a quote as a fill.
 - [ ] Write the final Developer Experience submission in your own words from your actual experience, using the field log as supporting evidence. Dates in the log are historical observations, not assertions that old failures still occur today. Add your latest experience yourself.
 - [ ] Upload the video; verify repo/app/video access while signed out; submit the [project form](https://forms.gle/yToDUzaDMwWnq6R6A) and report before the deadline.
 

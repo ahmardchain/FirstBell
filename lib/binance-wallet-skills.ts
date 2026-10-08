@@ -9,7 +9,7 @@ export const walletSkills = {
     source: 'https://github.com/binance/binance-skills-hub/blob/main/skills/binance-web3/binance-agentic-wallet/SKILL.md' },
 } as const
 
-export type SkillTrace = { skill: string; version: string; operation: string; status: 'ready' | 'unavailable'; durationMs: number }
+export type SkillTrace = { skill: string; version: string; operation: string; status: 'ready' | 'unavailable' | 'unsupported'; durationMs: number }
 export type SkillMarket = { open: boolean | null; session: string | null; reason: string | null; detail: string | null; nextOpen: number | null }
 export type SkillStock = {
   symbol: string; ticker: string; chainId: 56; address: string; multiplier: number | null;
@@ -19,6 +19,7 @@ export type SkillStock = {
 }
 export type SkillAudit = {
   available: boolean; level: number | null; label: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  reason?: 'unsupported' | 'no_result' | 'provider_error' | 'invalid_response';
   buyTax: number | null; sellTax: number | null; verified: boolean | null;
   risks: { title: string; description: string; critical: boolean }[];
 }
@@ -38,17 +39,21 @@ export function validateSkillReport(value: unknown, symbol: string, address: str
     || r.stock.market.nextOpen !== null && (typeof r.stock.market.nextOpen !== 'number' || !Number.isFinite(r.stock.market.nextOpen) || r.stock.market.nextOpen <= 0 || r.stock.market.nextOpen > 8_640_000_000_000_000)
     || r.stock.attestation !== null && (typeof r.stock.attestation !== 'string' || !/^https:\/\/bin\.bnbstatic\.com\/images\/web3-data\/public\/token\/ondo\/pdf\/[a-zA-Z0-9._-]+\.pdf$/.test(r.stock.attestation))
     || !r.audit || typeof r.audit.available !== 'boolean' || ![true, false, null].includes(r.audit.verified)
+    || r.audit.reason !== undefined && (!['unsupported', 'no_result', 'provider_error', 'invalid_response'].includes(r.audit.reason) || r.audit.available)
     || !Array.isArray(r.audit.risks) || r.audit.risks.length > 12 || r.audit.risks.some(x => !x || typeof x.title !== 'string' || x.title.length > 120 || typeof x.description !== 'string' || x.description.length > 220 || typeof x.critical !== 'boolean')
-    || !Array.isArray(r.trace) || r.trace.length > 8 || r.trace.some(x => !x || [x.skill, x.version, x.operation].some(v => typeof v !== 'string' || v.length > 80) || !['ready', 'unavailable'].includes(x.status) || !Number.isFinite(x.durationMs) || x.durationMs < 0)
+    || !Array.isArray(r.trace) || r.trace.length > 8 || r.trace.some(x => !x || [x.skill, x.version, x.operation].some(v => typeof v !== 'string' || v.length > 80) || !['ready', 'unavailable', 'unsupported'].includes(x.status) || !Number.isFinite(x.durationMs) || x.durationMs < 0)
     || [r.stock.tokenPrice, r.stock.perSharePrice, r.stock.stockPrice, r.stock.multiplier, r.stock.premiumPct, r.stock.change24h, r.stock.pe, r.stock.dividendYield, r.audit.buyTax, r.audit.sellTax].some(n => n !== null && (typeof n !== 'number' || !Number.isFinite(n)))
+    || !r.audit.available && (r.audit.level !== null || r.audit.label !== null || r.audit.buyTax !== null || r.audit.sellTax !== null || r.audit.verified !== null || r.audit.risks.length > 0)
     || r.audit.available && (!Number.isInteger(r.audit.level) || r.audit.level! < 0 || r.audit.level! > 5 || r.audit.label !== auditRiskLabel(r.audit.level!)))
     throw new WalletSkillError('skill_provider_unavailable')
   return r
 }
 export const skillRiskFingerprint = (report: SkillReport) => JSON.stringify({ audit: report.audit, market: { open: report.stock.market.open, reason: report.stock.market.reason, detail: report.stock.market.detail } })
-export function skillTradeBlock(report: SkillReport): string | null {
-  if (!report.audit.available || report.stock.market.open === null) return 'skill_checks_unavailable'
+export const requiresAuditAcknowledgement = (report?: SkillReport) => report?.audit.available === false && report.audit.reason === 'unsupported'
+export function skillTradeBlock(report: SkillReport, options: { allowUnsupportedAudit?: boolean } = {}): string | null {
+  if (report.stock.market.open === null) return 'skill_checks_unavailable'
   if (report.audit.level === 5) return 'skill_security_blocked'
   if (report.stock.market.open === false || ['ASSET_PAUSED', 'ASSET_LIMITED', 'UNSUPPORTED', 'MARKET_PAUSED', 'MARKET_MAINTENANCE'].includes(report.stock.market.reason ?? '')) return 'skill_asset_unavailable'
+  if (!report.audit.available && !(options.allowUnsupportedAudit && requiresAuditAcknowledgement(report))) return 'skill_checks_unavailable'
   return null
 }

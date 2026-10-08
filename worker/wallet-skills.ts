@@ -68,7 +68,8 @@ export function parseSkillAudit(value: unknown, requestId: string): SkillAudit {
   const v = object(value), extra = object(v?.extraInfo), level = number(v?.riskLevel)
   const available = v?.requestId === requestId && v.hasResult === true && v.isSupported === true && level !== null && Number.isInteger(level) && level >= 0 && level <= 5
     && v.riskLevelEnum === auditRiskLabel(level)
-  if (!available) return { available: false, level: null, label: null, buyTax: null, sellTax: null, verified: null, risks: [] }
+  if (!available) return { available: false, reason: v?.requestId !== requestId ? 'invalid_response' : v.isSupported === false ? 'unsupported' : v.hasResult === false ? 'no_result' : 'invalid_response',
+    level: null, label: null, buyTax: null, sellTax: null, verified: null, risks: [] }
   const risks: SkillAudit['risks'] = []
   for (const category of Array.isArray(v.riskItems) ? v.riskItems.slice(0, 30) : []) {
     const details = object(category)?.details
@@ -101,6 +102,10 @@ export async function researchStock(symbol: string, signal?: AbortSignal): Promi
   if (signal?.aborted) throw signal.reason
   const data = parts.map(p => p.status === 'fulfilled' ? object(p.value) : null)
   const [dynamic, status, meta, audit] = data
+  const parsedAudit = parts[3].status === 'fulfilled' ? parseSkillAudit(audit, requestId)
+    : { available: false, reason: 'provider_error', level: null, label: null, buyTax: null, sellTax: null, verified: null, risks: [] } as SkillAudit
+  const auditTrace = trace.find(step => step.operation === 'audit')
+  if (auditTrace) auditTrace.status = parsedAudit.available ? 'ready' : parsedAudit.reason === 'unsupported' ? 'unsupported' : 'unavailable'
   // Mismatched identity invalidates the whole result; missing data stays null.
   for (const v of [dynamic, meta]) if (v && v.symbol !== symbol) throw new WalletSkillError('skill_asset_not_verified')
   const token = object(dynamic?.tokenInfo), stock = object(dynamic?.stockInfo)
@@ -116,11 +121,11 @@ export async function researchStock(symbol: string, signal?: AbortSignal): Promi
       chainId: 56, address: asset.address, multiplier, tokenPrice, perSharePrice, stockPrice,
       premiumPct: premium,
       change24h: number(token?.priceChangePct24h), pe: number(stock?.priceToEarnings), dividendYield: number(stock?.dividendYield),
-      market: market(status), attestation }, audit: parseSkillAudit(audit, requestId), trace }
+      market: market(status), attestation }, audit: parsedAudit, trace }
 }
-export async function checkSkillTrade(symbol: string, signal?: AbortSignal): Promise<SkillReport> {
+export async function checkSkillTrade(symbol: string, signal?: AbortSignal, options: { allowUnsupportedAudit?: boolean } = {}): Promise<SkillReport> {
   const report = await researchStock(symbol, signal)
-  const block = skillTradeBlock(report)
+  const block = skillTradeBlock(report, options)
   if (block) throw new WalletSkillError(block)
   return report
 }
