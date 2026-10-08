@@ -1,160 +1,82 @@
 # FirstBell
 
-FirstBell explores tokenized assets on BNB Smart Chain and supports reviewed CoW RFQ stock orders through Binance Web3 when configured. If Binance returns no executable CoW route or rejects the amount as below its minimum, FirstBell checks the same USDT/stock pair and exact amount through CoW's BNB order book. The fallback retains the reviewed signature, pinned spender, sponsored approval, deterministic order recovery and independent settlement verification. It does not bypass provider access or market-closed errors. Home lists all 459 chain-56 tokens from the pinned Ondo token list, including stocks, ETFs and other issuer assets. The direct Trade flow uses USDT on BNB Smart Chain and server-side MegaFuel approval sponsorship. See [coverage, production setup and the funded 0 BNB acceptance test](docs/gas-sponsorship.md). Portfolio supports reviewed USDT withdrawals to a BSC address, with receipt verification and exact-transaction recovery. Provider configuration, policy funding and real settlement verification are required; mocked tests do not establish live purchase success.
+**Buy your first stock on-chain.** FirstBell helps people new to crypto reach tokenized equities through Google/email login, local-currency card or bank funding into USDT, reviewed trades and clear portfolio tracking on BNB Smart Chain.
 
-## Hackathon report and integration requirement
+[Live website](https://firstbell-server-test.vercel.app/) · [Open the app](https://firstbell-server-test.vercel.app/app/) · [Submission checklist](docs/submission-checklist.md) · [Demo recording guide](docs/demo-guide.md) · [Developer Experience field log](docs/developer-experience-report.md)
 
-The [living Developer Experience field log](docs/developer-experience-report.md) records verified build evidence and outstanding tests. The hackathon weights its report at 25% and requires at least one Binance Web3 API module in the working project. The builder's separate Vercel diagnostic accepted Binance candles and price-info on 2026-10-02. The full app now includes a Vercel adapter; its deployed chart, account persistence, RWA Data and trading-route calls still need live verification. Review the final report from firsthand experience before submitting.
+Built for [BNB Hack: Tokenized Stocks Edition](https://www.bnbchain.org/en/hackathons/tokenized-stocks?tab=tracks). Ondo tokenized assets on **BSC mainnet, chain 56**, are central to the product. Trades are spot only. The one-minute journey is a design goal; a measured one-minute card-to-stock purchase has not been established.
 
-## Run locally
+## The user journey
 
-```bash
-npm install
+1. **Sign in:** Google or email creates or restores a Privy embedded EVM wallet without asking the user to manage a seed phrase.
+2. **Fund:** Onramper collects the amount, local currency and available card/bank method. The normal funding route fixes the receiving wallet and BSC USDT. Country, provider and account eligibility determine coverage; sandbox payments never credit mainnet balances.
+3. **Buy:** choose a token, inspect its issuer/network/contract and review the USDT spend, token receive estimate, minimum, fee and expiry before wallet confirmation.
+4. **Track and withdraw:** positions show current value and purchase-based gains/losses when verified price and cost evidence are available. Activity includes deposits, withdrawals and trades. Sell stock positions to USDT, then withdraw USDT to a BSC wallet.
+
+MegaFuel sponsors eligible approvals and USDT transfers when a funded private policy accepts them. Direct **Trade** is the sponsored purchase flow. The website **Agent** uses its separately reviewed approval flow, which can require BNB. English, Chinese, Spanish, French and Portuguese are supported, with light/dark themes and reduced motion.
+
+## Integrations and execution boundaries
+
+| Integration | FirstBell use | Implementation |
+| --- | --- | --- |
+| Binance Market API | Token prices, OHLC candles and portfolio changes | `worker/market.ts`, `worker/portfolio-market.ts` |
+| Binance RWA Data API | Exact-contract Ondo token price, underlying reference and market session | `worker/binance-rwa.ts` |
+| Binance Trading API | Quotes, RFQ build, submission and order status | `worker/binance-trading.ts`, `worker/agent-trading.ts` |
+| Binance Transaction API | Approval simulation in the self-paid Agent path | `worker/agent-trading.ts` |
+| Binance Wallet API | Address transaction history for portfolio activity | `worker/wallet-activity.ts` |
+| Binance Address Portfolio | Cost-basis/PnL evidence, with independently verified settlement recovery | `worker/wallet-activity.ts`, `worker/wallet-purchase-basis.ts` |
+| Binance Wallet Skills | Contract resolution, multiplier-aware stock research, token status and audit checks | `worker/wallet-skills.ts`, `lib/binance-wallet-skills.ts` |
+| Binance Agentic Wallet | Optional personal CLI/MCP wallet connector with a local confirmation page | `agent-runtime/` |
+| CoW Protocol | Reviewed RFQ settlement; direct BNB quote fallback at the user's exact amount | `worker/cow-trading.ts` |
+| Privy / Onramper / MegaFuel | Login and wallet / fiat funding / eligible gas sponsorship | [Deployment](docs/vercel-deployment.md), [funding](docs/onramper-setup.md), [gas](docs/gas-sponsorship.md) |
+
+Binance Transaction API broadcasting is **not** used: sponsored transactions relay through MegaFuel, and RFQ settlement is performed by the provider/solver. Browser balances are read independently from BSC RPC. The website Agent is a deterministic command parser; an external AI client supplies the LLM for the optional personal MCP connector. Its Binance wallet is separate from the website's Privy wallet. BNB Agent Studio, x402/b402 and autonomous strategies are not implemented.
+
+Only validated CoW Order EIP-712 signing is enabled. Missing or below-minimum Binance routes may request a direct CoW quote for the same wallet, contracts and amount; provider restrictions and market-closure errors are not bypassed. Listing a token does not guarantee liquidity, eligibility or a $1 trade. An acknowledgement or approval is not a fill: Filled requires an independently verified successful BSC settlement and matching token transfers. Failed orders remain in history; open orders exclude terminal states. Ambiguous submitted transactions require reconciliation of the same attempt.
+
+## What is verified, and what remains
+
+Public checks on 2026-10-08 returned a ready Binance NVDAon market feed with 100 candles, a ready Binance RWA readout, and Apple stock research through Wallet Skills. The Apple audit was unavailable; Agent execution therefore still requires a usable audit and token-status result. These public reads do not prove an authenticated trade, card payment or funded gas policy.
+
+The code includes reviewed buys/sells, receipt verification, activity recovery, USDT withdrawals and a personal Agentic Wallet connector. Before submission, attach the builder's real BSC transaction evidence, verify the funded 0-BNB sponsor flow if claiming it, and review the firsthand Developer Experience report. A user-reported purchase without a verifiable transaction link is not independent submission proof. Use the [checklist](docs/submission-checklist.md) for the remaining steps.
+
+## Run and validate
+
+Use **Node.js 24**. For the landing and frontend:
+
+```sh
+npm ci
 npm run dev
 ```
 
-Build with `npm run build`. Run the backend regression suite with `npm test` (Node 24 or later).
+Vite alone does not run `/api/*`. For the full deployed service, follow the [Vercel guide](docs/vercel-deployment.md); `server/vercel.ts` adapts the shared API to Node and Upstash Redis. The existing `server-test` project layout remains supported. The Cloudflare adapter is retained for compatibility and local Worker development, not as the primary judge URL.
 
-### Test Binance directly from your computer
-
-To investigate the deployed `40304` response without changing hosting, use Node 24 or later and run:
-
-```bash
-node scripts/check-binance-market.mjs
+```sh
+npm run build
+npm test
 ```
 
-No `npm install`, frontend build, Privy login or Cloudflare deployment is needed for this standalone test. Paste your **Binance Web3 Developer Portal** API Key and matching Secret Key at the two hidden terminal prompts, pressing Enter after each. It holds them in memory for this run and does not write a credentials file. Existing `BINANCE_WEB3_API_KEY` and `BINANCE_WEB3_SECRET_KEY` environment variables can also supply the credentials; do not put their values in shell commands or Git.
+To include the optional personal connector's real MCP transport check:
 
-The script makes exactly two read-only requests from your computer to Binance: NVDAon BSC 56 candles (`15m`, limit 100), then token trading info (`POST /price-info`). It matches the Worker's paths, parameters, raw POST body and HMAC signing. Runtime/network defaults such as the automatically supplied User-Agent may differ. It prints each request's ISO timestamp, endpoint, first eight API-key characters, HTTP status, business code, bounded redacted provider message, data item count and elapsed milliseconds. Raw data, full credentials, signatures and non-JSON bodies are omitted. Exit code 0 means both requests were accepted; exit code 1 means a request failed or setup was incomplete; Ctrl+C at a key prompt cancels with exit code 130. Acceptance, especially with zero data items, does not verify current prices or usable candles.
-
-Compare the output with the deployed `/api/market/NVDAon?frame=15m` response using the same credentials around the same time. Local acceptance with Worker rejection narrows investigation to hosting or request-path differences; it does not identify a particular IP rule or prove a VPS will solve it. The same compliance error locally shows the failure also occurs outside the Worker. On 2026-10-01 the builder reported accepted local calls with 100 candle entries and one trading-info entry, followed by another deployed `40304` response. Raw data validity and the saved Worker credential pair remain unverified. Save the sanitized reports for Binance Web3 API technical support; the [field log](docs/developer-experience-report.md) retains the results and their limits.
-
-### Compare with a separate hosted server
-
-The isolated [server-test package](server-test/README.md) reuses the direct checker in a protected Node.js function. Deploy it as a new `firstbell-binance-test` Vercel project with Root Directory `server-test`. Its setup guide covers the three server variables, report interpretation and the limits of a hosting comparison. No production relay or Cloudflare hosting change is enabled.
-
-### Run the app and Worker together locally
-
-`npm run dev` runs the Vite frontend alone; this repository does not configure a Vite proxy for `/api/*`. To test the actual Worker market parser and chart from your computer, follow the [Cloudflare local development](https://developers.cloudflare.com/workers/local-development/) and [local secrets](https://developers.cloudflare.com/workers/local-development/environment-variables/) workflow:
-
-1. In the project root, create `.dev.vars` beside `wrangler.jsonc`. Use the credential pair that succeeded in the direct diagnostic:
-
-   ```dotenv
-   BINANCE_WEB3_API_KEY="your-web3-api-key"
-   BINANCE_WEB3_SECRET_KEY="your-matching-secret-key"
-   ```
-
-   This setup saves the keys on your computer, unlike the standalone diagnostic. `.dev.vars*` is already ignored by Git. Keep the file private and delete it after testing if you do not want to retain the keys.
-
-2. In the VS Code terminal, run these commands in order:
-
-   ```bash
-   npm install
-   npm run build
-   npx --yes wrangler@4.144.0 dev --local --port 8787
-   ```
-
-3. Leave the terminal running. Open `http://localhost:8787/api/market/NVDAon?frame=15m` first, then `http://localhost:8787/app/` and choose Trade. A useful result should name `source: "binance-web3"`, contain valid candles and provide a positive `priceUsd` for the current price. An accepted direct diagnostic alone does not prove those checks pass.
-
-This runs the Worker and its bindings locally while making real read-only Binance market requests from your computer. Public market reads do not require Privy login. For login or authenticated wallet features, allow `http://localhost:8787` in the Privy app and configure the relevant local authentication secrets separately. Local setup does not resolve the deployed compliance error or verify an executable stock trade. Build again and restart Wrangler after changing the frontend.
-
-### Capture private Binance failure diagnostics
-
-`wrangler.jsonc` retains the dashboard's enabled log collection, sampling rate of 1, invocation logs and persistence; traces are disabled. **Settings → Observability** configures collection. Open the Worker's **Logs** view to read the entries. On a narrow screen, scroll the top tab bar toward the earlier tabs to find Logs. The dashboard's orange configuration banner is a reminder to keep source settings in sync, not a Binance error.
-
-Deploy the latest source first. Failed signed Binance requests now emit a `BINANCE_DIAG` marker and structured object in Worker logs. No new secrets are required. Each entry records the method, `/build` endpoint path without query parameters, exact signed `requestTimestamp`, upstream `httpStatus`, numeric `providerCode`, fixed failure reason and a provider `msg` capped at 200 characters. Actual credentials, signature, nonce and request values are redacted from message echoes, including common encoded forms, before truncation. Raw request/response bodies, headers, HTML and exception messages are not logged; the public API still omits provider messages.
-
-1. Open **Workers & Pages → firstbell → Logs → Live**, following Cloudflare's [real-time logs guide](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/), and start the live session.
-2. In another tab, open [the NVDAon market endpoint](https://firstbell.ahmardchain.workers.dev/api/market/NVDAon?frame=15m).
-3. Copy only the `BINANCE_DIAG` entries for `GET /build/api/v1/dex/market/candles` and `POST /build/api/v1/dex/market/price-info`. Do not share the entire invocation trace, which can contain request headers. Successful requests emit no diagnostic, so only failed endpoints appear.
-
-Alternatively, start the CLI tail from the project root before opening the market endpoint:
-
-```bash
-npx --yes wrangler@4.144.0 tail firstbell --format json
+```sh
+npm ci --prefix agent-runtime --ignore-scripts
+npm run agent:check
+npm test
 ```
 
-The timestamp matches the `X-OC-TIMESTAMP` used for that request. A generic message, missing message or `40304` alone does not establish an IP allowlist or specific compliance rule. On 2026-10-01 the builder captured a deployed price-info entry at `2026-10-01T08:59:44.995Z`: HTTP 200, code `40304`, message `Service not available due to compliance restriction`. This confirms the provider's compliance explanation for that endpoint, but not a particular rule or successful hosted market data. A matching candle diagnostic has not yet been supplied. Compare the entries with the accepted local diagnostic for Binance Web3 technical support.
+Tests use provider/RPC fixtures unless explicitly stated. They verify validation and state handling; they do not spend funds or establish live provider acceptance. GitHub CI builds the project and runs the suite with the optional connector installed. [Connector setup and confirmation boundaries](docs/binance-wallet-skills.md).
 
-### Binance support capture retired
+For a read-only Binance hosting comparison, run `node scripts/check-binance-market.mjs`. It prompts for credentials with hidden input and does not save them. The historical protected comparison service is documented in [server-test/README.md](server-test/README.md).
 
-The temporary support-case capture was removed on 2026-10-03 after the original evidence had been collected. `BINANCE_SUPPORT_CAPTURE_UNTIL` no longer enables any capture. Requests never log signatures, nonces, partial API keys or raw provider responses. The bounded, redacted `BINANCE_DIAG` error record remains available for normal troubleshooting.
+## Repository map
 
+| Path | Purpose |
+| --- | --- |
+| `src/`, `components/`, `lib/` | Landing, app, shared UI and client validation |
+| `worker/`, `server/`, `api/` | Shared handlers, Vercel adapter and required generated API entry |
+| `agent-runtime/` | Personal Binance Agentic Wallet connector |
+| `tests/`, `.github/workflows/` | Regression checks and CI |
+| `docs/` | Setup, evidence, submission checklist and recording guide |
+| `asset-sources.json`, `brand-mark-sources.json`, `third_party/` | Issuer contracts, asset provenance and upstream licenses |
 
-Use the [Vercel deployment guide](docs/vercel-deployment.md). The repository root includes `vercel.json`, a bundled Node.js API function in `api/index.mjs`, and persistent Upstash Redis account storage. The landing page, `/app/`, market feeds, Privy verification and card funding API routes run in the same Vercel project. Configure Root Directory **`.`**, Framework **Vite**, Node **24.x**, the checked-in build command, and Output **`dist`**. The existing `firstbell-server-test` project can also retain Root Directory `server-test`: its configuration now builds and stages the full app from the repository root, preserving its existing server environment. Both root layouts retain the comparison page at `/server-test.html` and its protected `/api/check` function.
-
-Keep the two Binance keys in server environment variables. Account features also require a matching Privy App ID and Redis REST credentials. Privy's verification public key is optional: the API can fetch the app's published signing keys. Cloudflare secrets do not transfer automatically. Optional authenticated import can retain existing saved assets and deposit records; configure it before the first Vercel account request as described in the guide. The original Worker adapter remains available below.
-
-## Deploy to Cloudflare Workers
-
-`wrangler.jsonc` serves the Vite output in `dist` as Workers static assets and routes `/api/*` to the Worker. Both `/` and `/app/` are built as HTML entry points. The Worker stores one account record per verified Privy user in a SQLite-backed Durable Object.
-
-1. Sign in with `npx wrangler login` (or set a scoped `CLOUDFLARE_API_TOKEN` in your deployment environment).
-2. FirstBell includes its public Privy App ID in `src/privy-config.ts`. For a different Privy app, set `VITE_PRIVY_APP_ID` in the environment that runs `npm run build`. Vite embeds this value in the browser bundle at build time; a Worker runtime variable set after the build cannot change the login app.
-3. The API verifies tokens against the configured app's public keys at `https://auth.privy.io/api/v1/apps/{PRIVY_APP_ID}/jwks.json`. You can optionally copy the app's **verification public key** from Privy into the runtime secret `PRIVY_VERIFICATION_KEY` (PEM format) for local verification. Missing, malformed or stale PEM keys fall back to Privy's published keys. Valid signatures, app audience, issuer, expiry and wallet ownership are still checked. Do not use your Privy App Secret here.
-4. Run `npm run deploy:cloudflare`. Add the resulting `https://firstbell.<your-subdomain>.workers.dev` origin to your Privy app's allowed domains. A new deployment is required after changing build variables; runtime secrets are read by the Worker without rebuilding the frontend.
-5. `ONDO_API_KEY` is optional for Binance charts and route checks. For the Ondo primary-market fallback and the legacy indicative quote endpoint, obtain an API key through [Ondo developer onboarding](https://docs.ondo.finance/ondo-global-markets/developer-resources/api-reference/overview) and add it as a **Worker runtime secret**, using `npx wrangler secret put ONDO_API_KEY` or the Cloudflare dashboard. Never use `VITE_ONDO_API_KEY` or expose it in the browser. With the Binance credentials below, charts request the Binance Web3 candle and trading-info feeds for the exact BSC token. Without a verified Binance feed, they try Ondo when configured and then a public GeckoTerminal BSC pool that matches the exact token and meets the minimum liquidity check.
-6. For Binance RWA Data and trading-route checks, create a project in the [Binance Web3 Developer Portal](https://web3.binance.com/en/dev-portal). Put its API Key and Secret Key in the Worker as separate **runtime secrets**: `BINANCE_WEB3_API_KEY` and `BINANCE_WEB3_SECRET_KEY`. For CLI deployment use `npx wrangler secret put BINANCE_WEB3_API_KEY` and `npx wrangler secret put BINANCE_WEB3_SECRET_KEY` after creating the Worker. In the dashboard, add both under **Workers & Pages → firstbell → Settings → Variables and Secrets**. Do not add either to `VITE_` variables, client files, or Git. The public `/api/rwa/:symbol` route returns `not_configured` until both are present. The Trade screen's Binance route check uses these keys and does not require `ONDO_API_KEY`.
-
-For Cloudflare Workers Builds connected to GitHub, use `npm run build` as the build command and `npx --yes wrangler@4.144.0 deploy` as the deploy command. Set `VITE_PRIVY_APP_ID` as a **build** variable only if deploying with a different Privy app, and match it to the server's `PRIVY_APP_ID`. Configure the optional `PRIVY_VERIFICATION_KEY` and the two Binance credentials on the Worker as **runtime** secrets. Keep all signing secrets out of the frontend and repository. The Vite build uses Tailwind's PostCSS plugin in `postcss.config.mjs`; check that `dist/assets/*.css` are nonempty after building.
-
-## Login and wallets
-
-FirstBell uses Privy for Google and email one-time-code sign-in. The Privy modal creates an embedded EVM wallet for a new account; a returning account loads its existing wallet. Portfolio reads USDT, native BNB and all listed token balances in bounded multicalls from the BNB Smart Chain public RPC using viem. It reads on-chain quantities and uses verified token prices for holdings valuations; missing prices remain unavailable. On sign-in, `/api/me` verifies the Privy access token and creates or retrieves an account; saved assets sync through `/api/me/saved`. The browser retains local bookmarks when the API is unavailable. Card deposit checkout is implemented and requires the configuration below. Reviewed USDT withdrawals and stock trades use explicit wallet signing and independently verified settlement when the server is configured.
-
-1. In the [Privy Dashboard](https://dashboard.privy.io/) for the configured App ID, enable **Email** and **Google** login, and allow your deployment origin (and localhost for development).
-2. The public App ID is in `src/privy-config.ts`; override it in a local `.env` as `VITE_PRIVY_APP_ID=...` to use another Privy app. Do not put a Privy App Secret in a Vite variable or in this repository.
-3. Build and deploy. A static deployment cannot pick up runtime environment variables after the build.
-4. The API can verify access tokens using Privy's published signing keys; a configured verification public key is optional. Vercel additionally requires the Redis account store. For checkout and quotes, enable **Return user data in an identity token** in your Privy app, or configure `PRIVY_APP_SECRET` in the API host's server environment and redeploy. The server fallback queries Privy for the already authenticated user and verifies the exact embedded wallet. Never put this secret in a `VITE_` variable. `GET /api/health` reports whether the server fallback is configured without exposing its value.
-5. Sign in, check the wallet address against BscScan, log out, then sign in again with the **same linked identity** to verify the address is unchanged. To use Google and email interchangeably for one wallet, link the other method from the authenticated Portfolio screen before logging out.
-
-The shared API uses Privy's ES256 verification key, issuer and app audience to validate the access token before accessing that user's account store: Upstash Redis on Vercel, or a Durable Object on Cloudflare. `GET /api/health` is public. `GET /api/me` returns `{ account: { id, createdAt, lastSeenAt, saved } }`; `PUT /api/me/saved` accepts `{ symbol, saved }` for an indexed token. Both account routes require `Authorization: Bearer <Privy access token>`. The account record holds a Privy ID and saved symbols; it does not store wallet keys, credentials, or a fabricated balance. Card deposit records are kept in the same private per-user store. The wallet and its balances come from Privy and BNB Smart Chain. Portfolio values holdings with current token prices and purchase-basis evidence; Activity recovers confirmed deposits, withdrawals and trades from wallet evidence. Binance Agentic Wallet remains a separate personal wallet.
-
-## Check an Ondo trading route without an Ondo API key
-
-The full Ondo BSC catalog is shared by Home, Trade, Portfolio and the API contract allowlist. Trade's Buy/Sell sheet checks the [Binance Web3 Trading API](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api), rather than requiring an Ondo primary-market soft quote. A listed token does not guarantee available market data or an executable route. This is a read-only route check, not a purchase or sale.
-
-1. Configure the two Binance runtime secrets above, keep matching Privy App IDs, and enable Privy's identity-token setting described below. The optional `PRIVY_VERIFICATION_KEY` supports local verification; published app keys handle a missing or stale PEM. Deploy this source update to the Worker.
-2. Sign in to FirstBell and open **Trade → Buy**. Enter the amount of **BSC USDT to spend** and select **Check trading route**. For Sell, enter the selected stock token's quantity instead. Opening or switching sides keeps the units separate.
-3. The Worker verifies the embedded wallet's ownership, calls the supported-chain endpoint, verifies BSC via RPC, reads the stock token's on-chain decimals, and requests a quote with `userWalletAddress`. Returned chain, contracts, input amount, decimals and `executionMode: RFQ` must match. Only then does the sheet show an estimated receiving amount and route vendor. The display becomes stale after its refresh deadline; recheck before relying on it.
-4. A missing route is an explicit unavailable result. Availability depends on the wallet, provider access, amount, current liquidity and market conditions. No valid live route has been recorded here yet. Do not treat a code path or fixture as proof that a particular wallet can trade.
-
-`POST /api/trade/route` accepts `{ symbol, side, amount, walletAddress }`, an access token and a separate `privy-id-token`. It shares the six-checks-per-minute account limit with the older indicative quote endpoint. It returns a sanitized `route` with `executable: false` and no approval calldata, signing payload or quote ID. Only read-only Binance GET requests are made; nothing is signed by the wallet, approved, submitted or broadcast. No `ONDO_API_KEY` or separate xStocks key is needed for this check.
-
-**Execution remains unfinished.** Binance documents equities as RFQ orders: quote → build order → vendor-specific approval where needed → user-reviewed EIP-712 signature → order submission → settlement verification. That remaining flow must be implemented, simulated where applicable and verified with small BSC mainnet amounts before recording a real purchase. Keeping Ondo tokens while using Binance routing is a candidate path; no successful live quote, issuer-eligibility decision or stock trade is claimed.
-
-## Card checkout: Onramper → Privy wallet
-
-Portfolio → Deposit → Add Money opens Onramper directly in the same tab. Onramper collects the amount, fiat currency, cards, verification and fees, and recommends an available provider. FirstBell supplies the verified embedded wallet and locks the output to USDT on BNB Smart Chain. There is no FirstBell payment form or country-specific provider rule.
-
-Follow [the Onramper activation guide](docs/onramper-setup.md) for the account API key, registered Ed25519 public key, server private key, exact account-enabled BSC USDT ID, and authenticated webhook setup. Provider signup and key registration are required; code deployment alone cannot activate card acceptance. Sandbox uses Onramper's simulated Banxa checkout and never credits a mainnet balance. Live acceptance is determined by the provider, card issuer and verification requirements.
-
-`POST /api/deposits/checkout` accepts `{ walletAddress, theme, sessionId? }`, an authenticated Privy access token, embedded-wallet proof and a same-origin HTTPS request. Its signed V2 URL expires after 15 minutes; resume preserves the session but signs a fresh nonce. New records identify `provider: onramper` and `amountSelection: onramper`; their amount and fiat are recorded only from a verified correlated provider update.
-
-`POST /api/onramper/webhook` verifies the raw-body HMAC before resolving encrypted account/session context. It pins the order and fiat, rejects mismatched asset/recipient and duplicate-chain receipts, and handles out-of-order statuses without regressing completion. `GET /api/deposits` returns private durable history; `GET /api/deposits/:id` refreshes chain confirmation with a 15-second cache and account rate limit. Existing MoonPay records continue through their own provider checker and remain distinct from new Onramper sessions.
-
-A provider's completed status or return redirect never creates a balance. Deposit confirmed requires an independently verified BSC USDT transfer to the correct wallet with three block confirmations. Missing provider transaction hashes remain confirming. The portfolio reads actual on-chain balances. BNB for network fees and executable stock trades remain separate work; neither a mock checkout nor a simulated payment proves a real purchase.
-
-## Market and trade API
-
-- `GET /api/rwa/:symbol` calls the signed Binance Web3 RWA Data price and underlying-market endpoints for the token's **exact Ondo BSC contract**. It returns the on-chain token price, per-share reference, price update time and underlying market session when verified. Each signature covers the ISO timestamp, uppercase method, exact `/build` path and raw query, with HMAC-SHA256 and Base64. The secret stays in the Worker. The public read route has a 30-second isolate cache. `not_configured`, `no_verified_asset` and `provider_error` are explicit unavailable states. The underlying-market status may be absent even when price is present.
-- `GET /api/market/:symbol?frame=15m|1h|4h|1D` uses the runtime Binance credentials for signed `GET /api/v1/dex/market/candles` and `POST /api/v1/dex/market/price-info` requests. The source is `binance-web3`, `ondo` for the configured primary-market fallback, or `geckoterminal` for an exact-token BSC DEX pool. The Binance tuple is `[open, high, low, close, volume, timestamp_ms, tradeCount]`; only valid, sorted, unique bars are rendered. The daily UI frame maps to `bar=1d`. Current price and 24h change require the exact BSC contract and its observation timestamp. A valid price can be returned with empty candles and `historyError`; a chart alone does not invent a current price. The Trade header can separately display a verified Binance RWA token price, with its own label, when chart-market price is missing. No traditional exchange or placeholder prices are substituted.
-- Missing feeds return HTTP 503 with `status: "unavailable"`. Binance access rejection, rate limiting and provider failure have distinct `reason` values; only numeric `httpStatus` and `providerCode` are exposed for diagnosis. Provider message text and secrets are never returned. A nonzero business code is checked even when Binance returns HTTP 200. Valid responses use a 30-second isolate cache; failures and partial history errors are not cached.
-- `POST /api/trade/quote` accepts `{ "symbol": "TSLAon", "side": "buy", "quantity": "0.5" }` with a verified Privy Bearer token and a configured `ONDO_API_KEY`. It requests an Ondo **soft quote**, validates its chain, address, side and quantity, and returns `{ quote: { priceUsd, estimatedTotalUsd, executable: false, ... } }`. Requests are limited to six per user per minute in the account Durable Object. The estimate does not reserve a price or submit a transaction.
-- On-chain buying or selling requires Ondo eligibility/onboarding, a signed binding attestation, current USDT allowance and a user-approved BNB Chain transaction through the relevant audited manager contract. None of those steps is implied by a soft quote. The UI provides no submit-order action until that path can be verified end to end. Do not describe the market display price as a trade fill price.
-
-Run `npm test` for provider parsers, signing, error handling and wallet guards. These checks use mocked responses and do not establish live provider availability. Run `npm run build` and `npx wrangler deploy --dry-run` before deployment. With the stored keys and the latest source deployed, request `/api/market/NVDAon?frame=15m` and `/api/rwa/NVDAon`. Verify the actual provider/source, observation timestamps and genuine candles, or record the sanitized failure codes before claiming a live integration in the report. Stored secrets alone do not deploy new source code.
-
-## Interface
-
-The Agent now integrates [Binance Wallet Skills and the personal Agentic Wallet MCP connector](docs/binance-wallet-skills.md). Stock research, reference-price conversion, token trading status and audits use the official public skill HTTP contracts; Agent trades check these findings before reviewed Privy execution. The personal MCP connector uses the actual Binance CLI with local browser confirmation and receipt-verified order tracking. Its Binance wallet remains separate from the website wallet.
-
-- The hero adapts the user-supplied floating-icons component in `components/ui/floating-icons-hero-section.tsx` and uses transparent company SVG marks listed in `brand-mark-sources.json`. The asset symbols and contract data are from the [Ondo token list](https://github.com/ondoprotocol/ondo-global-markets-token-list/blob/main/tokenlist.json).
-- The [React Bits Logo Loop](https://reactbits.dev/animations/logo-loop) and [Scroll Float](https://reactbits.dev/text-animations/scroll-float) adaptations live in `components/ui/`. Scroll Float uses GSAP ScrollTrigger for the section headings and footer statement, and shows plain text when reduced motion is requested. Their license notice is in `third_party/REACT_BITS_LICENSE.md`.
-- `src/demo.tsx` contains the landing. `/app/` is a separate route with Home, Trade, Agent, and Portfolio in `src/app.tsx`.
-- Home has a searchable catalog and source-linked asset files. Bookmarks sync to the account after sign-in when the Worker is configured. Trade provides an asset selector, the [Spectrum UI Market Chart](https://ui.spectrumhq.in/blocks/charts#market) with real provider OHLC when available, a separate Binance Web3 RWA readout, contract details, and a Buy/Sell estimate sheet. Read-only quotes remain separate from explicitly confirmed execution. Agent uses an adapted [Spectrum UI AI Chat Card](https://ui.spectrumhq.in/docs/ai-chat-card) for stock research, audit/status checks, catalog questions and reviewed trades. Portfolio reads BNB and listed token quantities on chain. Onramper card checkout requires matching registered provider credentials and Privy wallet verification; simulated payments never credit the BSC portfolio. Reviewed USDT withdrawals use the existing wallet confirmation and receipt checks.
-- Spectrum chart source is in `components/spectrumui/charts/` and the adapted chat card and typewriter are in `components/spectrumui/`; their Apache 2.0 license is in `third_party/SPECTRUM_UI_LICENSE.txt`. The chart's demo-generated prices are never shown as token prices. The website Agent uses a deterministic command parser. The personal Binance MCP connector supplies Wallet Skills tools to the LLM in the user’s chosen AI client.
-- `src/styles.css` defines a sharp monochrome system. Light mode uses white surfaces. Inter and IBM Plex Mono are self-hosted through Fontsource packages.
-- `AGENTS.md` contains the project design workflow and `UI.md` records the FirstBell-specific visual contract.
-
-The `App` navigation item opens `/app/`. The company marks are visual navigation cues, while issuer and contract details are derived from `asset-sources.json`; the external contract links open BscScan. No price, entitlement, or availability is inferred from the ticker alone.
+Server credentials belong in the host's private environment configuration, never `VITE_` variables or Git. Only the public Privy App ID is a frontend build setting. Issuer terms determine token rights and regional availability; the company logo is not proof of share ownership. Source attribution for the adapted React Bits and Spectrum UI components is retained in `third_party/`.
