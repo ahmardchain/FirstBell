@@ -16,6 +16,7 @@
     "agent:check": "node agent-runtime/doctor.mjs",
     "agent:config": "node agent-runtime/print-config.mjs",
     "agent:binance": "node agent-runtime/server.mjs",
+    "megafuel:policy": "node scripts/megafuel-policy.mjs",
     "deploy:cloudflare": "npm run build && npx --yes wrangler@4.144.0 deploy"
   },
   "dependencies": {

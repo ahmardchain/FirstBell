@@ -33,6 +33,32 @@ Firsthand public-fixture API checks on 2026-10-07 returned quotes for 1 USDT →
 
 No policy creation, funding transfer or deployment-secret update is performed by the app. Do not paste secrets into chat, commit them or expose them in client code. A missing policy stops a 0 BNB approval. A configured policy rejecting the transaction never falls back to charging the user. Existing wallets with BNB can still explicitly confirm a self-paid approval when sponsorship is unconfigured; the actual estimated BNB fee is displayed and Privy requests wallet confirmation.
 
+## Buying works but selling is declined
+
+A buy approves the **USDT contract**. A sell approves the **stock-token contract** for the exact number of tokens being sold. Both approve the pinned CoW relayer, but their transaction recipient is different. A policy whose `ToAccountWhitelist` covers only USDT can accept buys and decline sells before any transaction is sent. Adding the relayer to that whitelist does not cover stock approvals.
+
+The regression fixture reproduces this configuration mismatch: a USDT-only policy accepts a buy but declines a stock approval. After that fixture covers the stock contract, a 0-BNB sell settles into USDT with verified token transfers. These are simulated integration tests. A real policy's recipients, budget and account-specific coverage are private and are not published here.
+
+The owner maintenance command reads the existing server-only `MEGAFUEL_API_KEY` and `MEGAFUEL_POLICY_UUID`. It never prints these values, a policy identifier, wallet addresses or raw provider responses. Run it in a trusted server/terminal environment where those variables are already configured:
+
+```sh
+# Read-only coverage check. A missing-stock result exits with status 1.
+npm run megafuel:policy
+
+# Inspect one catalog stock, then explicitly add that contract if intended.
+npm run megafuel:policy -- --symbol NVDAon
+npm run megafuel:policy -- --symbol NVDAon --cover-sells
+
+# Explicitly cover the entire pinned BSC stock catalog if authorized.
+npm run megafuel:policy -- --all-stocks --cover-sells
+```
+
+`--cover-sells` requires either `--symbol` or `--all-stocks`. The repair uses `pm_addToWhitelist` only for missing catalog entries and reads the list back before reporting success. It preserves existing recipients, methods, funding and spending limits. It refuses an empty/unrecognized whitelist, a policy without USDT, arbitrary symbols and an over-limit list. It is an owner-operated command, never a build step or a repair triggered by user trades. Covering every stock expands eligible sponsored interactions and should be an explicit policy-owner choice.
+
+The live management API requires **numeric** `offset` and `limit` in `pm_getWhitelist`, despite the reference page describing strings. String pagination returned JSON-RPC error `-32602`; numeric pagination succeeded. The current whitelist returns records, while the older SDK advertises strings; the maintenance command validates one address per record. See [Get whitelist](https://docs.nodereal.io/reference/pm-getwhitelist), [Add to whitelist](https://docs.nodereal.io/reference/pm-addtowhitelist) and the [official SDK](https://github.com/node-real/megafuel-js-sdk/blob/main/src/sponsorclient.ts).
+
+After an approved update, request a fresh sell review. `pm_isSponsorable` still checks the exact wallet, stock contract, calldata and gas at review and dispatch. Whitelist coverage alone does not establish a funded/active policy, remaining daily allowance, a usable quote or a completed sell. Retain a real approval and verified settlement receipt for funded acceptance.
+
 ## Implementation and security
 
 `worker/megafuel.ts` sends private-policy requests only to `https://open-platform-ap.nodereal.io/{server-key}/megafuel/56`, with `X-MegaFuel-Policy-Uuid` and `User-Agent: FirstBell/0.1.0`.
