@@ -28,14 +28,17 @@ afterEach(() => { globalThis.fetch = originalFetch })
 beforeEach(() => clearTradingMetadataCache())
 const envelope = data => ({ code: 0, success: true, timestamp: Date.now(), data })
 const token = address => ({ tokenContractAddress: address, decimal: '18' })
-function fixture() {
-  const s = { bnb: 0n, usdt: rawAmount, stock: 0n, allowance: 0n, nonce: 0, sponsorable: true, simulation: true,
+function fixture(side = 'buy') {
+  const rawAmount = side === 'buy' ? 5n * 10n ** 18n : 25n * 10n ** 15n
+  const output = side === 'buy' ? 25n * 10n ** 15n : 5n * 10n ** 18n
+  const inputToken = side === 'buy' ? BSC_USDT.address : stock, outputToken = side === 'buy' ? stock : BSC_USDT.address
+  const s = { bnb: 0n, usdt: side === 'buy' ? rawAmount : 0n, stock: side === 'sell' ? rawAmount : 0n, allowance: 0n, nonce: 0, sponsorable: true, coveredTokens: null, simulation: true,
     mined: true, approvalStatus: '0x1', settlementStatus: 'FILLED', lostAck: false, invalidFill: false, calls: [], transactions: new Map(), submitted: new Map() }
   const typed = () => ({ domain: { name: 'Gnosis Protocol', version: 'v2', chainId: 56, verifyingContract: COW_SETTLEMENT }, types: { Order: COW_ORDER_FIELDS.map(field => ({ ...field })) }, primaryType: 'Order', message: {
-    sellToken: BSC_USDT.address, buyToken: stock, receiver: owner, sellAmount: rawAmount.toString(), buyAmount: output.toString(), validTo: Math.floor(Date.now() / 1000) + 600,
+    sellToken: inputToken, buyToken: outputToken, receiver: owner, sellAmount: rawAmount.toString(), buyAmount: output.toString(), validTo: Math.floor(Date.now() / 1000) + 600,
     appData: `0x${'00'.repeat(32)}`, feeAmount: '0', kind: 'sell', partiallyFillable: false, sellTokenBalance: 'erc20', buyTokenBalance: 'erc20' } })
   const route = () => ({ quoteId: 'fixture-route', vendorName: 'CowSwap', binanceChainId: '56', executionMode: 'RFQ', approveTarget: COW_RELAYER,
-    fromTokenAmount: rawAmount.toString(), toTokenAmount: output.toString(), fromToken: token(BSC_USDT.address), toToken: token(stock) })
+    fromTokenAmount: rawAmount.toString(), toTokenAmount: output.toString(), fromToken: token(inputToken), toToken: token(outputToken) })
   const transfer = (address, from, to, value, index) => ({ address, data: encodeAbiParameters([{ type: 'uint256' }], [value]), topics: encodeEventTopics({ abi: erc20Abi, eventName: 'Transfer', args: { from, to } }),
     blockHash: `0x${'bc'.repeat(32)}`, blockNumber: '0x64', transactionHash: settlementHash, transactionIndex: '0x0', logIndex: `0x${index}`, removed: false })
   const receipt = (hash, to, status, logs = []) => ({ transactionHash: hash, transactionIndex: '0x0', blockHash: `0x${'bc'.repeat(32)}`, blockNumber: '0x64', from: owner, to,
@@ -55,7 +58,7 @@ function fixture() {
       assert.equal(init.headers['User-Agent'], 'FirstBell/0.1.0')
       s.calls.push({ provider: 'megafuel', method: body.method, params: body.params })
       let result
-      if (body.method === 'pm_isSponsorable') result = { sponsorable: s.sponsorable }
+      if (body.method === 'pm_isSponsorable') result = { sponsorable: s.sponsorable && (!s.coveredTokens || s.coveredTokens.some(token => token.toLowerCase() === body.params[0].to.toLowerCase())) }
       else if (body.method === 'eth_getTransactionCount') { assert.equal(body.params[1], 'pending'); result = `0x${s.nonce.toString(16)}` }
       else if (body.method === 'eth_sendRawTransaction') {
         const raw = body.params[0], tx = parseTransaction(raw), hash = keccak256(raw)
@@ -80,7 +83,7 @@ function fixture() {
             if (s.approvalStatus === '0x1') { s.allowance = decodeFunctionData({ abi: erc20Abi, data: tx.data }).args[1]; s.nonce = tx.nonce + 1 }
             result = receipt(hash, tx.to, s.approvalStatus)
           } else if (hash === settlementHash) {
-            result = receipt(hash, COW_SETTLEMENT, '0x1', [transfer(BSC_USDT.address, owner, COW_RELAYER, rawAmount, 0), transfer(stock, COW_SETTLEMENT, owner, s.invalidFill ? 1n : output, 1)])
+            result = receipt(hash, COW_SETTLEMENT, '0x1', [transfer(inputToken, owner, COW_RELAYER, rawAmount, 0), transfer(outputToken, COW_SETTLEMENT, owner, s.invalidFill ? 1n : output, 1)])
           } else result = null
         } else if (call.method === 'eth_call') {
           const tx = call.params[0]
@@ -100,7 +103,7 @@ function fixture() {
     assert.equal(u.hostname, 'web3.binance.com')
     s.calls.push({ provider: 'binance', method: u.pathname, body })
     if (u.pathname.endsWith('/supported/chain')) return Response.json(envelope([{ binanceChainId: '56' }]))
-    if (u.pathname.endsWith('/quote')) { assert.equal(u.searchParams.get('fromTokenAddress').toLowerCase(), BSC_USDT.address.toLowerCase()); return Response.json(envelope([route()])) }
+    if (u.pathname.endsWith('/quote')) { assert.equal(u.searchParams.get('fromTokenAddress').toLowerCase(), inputToken.toLowerCase()); return Response.json(envelope([route()])) }
     if (u.pathname.endsWith('/swap')) return Response.json(envelope({ executionMode: 'RFQ', routerResult: route(), rfq: { vendor: 'CowSwap', orderId: 'fixture-rfq-order', signingScheme: 'EIP712', typedDataToSign: typed() } }))
     if (u.pathname.endsWith('/order/submit')) {
       if (!s.submitted.has(body.requestId)) { assert.ok(s.allowance >= rawAmount); s.submitted.set(body.requestId, body.userSignature) }
@@ -108,13 +111,13 @@ function fixture() {
       return Response.json(envelope({ orderId: 'fixture-submitted-order', status: 'PENDING_VENDOR' }))
     }
     if (u.pathname.endsWith('/order/fixture-submitted-order')) {
-      if (s.settlementStatus === 'FILLED') { s.usdt = 0n; s.stock = output; s.allowance = 0n }
+      if (s.settlementStatus === 'FILLED') { s.usdt = side === 'sell' ? output : 0n; s.stock = side === 'buy' ? output : 0n; s.allowance = 0n }
       return Response.json(envelope({ orderId: 'fixture-submitted-order', status: s.settlementStatus, txHash: s.settlementStatus === 'FILLED' ? settlementHash : null }))
     }
     throw new Error(`unexpected provider path ${u.pathname}`)
   }
   s.prepare = async () => {
-    const plan = await prepareAgentTrade('NVDAon', 'buy', '5', owner, credentials, undefined, { paymentToken: 'USDT', env })
+    const plan = await prepareAgentTrade('NVDAon', side, side === 'buy' ? '5' : '0.025', owner, credentials, undefined, { paymentToken: 'USDT', env })
     return { ...plan, planToken: await sealTradeTicket({ plan }, 'did:privy:fixture', credentials.secretKey, 'plan') }
   }
   return s
@@ -145,6 +148,30 @@ test('fixture: first USDT purchase with exactly 0 BNB approves, fills and appear
   assert.equal(s.calls.filter(c => c.method === 'eth_sendRawTransaction').length, 1)
   assert.equal(s.calls.filter(c => c.method.endsWith('/quote')).length, 1)
   assert.equal(s.calls.some(c => c.method === 'eth_gasPrice'), false)
+})
+
+test('fixture: a USDT-only policy accepts a buy but declines the stock approval for a sell without sending', async () => {
+  const buy = fixture(); buy.coveredTokens = [BSC_USDT.address]
+  assert.equal((await buy.prepare()).approval.to, BSC_USDT.address)
+  const sell = fixture('sell'); sell.coveredTokens = [BSC_USDT.address]
+  await assert.rejects(sell.prepare, /sponsorship_rejected/)
+  assert.equal(sell.calls.find(call => call.method === 'pm_isSponsorable').params[0].to, stock)
+  assert.equal(sell.calls.some(call => call.method === 'eth_sendRawTransaction' || call.method.endsWith('/order/submit')), false)
+})
+
+test('fixture: covered stock approval sells into USDT and verifies portfolio proceeds with exactly 0 BNB', async () => {
+  const s = fixture('sell'); s.coveredTokens = [BSC_USDT.address, stock]
+  const plan = await s.prepare(), sellRequest = { ...request, side: 'sell', amount: '0.025' }
+  validateAgentTradePlan(plan, sellRequest)
+  assert.equal(plan.approval.to, stock); assert.equal(plan.approval.amount, output.toString())
+  assert.equal(plan.approval.gasFeeBnb, '0'); assert.equal(plan.typedData.message.buyToken, BSC_USDT.address)
+  await assert.rejects(async () => validateSignedApproval(plan, await signedApproval(plan, { to: BSC_USDT.address })), /invalid_sponsored_transaction/)
+  const result = await executeReviewedTrade(plan, sellRequest, execution(s))
+  const filled = await checkAgentOrder(result.order.orderId, plan, credentials)
+  assert.equal(filled.status, 'FILLED'); assert.equal(filled.txHash, settlementHash)
+  const balances = await readWalletBalances(owner, [{ symbol: 'NVDAon', address: stock }])
+  assert.equal(balances.bnb, '0'); assert.equal(balances.usdt, '5'); assert.equal(balances.tokens[0].quantity, '0')
+  assert.equal(s.calls.filter(call => call.method === 'eth_sendRawTransaction').length, 1)
 })
 
 test('fixture: a direct CoW fallback retains the sponsored 0 BNB purchase and verified portfolio flow', async () => {
