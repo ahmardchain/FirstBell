@@ -1,5 +1,6 @@
 // Authored UI messages: Spanish, French, Brazilian Portuguese.
 export const translations: Record<string, readonly [string, string, string]> = {
+  "Account": ["Cuenta", "Compte", "Conta"],
   "Sign in to use the Agent": ["Inicia sesión para usar el Agente", "Connectez-vous pour utiliser l’Agent", "Entre para usar o Agente"],
   "Start with Google or email. Fund in your local currency by card or bank transfer, then buy tokenized stocks with USDT. No seed phrase to manage.": [
     "Empieza con Google o tu correo. Añade fondos en tu moneda local con tarjeta o transferencia bancaria y compra acciones tokenizadas con USDT. Sin frase semilla que gestionar.",
