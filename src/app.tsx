@@ -161,6 +161,12 @@ export default function FirstBellApp() {
     window.history.replaceState(null, '', id === 'home' ? '/app/' : `/app/?tab=${id}`)
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
+  const openAccount = () => {
+    if (!ready || tradeBusyRef.current) return
+    if (authenticated) switchTab('portfolio')
+    else { setMobileMenu(false); login() }
+  }
+  const accountLabel = ready && authenticated ? text(language, 'Account', '账户') : text(language, 'Log In', '登录')
   const toggleSaved = (symbol: string) => {
     const next = !saved.includes(symbol)
     setSaved(list => next ? [...new Set([...list, symbol])] : list.filter(item => item !== symbol))
@@ -191,11 +197,11 @@ export default function FirstBellApp() {
       <div className="app-header-actions">
         <LanguageSelect language={language} onChange={setLanguage} className="app-header-tool app-language" />
         <button type="button" className="app-header-tool" aria-label={t.theme} onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}><span className="motion-icon-swap" data-state={theme === 'dark' ? 'a' : 'b'}><Sun size={18} /><Moon size={18} /></span></button>
-        <a href="/" className="app-website">{t.site}<ArrowUpRight size={16} /></a>
+        <button type="button" className="app-account" disabled={!ready || tradeBusy} aria-busy={!ready} onClick={openAccount}>{accountLabel}<ArrowRight size={16} /></button>
         <button type="button" className="app-header-tool app-mobile-menu" aria-label={text(language, "Open menu")} aria-expanded={mobileMenu} onClick={() => setMobileMenu(value => !value)}><span className="motion-icon-swap" data-state={mobileMenu ? 'b' : 'a'}><Menu size={20} /><X size={20} /></span></button>
       </div>
     </header>
-    <AnimatePresence>{mobileMenu && <motion.div className="app-mobile-popover" initial={reduceMotion ? false : { opacity: 0, scale: .97, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .99, y: -4 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}><a href="/">{t.back}<ArrowUpRight size={16} /></a><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={16} /></a></motion.div>}</AnimatePresence>
+    <AnimatePresence>{mobileMenu && <motion.div className="app-mobile-popover" initial={reduceMotion ? false : { opacity: 0, scale: .97, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .99, y: -4 }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}><button type="button" className="app-mobile-account" disabled={!ready || tradeBusy} aria-busy={!ready} onClick={openAccount}>{accountLabel}<ArrowRight size={16} /></button><a href="https://github.com/ahmardchain/FirstBell#readme" target="_blank" rel="noreferrer">{t.docs}<ArrowUpRight size={16} /></a></motion.div>}</AnimatePresence>
     <main className="app-main">
       <AnimatePresence mode="wait" initial={false}><motion.div key={tab} className="app-view" initial={reduceMotion ? false : { opacity: 0, x: 8, filter: 'blur(3px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={reduceMotion ? { opacity: 1 } : { opacity: 0, x: -8, filter: 'blur(3px)' }} transition={{ duration: reduceMotion ? 0 : .25, ease: [.22, 1, .36, 1] }}>
       {tab === 'home' && <>
