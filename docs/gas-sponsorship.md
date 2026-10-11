@@ -65,21 +65,23 @@ Live API validation on 2026-10-10 completed an explicitly authorized maintenance
 
 Successful buys or sells do not establish USDT withdrawal coverage. Withdrawals call `transfer(address,uint256)` (`0xa9059cbb`), while trade permissions call `approve(address,uint256)` (`0x095ea7b3`). A populated `BEP20ReceiverWhiteList` also restricts the address encoded inside the transfer. The application still requires the exact owned-wallet transfer to pass `pm_isSponsorable` before a sponsored review or dispatch.
 
-In a trusted server environment with the existing private MegaFuel credentials, inspect the intended BSC destination without changing the policy:
+In a trusted server environment with the existing private MegaFuel credentials, inspect coverage for all FirstBell users and destinations without changing the policy:
 
 ```sh
-npm run megafuel:withdrawals -- --recipient <BSC-receiving-address>
+npm run megafuel:withdrawals -- --all-users
 ```
 
-After explicit policy-owner authorization, add only the missing fixed transfer selector and the single selected destination, if their respective lists are restrictive:
+After explicit policy-owner authorization, enable the missing transfer method and unrestricted user/destination coverage for the private BSC policy:
 
 ```sh
-npm run megafuel:withdrawals -- --recipient <BSC-receiving-address> --cover-withdrawals
+npm run megafuel:withdrawals -- --all-users --cover-withdrawals
 ```
 
-The helper requires the existing USDT contract restriction, validates complete whitelist responses, preserves empty optional lists as unrestricted, checks capacity before any writes, and verifies each addition with a new read. It leaves token recipients, approval methods, other receivers, sender restrictions, funding, time windows and spending limits in place. Provider errors and reports omit credentials, policy identifiers and destination addresses. A failed later verification can leave an earlier verified addition in place; rerun the read-only check before any retry. It is an owner maintenance command, never an automatic build or withdrawal step.
+The all-users mode verifies the exact private policy ID, chain 56 and existing USDT contract restriction. It adds only the missing transfer selector; when explicitly selected, it can clear populated `FromAccountWhitelist` and `BEP20ReceiverWhiteList` restrictions. Broadening either restriction additionally requires all policy token recipients to be in the pinned FirstBell catalog. If both lists are already unrestricted, unrelated existing token rules are preserved while repairing just the missing transfer method. Token recipients, approval methods, funding, time windows and spending limits remain in place. The application still authenticates each account, verifies its own wallet and signs/relays only the exact reviewed USDT transfer.
 
-`rules_covered` means these method/destination rules match; it does not prove current funding, sender allowance, an active policy or a completed withdrawal. Request a fresh authenticated withdrawal review afterward. The 2026-10-11 screenshot establishes a sponsorship rejection, but the live private-policy diagnostic was blocked by automatic approval review and no maintenance was performed. The exact live rejecting rule remains unverified.
+Empty optional lists stay unrestricted. Every update is verified with a new management read. Provider errors and reports omit credentials, policy identifiers and destination addresses. A later verification failure can leave an earlier verified change in place; rerun the read-only check before retrying. The existing `--recipient <BSC-receiving-address>` mode remains available for an explicitly selected single-destination policy. Both modes are owner maintenance commands, never automatic build or withdrawal steps.
+
+`rules_covered` means these method/destination rules match; it does not prove future funding, sender allowance or a completed withdrawal. Request a fresh authenticated withdrawal review afterward. On 2026-10-11, explicit owner-approved live maintenance verified a missing transfer permission, added it, and confirmed the update by fresh management reads. No user or destination address was added. Two distinct public fixture senders and destinations changed from denied to explicitly eligible. These checks used unsigned USDT transfer calldata; no real wallet signature, transfer or funded withdrawal receipt was produced. See the developer experience report for sanitized timings and boundaries.
 
 ## Implementation and security
 
