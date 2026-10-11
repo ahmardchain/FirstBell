@@ -61,6 +61,26 @@ After an approved update, request a fresh sell review. `pm_isSponsorable` still 
 
 Live API validation on 2026-10-10 completed an explicitly authorized maintenance operation: `pm_addToWhitelist` returned `true`, and the helper verified the requested change with a fresh management read. Read-only approval eligibility checks used an unfunded public fixture. The isolated server run stopped before publishing, and no wallet signing or chain transaction occurred. This verifies the maintenance API contract; funded sell acceptance still requires the actual user's approval and settlement receipts. Private policy details are omitted. See the [developer experience field log](developer-experience-report.md#2026-10-10-approved-megafuel-maintenance-api-validation) for sanitized requests, timings and limitations.
 
+## Withdrawal policy diagnosis and scoped maintenance
+
+Successful buys or sells do not establish USDT withdrawal coverage. Withdrawals call `transfer(address,uint256)` (`0xa9059cbb`), while trade permissions call `approve(address,uint256)` (`0x095ea7b3`). A populated `BEP20ReceiverWhiteList` also restricts the address encoded inside the transfer. The application still requires the exact owned-wallet transfer to pass `pm_isSponsorable` before a sponsored review or dispatch.
+
+In a trusted server environment with the existing private MegaFuel credentials, inspect the intended BSC destination without changing the policy:
+
+```sh
+npm run megafuel:withdrawals -- --recipient <BSC-receiving-address>
+```
+
+After explicit policy-owner authorization, add only the missing fixed transfer selector and the single selected destination, if their respective lists are restrictive:
+
+```sh
+npm run megafuel:withdrawals -- --recipient <BSC-receiving-address> --cover-withdrawals
+```
+
+The helper requires the existing USDT contract restriction, validates complete whitelist responses, preserves empty optional lists as unrestricted, checks capacity before any writes, and verifies each addition with a new read. It leaves token recipients, approval methods, other receivers, sender restrictions, funding, time windows and spending limits in place. Provider errors and reports omit credentials, policy identifiers and destination addresses. A failed later verification can leave an earlier verified addition in place; rerun the read-only check before any retry. It is an owner maintenance command, never an automatic build or withdrawal step.
+
+`rules_covered` means these method/destination rules match; it does not prove current funding, sender allowance, an active policy or a completed withdrawal. Request a fresh authenticated withdrawal review afterward. The 2026-10-11 screenshot establishes a sponsorship rejection, but the live private-policy diagnostic was blocked by automatic approval review and no maintenance was performed. The exact live rejecting rule remains unverified.
+
 ## Implementation and security
 
 `worker/megafuel.ts` sends private-policy requests only to `https://open-platform-ap.nodereal.io/{server-key}/megafuel/56`, with `X-MegaFuel-Policy-Uuid` and `User-Agent: FirstBell/0.1.0`.
