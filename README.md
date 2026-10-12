@@ -2,7 +2,7 @@
 
 **Buy your first stock on-chain.** FirstBell helps people new to crypto reach tokenized equities through Google/email login, local-currency card or bank funding into USDT, reviewed trades and clear portfolio tracking on BNB Smart Chain.
 
-[Live website](https://firstbell-server-test.vercel.app/) · [Open the app](https://firstbell-server-test.vercel.app/app/) · [Submission checklist](docs/submission-checklist.md) · [Demo recording guide](docs/demo-guide.md) · [Developer Experience field log](docs/developer-experience-report.md)
+[Live website](https://firstbell-server-test.vercel.app/) · [Open the app](https://firstbell-server-test.vercel.app/app/)
 
 Built for [BNB Hack: Tokenized Stocks Edition](https://www.bnbchain.org/en/hackathons/tokenized-stocks?tab=tracks). Ondo tokenized assets on **BSC mainnet, chain 56**, are central to the product. Trades are spot only. The one-minute journey is a design goal; a measured one-minute card-to-stock purchase has not been established.
 
